@@ -1,0 +1,11 @@
+bin/
+obj/
+build/
+installer/obj/
+installer/output/*.msi
+installer/prereqs/
+installer/output/*.exe
+.vs/
+*.user
+*.suo
+TestResults/

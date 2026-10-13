@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Copyright 2026 Poonchezhian Periasamy <poonchezhian@gmail.com>
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+-->
+<!--
+  SSMConnect-Setup.exe: one-click bundle (WiX Burn) that installs, in order:
+    1. AWS CLI v2                 (skipped if already present)
+    2. AWS Session Manager plugin (skipped if already present)
+    3. SSMConnect.msi
+  The Apache-2.0 licence is shown by the bootstrapper before anything is installed.
+  AWS CLI and the plugin are Permanent: uninstalling SSMConnect leaves them for other tools that use them.
+  Variables from build-installer.ps1: Version, IconFile, BaDll, BaConfig, LicenseRtf, AwsCliMsi, PluginExe, SsmMsi
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Bundle Name="SSMConnect"
+          Version="$(var.Version)"
+          IconSourceFile="$(var.IconFile)"
+          Manufacturer="Poonchezhian Periasamy"
+          UpgradeCode="b57d28ce-4ccb-40ac-bc3a-99a7b59201b5">
+
+    <!-- Required by the managed BA host even though no prerequisite package is used -->
+    <WixVariable Id="WixMbaPrereqPackageId" Value="Dummy" />
+    <WixVariable Id="WixMbaPrereqLicenseUrl" Value="NeitherUsed" />
+
+    <!-- Own setup window (installer\BA): offers to uninstall an existing copy first, shows the licence, progress and a Finish page -->
+    <BootstrapperApplicationRef Id="ManagedBootstrapperApplicationHost">
+      <Payload Name="BootstrapperCore.config" SourceFile="$(var.BaConfig)" />
+      <Payload Name="SSMConnect.BA.dll" SourceFile="$(var.BaDll)" />
+      <Payload Name="License.rtf" SourceFile="$(var.LicenseRtf)" />
+    </BootstrapperApplicationRef>
+
+    <util:FileSearch Id="FindAwsCli" Variable="AwsCliInstalled" Result="exists"
+                     Path="[ProgramFiles64Folder]Amazon\AWSCLIV2\aws.exe" />
+    <util:FileSearch Id="FindPlugin" Variable="PluginInstalled" Result="exists"
+                     Path="[ProgramFiles64Folder]Amazon\SessionManagerPlugin\bin\session-manager-plugin.exe" />
+
+    <Chain>
+      <MsiPackage Id="AwsCli" SourceFile="$(var.AwsCliMsi)" Compressed="yes"
+                  InstallCondition="NOT AwsCliInstalled" Permanent="yes" Vital="yes" DisplayInternalUI="no" />
+
+      <ExePackage Id="SessionManagerPlugin" SourceFile="$(var.PluginExe)" Compressed="yes"
+                  InstallCommand="/quiet" InstallCondition="NOT PluginInstalled" Permanent="yes" Vital="yes"
+                  DetectCondition="PluginInstalled" />
+
+      <MsiPackage Id="SSMConnect" SourceFile="$(var.SsmMsi)" Compressed="yes" Vital="yes" DisplayInternalUI="no" />
+    </Chain>
+  </Bundle>
+</Wix>
