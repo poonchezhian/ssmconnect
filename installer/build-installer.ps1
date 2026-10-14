@@ -97,10 +97,15 @@ $rtPath = Join-Path $pre $rtName
 $lockFile = Join-Path $here 'prereqs.lock.json'
 $lock = @{}
 if (Test-Path $lockFile) { (Get-Content $lockFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $lock[$_.Name] = $_.Value } }
-if (-not (Test-Path $rtPath) -or -not $lock.ContainsKey('RuntimeUrl')) {
+if (-not (Test-Path $rtPath) -or -not $lock['RuntimeUrl']) {
+    # Reuse the pinned, version-specific address when known; otherwise resolve the current 8.0 release once and record it
+    $from = if ($lock['RuntimeUrl']) { [string]$lock['RuntimeUrl'] } else { 'https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe' }
     Write-Host "Downloading $rtName (build machine only, not embedded) ..."
-    $r = Invoke-WebRequest -Uri 'https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe' -OutFile $rtPath -UseBasicParsing -PassThru
-    $lock['RuntimeUrl'] = [string]$r.BaseResponse.ResponseUri.AbsoluteUri   # final, version-specific address
+    $r = Invoke-WebRequest -Uri $from -OutFile $rtPath -UseBasicParsing -PassThru
+    $resp = $r.BaseResponse
+    $final = if ($resp.RequestMessage) { $resp.RequestMessage.RequestUri.AbsoluteUri } else { $resp.ResponseUri.AbsoluteUri }
+    if ($final -notmatch '^https://.+\.exe$') { Remove-Item $rtPath -Force; throw "Could not work out the final download address of the .NET runtime (got '$final')." }
+    $lock['RuntimeUrl'] = [string]$final
     $lock | ConvertTo-Json | Set-Content $lockFile -Encoding UTF8
 }
 $sig = Get-AuthenticodeSignature $rtPath
@@ -108,7 +113,8 @@ if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Micros
     Remove-Item $rtPath -Force
     throw "$rtName failed the Authenticode check (status: $($sig.Status)). Deleted; re-run to download again."
 }
-$rtUrl = $lock['RuntimeUrl']
+$rtUrl = [string]$lock['RuntimeUrl']
+if (-not $rtUrl) { throw 'RuntimeUrl is empty in prereqs.lock.json' }
 $rtVer = ((Get-Item $rtPath).VersionInfo.ProductVersion -split '[.\s]')[0..2] -join '.'
 Write-Host "Runtime $rtVer from $rtUrl"
 
