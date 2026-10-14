@@ -34,6 +34,7 @@ $obj = Join-Path $here 'obj'
 $out = Join-Path $here 'output'
 $pre = Join-Path $here 'prereqs'
 New-Item -ItemType Directory -Force -Path $obj, $out, $pre | Out-Null
+. (Join-Path $here 'signing.ps1')
 
 # ---- 1. LICENSE -> RTF for the licence page (single source of truth) ----
 $licenseRtf = Join-Path $obj 'License.rtf'
@@ -60,6 +61,7 @@ $msi = Join-Path $obj "SSMConnect-$Version-x64.msi"
 if ($LASTEXITCODE) { throw 'candle failed (Product.wxs)' }
 & "$bin\light.exe" -nologo -sw1076 -ext WixUIExtension -ext WixUtilExtension -cultures:en-us -pdbout "$obj\SSMConnect.msi.wixpdb" -out $msi "$obj\Product.wixobj"
 if ($LASTEXITCODE) { throw 'light failed (MSI)' }
+Invoke-Sign $msi
 
 # ---- 3. Prerequisites (downloaded once, signature-checked) ----
 function Get-Prereq([string] $Url, [string] $Name) {
@@ -144,6 +146,7 @@ $setup = Join-Path $out "SSMConnect-Setup-$Version-x64.exe"
 if ($LASTEXITCODE) { throw 'candle failed (Bundle.wxs)' }
 & "$bin\light.exe" -nologo -ext WixBalExtension -ext WixUtilExtension -pdbout "$obj\SSMConnect.setup.wixpdb" -out $setup "$obj\Bundle.wixobj"
 if ($LASTEXITCODE) { throw 'light failed (bundle)' }
+Invoke-SignBundle -Path $setup -WixBin $bin -Work $obj
 
 # The setup file is uploaded through GitHub's web page, which accepts files up to 25 MB. Fail loudly before that.
 $maxBytes = 24MB
@@ -158,5 +161,6 @@ Get-ChildItem $out -Directory | Remove-Item -Recurse -Force
 foreach ($f in $setup) {
     Write-Host ''
     Write-Host $f
+    Show-Signature $f
     Write-Host ('  SHA256: ' + (Get-FileHash $f -Algorithm SHA256).Hash)
 }

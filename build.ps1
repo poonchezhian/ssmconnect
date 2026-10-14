@@ -18,7 +18,8 @@
 
   1. Installs missing build tools (.NET 8 SDK, WiX v3.14) via install-build-tools.ps1
   2. Publishes SSMConnect (dashboard, tray icon and tunnel manager) as a framework-dependent single-file x64 executable (needs the .NET 8 Desktop Runtime, which the setup file downloads if missing) into build\publish\
-  3. Builds the single redistributable installer\output\SSMConnect-Setup-<version>-x64.exe
+  3. Signs the files when a certificate is configured (see installer\signing.ps1)
+  4. Builds the single redistributable installer\output\SSMConnect-Setup-<version>-x64.exe
      (AWS CLI v2 + Session Manager plugin + SSMConnect). Nothing else is left in that folder.
 #>
 param([string] $Version = '')
@@ -49,6 +50,7 @@ if (-not ($haveDotnet -and $haveWix)) {
 }
 
 $pub = Join-Path $PSScriptRoot 'build\publish'
+. (Join-Path $PSScriptRoot 'installer\signing.ps1')
 Remove-Item -Recurse -Force $pub -ErrorAction SilentlyContinue
 
 foreach ($proj in 'SSMConnect.Wizard') {
@@ -56,6 +58,7 @@ foreach ($proj in 'SSMConnect.Wizard') {
         -p:PublishSingleFile=true -p:Version=$Version `
         -o (Join-Path $pub $proj)
     if ($LASTEXITCODE) { throw "publish failed for $proj" }
+    Invoke-Sign (Join-Path $pub "$proj\$proj.exe")
 }
 
 & (Join-Path $PSScriptRoot 'installer\build-installer.ps1') `

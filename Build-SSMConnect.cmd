@@ -8,6 +8,4 @@ if errorlevel 1 (
 cd /d "%~dp0"
 if not exist build mkdir build
 powershell -NoProfile -ExecutionPolicy Bypass -Command "try { & .\build.ps1 *>&1 | Tee-Object -FilePath build\build.log; 'RESULT: SUCCESS' | Tee-Object -FilePath build\build.log -Append } catch { ($_ | Out-String) | Tee-Object -FilePath build\build.log -Append; 'RESULT: FAILED' | Tee-Object -FilePath build\build.log -Append }"
-echo.
-echo Done. See build\build.log and installer\output\
-pause
+exit /b 0
