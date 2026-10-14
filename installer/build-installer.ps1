@@ -113,6 +113,16 @@ if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Micros
     Remove-Item $rtPath -Force
     throw "$rtName failed the Authenticode check (status: $($sig.Status)). Deleted; re-run to download again."
 }
+# Pin the file itself (SHA-256), like the other downloads: a changed file at the same address fails the build
+$rtHash = (Get-FileHash $rtPath -Algorithm SHA256).Hash
+if ($lock['RuntimeSha256'] -and $lock['RuntimeSha256'] -ne $rtHash -and -not $UpdatePrereqs) {
+    Remove-Item $rtPath -Force
+    throw 'The .NET runtime download differs from the pinned version in prereqs.lock.json. If you trust the new file, re-run with -UpdatePrereqs.'
+}
+if (-not $lock['RuntimeSha256'] -or $UpdatePrereqs) {
+    $lock['RuntimeSha256'] = $rtHash
+    $lock | ConvertTo-Json | Set-Content $lockFile -Encoding UTF8
+}
 $rtUrl = [string]$lock['RuntimeUrl']
 if (-not $rtUrl) { throw 'RuntimeUrl is empty in prereqs.lock.json' }
 $rtVer = ((Get-Item $rtPath).VersionInfo.ProductVersion -split '[.\s]')[0..2] -join '.'

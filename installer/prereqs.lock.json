@@ -1,4 +1,5 @@
 ﻿{
-    "SessionManagerPluginSetup.exe":  "116A121CA6A781B7985D0C9FA3C5C9143440ACDE7822DE2E32733665EED30347",
-    "RuntimeUrl":  "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.32/windowsdesktop-runtime-8.0.32-win-x64.exe"
+    "RuntimeUrl":  "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.32/windowsdesktop-runtime-8.0.32-win-x64.exe",
+    "RuntimeSha256":  "0F45815F9F032095910AF092405C9C6D3844B7FE57252F854D65ED9379B45598",
+    "SessionManagerPluginSetup.exe":  "116A121CA6A781B7985D0C9FA3C5C9143440ACDE7822DE2E32733665EED30347"
 }
