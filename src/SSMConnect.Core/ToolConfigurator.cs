@@ -51,6 +51,14 @@ public static class ToolConfigurator
                 using (var k = Registry.CurrentUser.OpenSubKey(root)) { if (k == null) continue; have = k.GetSubKeyNames(); }
                 var missing = ssh.Where(t => !have.Contains(Munge(SessionName(t)), StringComparer.OrdinalIgnoreCase)).ToList();
                 if (missing.Count > 0) apply(missing);
+                // sessions created by an older version get the keep-alive setting too (only where it was never set)
+                foreach (var t in ssh.Except(missing))
+                {
+                    using var sk = Registry.CurrentUser.OpenSubKey(root + "\\" + Munge(SessionName(t)), writable: true);
+                    if (sk == null) continue;
+                    if (root == PuttyKey && sk.GetValue("PingIntervalSecs") == null) sk.SetValue("PingIntervalSecs", 60, RegistryValueKind.DWord);
+                    if (root == WinScpKey && sk.GetValue("PingType") == null) { sk.SetValue("PingType", 1, RegistryValueKind.DWord); sk.SetValue("PingInterval", 60, RegistryValueKind.DWord); }
+                }
             }
             catch { /* best effort */ }
         }
@@ -67,6 +75,7 @@ public static class ToolConfigurator
             k.SetValue("Protocol", "ssh");
             k.SetValue("UserName", t.UserName);
             k.SetValue("UserNameFromEnvironment", 0, RegistryValueKind.DWord); // always use the stored login user
+            k.SetValue("PingIntervalSecs", 60, RegistryValueKind.DWord); // keep-alive: stops AWS closing the tunnel when the session is idle
             // PuTTY only reads .ppk files; a .pem is converted with PuTTYgen when that is installed
             if (!string.IsNullOrWhiteSpace(t.KeyFile) && KeyConverter.EnsurePpk(t.KeyFile!) is { } ppk) k.SetValue("PublicKeyFile", ppk);
         }
@@ -82,6 +91,7 @@ public static class ToolConfigurator
             k.SetValue("PortNumber", t.LocalPort, RegistryValueKind.DWord);
             k.SetValue("UserName", t.UserName);
             k.SetValue("FSProtocol", 2, RegistryValueKind.DWord); // SFTP only
+            k.SetValue("PingType", 1, RegistryValueKind.DWord); k.SetValue("PingInterval", 60, RegistryValueKind.DWord); // keep-alive, as above
             if (!string.IsNullOrWhiteSpace(t.KeyFile)) k.SetValue("PublicKeyFile", KeyConverter.EnsurePpk(t.KeyFile!) ?? t.KeyFile!);
         }
     }
