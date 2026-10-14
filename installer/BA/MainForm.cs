@@ -591,6 +591,12 @@ namespace SSMConnect.BA
             _ba.ExecutePackageBegin += (s, e) => OnUi(() => { _list.SetState(e.PackageId, ItemState.Active); _status.Text = _verb + " " + Friendly(e.PackageId) + "..."; });
             _ba.ExecutePackageComplete += (s, e) => OnUi(() => _list.SetState(e.PackageId, e.Status >= 0 ? ItemState.Done : ItemState.Waiting));
             _ba.Error += (s, e) => { _lastStatus = e.ErrorCode; };
+            // The .NET runtime is not embedded in this setup file. When it is needed and not found next to the setup file, download it
+            // (without this handler Burn reports "file not found", error 0x80070002).
+            _ba.ResolveSource += (s, e) =>
+            {
+                if (!string.IsNullOrEmpty(e.DownloadSource) && !File.Exists(e.LocalSource)) e.Result = Result.Download;
+            };
 
             Page(0, "Getting ready", "Checking this PC...", false, false, false, false);
             Buttons(null, null, null, null, null, null);
@@ -609,6 +615,7 @@ namespace SSMConnect.BA
         {
             if (id == "AwsCli") return "AWS CLI";
             if (id == "SessionManagerPlugin") return "the Session Manager plugin";
+            if (id == "DotNetDesktopRuntime") return ".NET Desktop Runtime";
             if (id == "SSMConnect") return "SSMConnect";
             return id;
         }
