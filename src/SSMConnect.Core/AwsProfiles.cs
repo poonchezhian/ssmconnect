@@ -91,6 +91,18 @@ public static class AwsProfiles
         return list.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>Identifies the primary account (the company sign-in, or an access-key login) a profile belongs to.</summary>
+    public static string PrimaryKey(ProfileInfo p) => p.Kind == ProfileKind.Sso ? "sso:" + (p.SsoSession ?? p.StartUrl ?? p.Name) : "key:" + p.Name;
+
+    /// <summary>A short friendly name for the primary account: the sign-in's nickname, or the company part of its address.</summary>
+    public static string PrimaryName(ProfileInfo p)
+    {
+        if (p.Kind != ProfileKind.Sso) return p.Name;
+        if (!string.IsNullOrWhiteSpace(p.SsoSession)) return p.SsoSession!;
+        try { if (p.StartUrl != null) return new Uri(p.StartUrl).Host.Split('.')[0]; } catch { }
+        return p.Name;
+    }
+
     /// <summary>A valid, unused profile name made from an account's name.</summary>
     public static string ProfileNameFor(string accountName, string accountId, ISet<string> taken)
     {

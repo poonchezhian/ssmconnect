@@ -51,15 +51,27 @@ public sealed class WizardForm : Form
     readonly ProgressBar _progress = new() { Width = ContentWidth, Height = 18, Visible = false };
     readonly Label _installStatus = new() { AutoSize = true, MaximumSize = new Size(ContentWidth, 0) };
     // step 1
-    readonly ComboBox _profile = new() { Width = 440, DropDownStyle = ComboBoxStyle.DropDownList };
+    sealed record PrimaryItem(ProfileInfo Rep, string Label) { public override string ToString() => Label; }
+    readonly bool _addMode;
+    readonly ComboBox _profile = new() { Width = 360, DropDownStyle = ComboBoxStyle.DropDownList };
+    readonly FlowLayoutPanel _pickPanel = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false };
+    readonly FlowLayoutPanel _addPanel = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false, Visible = false };
+    readonly FlowLayoutPanel _keysBox = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false, Visible = false };
+    readonly TextBox _addUrl = new() { Width = 500 };
+    readonly TextBox _keyName = new() { Width = 260, Text = "aws-keys" };
+    readonly TextBox _akid = new() { Width = 300 };
+    readonly TextBox _secret = new() { Width = 500, UseSystemPasswordChar = true };
+    readonly Button _addGo = new() { Text = "Sign in with AWS", AutoSize = true, MinimumSize = new Size(230, 40), Padding = new Padding(10, 2, 10, 2), Tag = "primary" };
+    readonly Label _addStatus = new() { AutoSize = true, MaximumSize = new Size(ContentWidth, 0), Margin = new Padding(0, 10, 0, 0) };
+    readonly LinkLabel _addCancel = new() { Text = "Cancel", AutoSize = true, Visible = false };
+    string _addRegion = "";
     readonly ComboBox _region = new() { Width = 260, DropDownStyle = ComboBoxStyle.DropDownList, Enabled = false };
     readonly Label _profileInfo = new() { AutoSize = true, ForeColor = Muted, MaximumSize = new Size(ContentWidth, 0), Margin = new Padding(0, 0, 0, 6) };
     readonly Label _regionHint = new() { AutoSize = true, ForeColor = Muted, MaximumSize = new Size(ContentWidth, 0) };
-    readonly Button _ssoBtn = new() { Text = "Sign in (SSO)", AutoSize = true, MinimumSize = new Size(170, 38), Padding = new Padding(10, 2, 10, 2), Visible = false };
+    readonly Button _ssoBtn = new() { Text = "Sign in again", AutoSize = true, MinimumSize = new Size(170, 38), Padding = new Padding(10, 2, 10, 2), Visible = false };
     List<ProfileInfo> _profiles = new();
     /// <summary>Accounts whose servers were listed by the latest search. Saved connections of these accounts are replaced by the new selection; all others are kept.</summary>
     HashSet<string> _scannedProfiles = new(StringComparer.Ordinal);
-    readonly CheckBox _allAccts = new() { AutoSize = true, Checked = true, Visible = false, MaximumSize = new Size(ContentWidth, 0), Margin = new Padding(0, 0, 0, 8) };
     bool _connected, _profilesLoaded, _loadingProfiles;
     readonly Label _authResult = new() { AutoSize = true, MaximumSize = new Size(ContentWidth, 0) };
     // step 2
@@ -77,8 +89,10 @@ public sealed class WizardForm : Form
     readonly CheckBox _moba = new() { Text = "MobaXterm (close it first)", Checked = true, AutoSize = true };
     readonly TextBox _log = new() { Multiline = true, ReadOnly = true, ScrollBars = ScrollBars.Vertical, Width = ContentWidth, Height = 270, Font = new Font("Consolas", 10f), BackColor = Color.White };
 
-    public WizardForm()
+    /// <param name="addAccount">Opens straight on the "add an AWS account" page.</param>
+    public WizardForm(bool addAccount = false)
     {
+        _addMode = addAccount;
         _cfg = ConfigStore.LoadOrRecover(out _loadWarning);
         // DPI-aware scaling: all sizes below are 96-dpi units and scale with the Windows display setting.
         AutoScaleDimensions = new SizeF(96F, 96F);
@@ -117,7 +131,7 @@ public sealed class WizardForm : Form
         AppTheme.RoomyRows(_list);
         AppTheme.Style(this);
         Shown += (_, _) => SizeColumns();
-        Go(0);
+        Go(addAccount && AwsCli.FindAws() != null ? 1 : 0);
     }
 
     // ---- layout helpers ----------------------------------------------------------------------
@@ -235,18 +249,18 @@ public sealed class WizardForm : Form
     }
 
     // ---- Step 1: AWS account -----------------------------------------------------------------
-    ProfileInfo? SelectedProfile => _profile.SelectedItem as ProfileInfo;
+    ProfileInfo? SelectedProfile => (_profile.SelectedItem as PrimaryItem)?.Rep;
 
     void BuildAwsStep(Panel host)
     {
         var p = NewStep(host);
-        p.Controls.Add(Para("Choose the AWS account to connect with. You can add several accounts (for example one per company or project) and come back here to switch between them. The region is chosen after the account is connected."));
-        var add = new Button { Text = "Add AWS account...", AutoSize = true, MinimumSize = new Size(190, 34), Padding = new Padding(10, 2, 10, 2) };
-        add.Click += (_, _) => OpenAddAccount();
-        p.Controls.Add(Row(new Label { Text = "AWS account", AutoSize = true, MinimumSize = new Size(100, 0) }, _profile, add));
-        p.Controls.Add(_profileInfo);
 
-        var test = new Button { Text = "Connect and test", AutoSize = true, MinimumSize = new Size(170, 38), Padding = new Padding(10, 2, 10, 2) };
+        // --- pick the AWS account ---
+        _pickPanel.Controls.Add(Para("Pick the AWS account to connect with. The other accounts under it come along automatically."));
+        var add = new LinkLabel { Text = "+ Add another AWS account", AutoSize = true, LinkColor = AppTheme.Accent, ActiveLinkColor = AppTheme.AccentHover };
+        add.LinkClicked += (_, _) => ShowAdd(true);
+        _pickPanel.Controls.Add(Row(new Label { Text = "AWS account", AutoSize = true, MinimumSize = new Size(100, 0) }, _profile, add));
+        _pickPanel.Controls.Add(_profileInfo);
         _ssoBtn.Click += async (_, _) =>
         {
             if (SelectedProfile is not { } pr) return;
@@ -256,23 +270,151 @@ public sealed class WizardForm : Form
             if (!r.Ok) { _authResult.ForeColor = Bad; _authResult.Text = AwsCli.FriendlyError(r.Error); return; }
             await TestAsync();
         };
-        test.Click += async (_, _) => await TestAsync();
-        var buttons = Row(_ssoBtn, test);
-        buttons.Margin = new Padding(0, 4, 0, 10);
-        p.Controls.Add(buttons);
+        _pickPanel.Controls.Add(_authResult);
+        var sso = Row(_ssoBtn);
+        sso.Margin = new Padding(0, 2, 0, 8);
+        _pickPanel.Controls.Add(sso);
+        _pickPanel.Controls.Add(Row(new Label { Text = "Region", AutoSize = true, MinimumSize = new Size(100, 0) }, _region));
+        _pickPanel.Controls.Add(_regionHint);
+        p.Controls.Add(_pickPanel);
 
-        p.Controls.Add(Row(new Label { Text = "Region", AutoSize = true, MinimumSize = new Size(100, 0) }, _region));
-        p.Controls.Add(_regionHint);
-        p.Controls.Add(_authResult);
+        // --- add an AWS account (no separate window) ---
+        _addPanel.Controls.Add(Para("Let's connect your AWS account. Paste the sign-in address your company uses for AWS, then sign in. We find your accounts for you."));
+        _addPanel.Controls.Add(new Label { Text = "AWS sign-in address", AutoSize = true, Margin = new Padding(0, 0, 0, 3) });
+        _addPanel.Controls.Add(_addUrl);
+        _addPanel.Controls.Add(new Label { Text = "Looks like https://yourcompany.awsapps.com/start. Your AWS admin or IT team can tell you.", AutoSize = true, ForeColor = Muted, MaximumSize = new Size(ContentWidth, 0), Margin = new Padding(0, 3, 0, 14) });
+        var keysLink = new LinkLabel { Text = "Use access keys instead", AutoSize = true, LinkColor = AppTheme.Accent, ActiveLinkColor = AppTheme.AccentHover };
+        _addCancel.LinkColor = AppTheme.Accent; _addCancel.ActiveLinkColor = AppTheme.AccentHover;
+        var goRow = Row(_addGo, keysLink, _addCancel);
+        goRow.Margin = new Padding(0, 0, 0, 0);
+        _addPanel.Controls.Add(goRow);
+        _addPanel.Controls.Add(_addStatus);
+        _keysBox.Margin = new Padding(0, 14, 0, 0);
+        _keysBox.Controls.Add(new Label { Text = "Name for this account", AutoSize = true, Margin = new Padding(0, 0, 0, 3) });
+        _keysBox.Controls.Add(_keyName);
+        _keysBox.Controls.Add(new Label { Text = "Access key ID", AutoSize = true, Margin = new Padding(0, 10, 0, 3) });
+        _keysBox.Controls.Add(_akid);
+        _keysBox.Controls.Add(new Label { Text = "Secret access key", AutoSize = true, Margin = new Padding(0, 10, 0, 3) });
+        _keysBox.Controls.Add(_secret);
+        _keysBox.Controls.Add(new Label { Text = "Kept in your own .aws folder, like the AWS CLI does. It goes nowhere except to AWS.", AutoSize = true, ForeColor = Muted, MaximumSize = new Size(ContentWidth, 0), Margin = new Padding(0, 3, 0, 8) });
+        var saveKeys = new Button { Text = "Save access keys", AutoSize = true, MinimumSize = new Size(190, 38), Padding = new Padding(10, 2, 10, 2), Tag = "primary" };
+        saveKeys.Click += (_, _) => SaveAccessKeys();
+        _keysBox.Controls.Add(saveKeys);
+        _addPanel.Controls.Add(_keysBox);
+        p.Controls.Add(_addPanel);
 
+        keysLink.LinkClicked += (_, _) => { _keysBox.Visible = !_keysBox.Visible; keysLink.Text = _keysBox.Visible ? "Use company sign-in instead" : "Use access keys instead"; };
+        _addCancel.LinkClicked += (_, _) => ShowAdd(false);
+        _addGo.Click += async (_, _) => await AddSignInAsync();
         _profile.SelectedIndexChanged += (_, _) => OnProfileChanged();
         _region.SelectedIndexChanged += (_, _) => ClearServers();
     }
 
-    void OpenAddAccount()
+    void ShowAdd(bool on)
     {
-        using var dlg = new ProfileDialog();
-        if (dlg.ShowDialog(this) == DialogResult.OK) ReloadProfiles(dlg.CreatedProfile);
+        _addPanel.Visible = on;
+        _pickPanel.Visible = !on;
+        _addCancel.Visible = on && _profiles.Count > 0;
+        if (on) { _addStatus.Text = ""; _ = DetectSignInAsync(); }
+    }
+
+    void AddSay(string text, bool? ok)
+    {
+        _addStatus.ForeColor = ok == null ? SystemColors.ControlText : ok.Value ? Good : Bad;
+        _addStatus.Text = text;
+    }
+
+    /// <summary>Pre-fills the sign-in address from IT settings, existing AWS files, earlier sign-ins or the company domain.</summary>
+    async Task DetectSignInAsync()
+    {
+        if (_addUrl.Text.Trim().Length > 0) return;
+        try
+        {
+            var cands = SsoDiscovery.Find();
+            if (cands.Count == 0) { try { cands = await SsoDiscovery.GuessFromDomainAsync(); } catch { } }
+            if (cands.Count == 0 || _addUrl.Text.Trim().Length > 0) return;
+            _addUrl.Text = cands[0].StartUrl;
+            _addRegion = cands[0].Region;
+        }
+        catch { /* only a convenience */ }
+    }
+
+    static string CleanUrl(string raw)
+    {
+        var u = raw.Trim();
+        var hash = u.IndexOf('#');
+        if (hash >= 0) u = u.Substring(0, hash);
+        return u.TrimEnd('/');
+    }
+
+    /// <summary>The nickname of the sign-in: the company part of its address (made unique if another address already uses it).</summary>
+    static string SessionNameFor(Uri uri, string url)
+    {
+        var name = uri.Host.Split('.')[0];
+        if (!AwsProfiles.IsValidName(name)) name = "aws-sso";
+        var taken = AwsProfiles.List().Where(x => x.SsoSession == name && x.StartUrl != null && !string.Equals(x.StartUrl.TrimEnd('/'), url, StringComparison.OrdinalIgnoreCase)).Any();
+        return taken ? name + "-2" : name;
+    }
+
+    async Task AddSignInAsync()
+    {
+        var url = CleanUrl(_addUrl.Text);
+        if (!url.StartsWith("https://", StringComparison.OrdinalIgnoreCase) || !Uri.TryCreate(url, UriKind.Absolute, out var uri) || url.Any(char.IsWhiteSpace))
+        { AddSay("Enter the sign-in address, starting with https://", false); return; }
+        _addUrl.Text = url;
+        if (AwsCli.FindAws() == null) { AddSay("The AWS CLI is not installed yet. Click Back and install the missing components first.", false); return; }
+
+        _addGo.Enabled = false;
+        try
+        {
+            var name = SessionNameFor(uri, url);
+            // AWS rejects the request when the region is not the one the sign-in lives in, so try the likely one and then the rest.
+            var first = _addRegion.Length > 0 ? _addRegion : "us-east-1";
+            var order = new[] { first }.Concat(AwsRegions.Common.Where(r => r != first)).ToList();
+            CliResult login = new(-1, "", "");
+            var region = first;
+            var found = false;
+            foreach (var withScopes in new[] { true, false })
+            {
+                foreach (var r in order)
+                {
+                    AwsProfiles.SaveSsoSession(name, url, r, withScopes);
+                    AddSay(r == first && withScopes ? "A browser window opens. Sign in there and approve the request (up to 3 minutes)..." : "Still connecting...", null);
+                    login = await AwsSso.LoginAsync(name);
+                    if (login.Ok || !login.Error.Contains("RegisterClient", StringComparison.OrdinalIgnoreCase)) { found = true; region = r; break; }
+                }
+                if (found) break;
+            }
+            if (!found) { AddSay("AWS did not accept this address. Check it with your AWS admin; it should look like https://yourcompany.awsapps.com/start.", false); return; }
+            if (!login.Ok) { AddSay(AwsCli.FriendlyError(login.Error), false); return; }
+
+            var token = AwsSso.ReadAccessToken(name) ?? "";
+            if (token.Length == 0) throw new InvalidOperationException("Signed in, but the sign-in token could not be found.");
+            AddSay("Signed in. Finding your AWS accounts...", null);
+            var accounts = await AwsSso.ListAccountsAsync(token, region);
+            if (accounts.Count == 0) throw new InvalidOperationException("You are signed in, but no AWS accounts are assigned to you. Ask your AWS admin.");
+            var roles = await AwsSso.ListRolesAsync(token, region, accounts[0].Id);
+            var made = await AwsSso.AddAllAccountsAsync(name, token, region, roles.Count > 0 ? roles[0] : "", accounts, t => AddSay(t, null));
+            if (made.Count == 0) throw new InvalidOperationException("No role is assigned to you in these accounts. Ask your AWS admin.");
+            AddSay($"Done. {made.Count} AWS account{(made.Count == 1 ? "" : "s")} found.", true);
+            _addUrl.Clear();
+            ShowAdd(false);
+            ReloadProfiles(made[0].Profile);
+        }
+        catch (Exception ex) { AddSay(ex.Message, false); }
+        finally { _addGo.Enabled = true; }
+    }
+
+    void SaveAccessKeys()
+    {
+        var name = _keyName.Text.Trim();
+        if (!AwsProfiles.IsValidName(name)) { AddSay("Give the account a short name using letters, numbers and - _ . @ only.", false); return; }
+        try { AwsProfiles.SaveAccessKeys(name, _akid.Text.Trim(), _secret.Text.Trim()); }
+        catch (Exception ex) { AddSay(ex.Message, false); return; }
+        _secret.Clear(); _akid.Clear();
+        _keysBox.Visible = false;
+        ShowAdd(false);
+        ReloadProfiles(name);
     }
 
     void ReloadProfiles(string? select)
@@ -282,10 +424,18 @@ public sealed class WizardForm : Form
         {
             _profiles = AwsProfiles.List();
             _profile.Items.Clear();
-            _profile.Items.AddRange(_profiles.Cast<object>().ToArray());
-            var pick = _profiles.FindIndex(x => x.Name == select);
-            if (pick < 0) pick = _profiles.FindIndex(x => x.Name == _cfg.Profile);
-            if (pick < 0 && _profiles.Count == 1) pick = 0;
+            var groups = _profiles.GroupBy(AwsProfiles.PrimaryKey).ToList();
+            var pick = -1;
+            foreach (var g in groups)
+            {
+                var members = g.ToList();
+                var rep = members.FirstOrDefault(x => x.Name == select) ?? members.FirstOrDefault(x => x.Name == _cfg.Profile) ?? members[0];
+                var label = AwsProfiles.PrimaryName(rep) + (members.Count > 1 ? $"   ({members.Count} accounts)" : "");
+                _profile.Items.Add(new PrimaryItem(rep, label));
+                if (members.Any(x => x.Name == select)) pick = _profile.Items.Count - 1;
+                else if (pick < 0 && members.Any(x => x.Name == _cfg.Profile)) pick = _profile.Items.Count - 1;
+            }
+            if (pick < 0 && groups.Count == 1) pick = 0;
             _profile.SelectedIndex = pick; // -1 leaves it empty so nothing is assumed
         }
         finally { _loadingProfiles = false; }
@@ -298,20 +448,10 @@ public sealed class WizardForm : Form
         _connected = false;
         _region.Items.Clear();
         _region.Enabled = false;
+        _ssoBtn.Visible = false;
         ClearServers();
         var pr = SelectedProfile;
-        _ssoBtn.Visible = pr?.Kind == ProfileKind.Sso;
-        var siblings = pr == null ? new List<ProfileInfo>() : AwsProfiles.SameSignIn(pr, _profiles);
-        _allAccts.Visible = pr?.Kind == ProfileKind.Sso && siblings.Count > 1;
-        _allAccts.Text = $"Search all {siblings.Count} accounts under this sign-in (servers are listed under each account's name)";
-        if (_profiles.Count == 0)
-        {
-            _profileInfo.Text = "";
-            _regionHint.Text = "";
-            _authResult.ForeColor = Bad;
-            _authResult.Text = "No AWS accounts are set up on this PC yet. Click \"Add AWS account...\" to create one.";
-            return;
-        }
+        if (_profiles.Count == 0) { _profileInfo.Text = ""; _regionHint.Text = ""; _authResult.Text = ""; ShowAdd(true); return; }
         if (pr == null)
         {
             _profileInfo.Text = "";
@@ -320,15 +460,12 @@ public sealed class WizardForm : Form
             _authResult.Text = "Choose an account from the list, or add a new one.";
             return;
         }
-        _profileInfo.Text = pr.Kind switch
-        {
-            ProfileKind.Sso => $"Company sign-in. {(pr.StartUrl != null ? pr.StartUrl : "")}{(pr.AccountId != null ? "  Account " + pr.AccountId : "")}{(pr.RoleName != null ? "  Role " + pr.RoleName : "")}",
-            ProfileKind.AccessKeys => "Access keys saved on this PC.",
-            _ => "Custom AWS profile.",
-        };
-        _regionHint.Text = "Click \"Connect and test\" first. The region list unlocks once the account is connected.";
-        _authResult.ForeColor = SystemColors.ControlText;
-        _authResult.Text = pr.Kind == ProfileKind.Sso ? "Click \"Sign in (SSO)\" to sign in, then the account is tested for you." : "Click \"Connect and test\".";
+        var sib = AwsProfiles.SameSignIn(pr, _profiles);
+        _profileInfo.Text = pr.Kind == ProfileKind.Sso
+            ? (sib.Count > 1 ? $"Includes {sib.Count} AWS accounts. Their servers are listed together, grouped by account." : "One AWS account.")
+            : "Access keys saved on this PC.";
+        _regionHint.Text = "";
+        _ = TestAsync();
     }
 
     void ClearServers()
@@ -345,18 +482,20 @@ public sealed class WizardForm : Form
     {
         if (SelectedProfile is not { } pr) { _authResult.ForeColor = Bad; _authResult.Text = "Choose an AWS account first, or add one."; return; }
         _authResult.ForeColor = SystemColors.ControlText;
-        _authResult.Text = "Testing...";
+        _authResult.Text = "Connecting...";
         _connected = false;
+        _ssoBtn.Visible = false;
         var r = await AwsCli.WhoAmIAsync(new AppConfig { Profile = pr.Name, Region = pr.Region ?? "" });
         if (!r.Ok)
         {
             _authResult.ForeColor = Bad;
             _authResult.Text = AwsCli.FriendlyError(r.Error);
+            _ssoBtn.Visible = pr.Kind == ProfileKind.Sso;
             return;
         }
         _connected = true;
         _authResult.ForeColor = Good;
-        _authResult.Text = "Connected to AWS.\n" + Summarise(r.Output);
+        _authResult.Text = "Connected. " + Summarise(r.Output);
 
         // Only now, with the account connected, can the region be chosen.
         _regionHint.Text = "Loading regions...";
@@ -396,8 +535,6 @@ public sealed class WizardForm : Form
         p.Controls.Add(Para("Find your servers, then tick the ones you want to connect to. Linux servers open in PuTTY, WinSCP or MobaXterm; Windows servers open in Remote Desktop (RDP). Servers marked \"No\" cannot be reached through SSM (the SSM agent or instance role is missing). The next step finds the SSH key for each Linux server."));
         var find = new Button { Text = "Find my servers", AutoSize = true, MinimumSize = new Size(190, 38), Padding = new Padding(10, 2, 10, 2) };
         p.Controls.Add(Row(find, _findResult));
-        p.Controls.Add(_allAccts);
-        _allAccts.CheckedChanged += (_, _) => { ClearServers(); _ = FindServersAsync(); };
         var all = new Button { Text = "Select all", AutoSize = true, MinimumSize = new Size(110, 30) };
         var none = new Button { Text = "Select none", AutoSize = true, MinimumSize = new Size(110, 30) };
         all.Click += (_, _) => SetAllChecked(true);
@@ -429,8 +566,7 @@ public sealed class WizardForm : Form
     /// <summary>The accounts to search: every account under the same company sign-in when that is ticked, otherwise just the chosen one.</summary>
     List<string> TargetProfiles()
     {
-        if (_allAccts.Visible && _allAccts.Checked && SelectedProfile is { } pr)
-            return AwsProfiles.SameSignIn(pr, _profiles).Select(x => x.Name).ToList();
+        if (SelectedProfile is { } pr) return AwsProfiles.SameSignIn(pr, _profiles).Select(x => x.Name).ToList();
         return string.IsNullOrWhiteSpace(_cfg.Profile) ? new List<string>() : new List<string> { _cfg.Profile };
     }
 
@@ -986,8 +1122,9 @@ public sealed class WizardForm : Form
         if (_idx == _steps.Count - 1) { Close(); return; }
         if (_idx == 1)
         {
-            if (SelectedProfile is not { } pr) { _authResult.ForeColor = Bad; _authResult.Text = "Choose an AWS account first, or click \"Add AWS account...\"."; return; }
-            if (!_connected) { _authResult.ForeColor = Bad; _authResult.Text = "Click \"Connect and test\" so we know the account works."; return; }
+            if (_addPanel.Visible) { AddSay("Sign in first, or click Cancel to use an account you already added.", false); return; }
+            if (SelectedProfile is not { } pr) { _authResult.ForeColor = Bad; _authResult.Text = "Choose an AWS account first, or add one."; return; }
+            if (!_connected) { _authResult.ForeColor = Bad; _authResult.Text = "Still connecting to this account. Give it a moment, or sign in again."; return; }
             if (_region.SelectedItem is not string) { _authResult.ForeColor = Bad; _authResult.Text = "Choose the region where your servers run."; return; }
             ApplyAwsFields();
             // remember the region on the AWS profile too, so other AWS tools agree with SSMConnect
@@ -1007,7 +1144,7 @@ public sealed class WizardForm : Form
         Go(_idx + 1);
     }
 
-    async void Go(int index)
+    void Go(int index)
     {
         _idx = Math.Clamp(index, 0, _steps.Count - 1);
         for (var i = 0; i < _steps.Count; i++) _steps[i].Visible = i == _idx;
@@ -1030,12 +1167,7 @@ public sealed class WizardForm : Form
         {
             _profilesLoaded = true;
             ReloadProfiles(_cfg.Profile);
-            if (_profiles.Count == 0)
-            {
-                await Task.Yield();
-                MessageBox.Show(this, "No AWS accounts are set up on this PC yet.\n\nLet's add one now. You will need either your company's sign-in URL, or an access key from the AWS console.", "Add an AWS account", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                OpenAddAccount();
-            }
+            if (_profiles.Count == 0 || _addMode) ShowAdd(true);
         }
     }
 }
