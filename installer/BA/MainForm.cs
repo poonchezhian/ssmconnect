@@ -448,6 +448,7 @@ namespace SSMConnect.BA
         string _backupDir;             // temporary copy of the saved settings while an old copy is removed
         bool _keepSettings;            // an uninstall that is running should hand the settings back afterwards
         bool _upgradeChosen, _fallbackTried;
+        volatile bool _msiStarted;   // true once the SSMConnect MSI itself began running (nothing is changed on the PC before that)
         bool _sameVersion;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -588,7 +589,7 @@ namespace SSMConnect.BA
             _ba.PlanComplete += OnPlanComplete;
             _ba.ApplyComplete += OnApplyComplete;
             _ba.Progress += (s, e) => OnUi(() => SetProgress(e.OverallPercentage));
-            _ba.ExecutePackageBegin += (s, e) => OnUi(() => { _list.SetState(e.PackageId, ItemState.Active); _status.Text = _verb + " " + Friendly(e.PackageId) + "..."; });
+            _ba.ExecutePackageBegin += (s, e) => { if (e.PackageId == "SSMConnect") _msiStarted = true; OnUi(() => { _list.SetState(e.PackageId, ItemState.Active); _status.Text = _verb + " " + Friendly(e.PackageId) + "..."; }); };
             _ba.ExecutePackageComplete += (s, e) => OnUi(() => _list.SetState(e.PackageId, e.Status >= 0 ? ItemState.Done : ItemState.Waiting));
             _ba.Error += (s, e) => { _lastStatus = e.ErrorCode; };
             // The .NET runtime is not embedded in this setup file. When it is needed and not found next to the setup file, download it
@@ -905,6 +906,7 @@ namespace SSMConnect.BA
         void StartInstall()
         {
             _busy = true;
+            _msiStarted = false;
             _verb = _updateMode ? "Updating" : "Installing";
             Page(2, _updateMode ? "Updating SSMConnect" : "Installing SSMConnect", _updateMode ? "Your servers, keys and saved sessions are kept. This takes about a minute." : "Sit back. This usually takes a minute or two.", false, true, false, true);
             // carry over what was ticked on the welcome page
@@ -999,7 +1001,10 @@ namespace SSMConnect.BA
         {
             _busy = false;
             if (_uninstallMode && _keepSettings) RestoreSettings(false);
-            if (_upgradeChosen && !_fallbackTried && !_silent)
+            // Only replace the old copy if the MSI step had started. A failure earlier (for example the .NET runtime could not be
+            // downloaded) leaves the working install untouched; removing it then would leave the user with no app at all.
+            if (_upgradeChosen && !_msiStarted) RestoreSettings(true);
+            if (_upgradeChosen && !_fallbackTried && !_silent && _msiStarted)
             {
                 // the in-place upgrade did not complete: replace the old copy instead, with the settings carried over
                 _fallbackTried = true;
@@ -1009,6 +1014,15 @@ namespace SSMConnect.BA
             }
             _ba.ExitCode = status;
             if (_silent) { Close(); return; }
+            if (!_uninstallMode && !_msiStarted)
+            {
+                Page(3, "Setup did not finish",
+                    "Setup could not get everything it needs (code 0x" + status.ToString("X8") + "). SSMConnect itself was not changed" + (_upgradeChosen ? ", so your current version still works" : "") +
+                    ". This PC needs internet access to download the .NET 8 runtime from Microsoft. Check the connection and run setup again. Details are in %TEMP% (files named SSMConnect_*.log).",
+                    false, false, false, false);
+                Buttons("Close", () => Close(), null, null, null, null);
+                return;
+            }
             Page(3, _verb == "Uninstalling" ? "Uninstall did not finish" : "Setup did not finish",
                 "Something went wrong while " + _verb.ToLowerInvariant() + " (code 0x" + status.ToString("X8") + (_lastStatus != 0 ? ", error " + _lastStatus : "") + "). The details are in the setup log in %TEMP% (files named SSMConnect_*.log). Running setup again is safe.",
                 false, false, false, false);
