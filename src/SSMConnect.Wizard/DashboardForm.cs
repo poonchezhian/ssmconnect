@@ -61,14 +61,10 @@ public sealed class DashboardForm : Form
     readonly List<ServerCard> _cards = new();
     readonly List<Label> _groupHeads = new();
     // account switcher (top right of the header)
-    sealed record AcctItem(string Text, string? Key, bool IsAdd)
-    {
-        public override string ToString() => Text;
-    }
-    readonly ComboBox _acct = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 270, FlatStyle = FlatStyle.Flat, BackColor = Color.White, DrawMode = DrawMode.OwnerDrawFixed, ItemHeight = 28 };
+    readonly AccountChip _chip = new() { Width = 290, Height = 46 };
+    readonly List<(string Key, string Label, int Count)> _prim = new();
     string? _view;              // primary account (sign-in) whose servers are shown
     bool _viewChosen;           // false until the first fill picks the current account
-    string _acctSig = "";
     List<ProfileInfo> _profList = new();
     DateTime _profStamp = DateTime.MinValue;
     List<string> _rowGroups = new();   // account (profile) of each row, same order as _rows
@@ -233,12 +229,11 @@ public sealed class DashboardForm : Form
         Controls.Add(_hdr);
         host.BringToFront();
         _cardHost.BringToFront();
-        _hdr.Controls.Add(_acct);
-        void PlaceAcct() { var f = DeviceDpi / 96f; _acct.Width = (int)(270 * f); _acct.Left = _hdr.Width - _acct.Width - (int)(24 * f); _acct.Top = (_hdr.Height - _acct.Height) / 2; }
+        _hdr.Controls.Add(_chip);
+        void PlaceAcct() { var f = DeviceDpi / 96f; _chip.Width = (int)(290 * f); _chip.Height = (int)(46 * f); _chip.Left = _hdr.Width - _chip.Width - (int)(24 * f); _chip.Top = (_hdr.Height - _chip.Height) / 2; }
         _hdr.Resize += (_, _) => PlaceAcct();
         _hdr.HandleCreated += (_, _) => PlaceAcct();
-        _acct.SelectionChangeCommitted += (_, _) => OnAcctPicked();
-        _acct.DrawItem += DrawAcctItem;
+        _chip.Click += (_, _) => ShowAccountMenu();
         _hdr.Set("SSMConnect", "Your AWS servers, one click away. Secure SSH and Remote Desktop through SSM, with no open ports.");
         _cardHost.SizeChanged += (_, _) => LayoutCards();
     }
@@ -328,6 +323,7 @@ public sealed class DashboardForm : Form
 
         var aws = new ToolStripMenuItem("&AWS");
         aws.DropDownItems.Add(Item("&Add AWS account...", (_, _) => OpenSetup(addAccount: true)));
+        aws.DropDownItems.Add(Item("&Manage accounts (rename, remove)...", (_, _) => ManageAccounts()));
         aws.DropDownItems.Add(Item("&Sign in again", async (_, _) => await SignInAsync()));
 
         var servers = new ToolStripMenuItem("&Servers");
@@ -511,7 +507,7 @@ public sealed class DashboardForm : Form
         var haveAws = AwsCli.FindAws() != null;
         var havePlugin = AwsCli.FindPlugin() != null;
         if (haveAws && havePlugin) SetPill(_reqPill, "AWS tools: installed", Level.Green, "AWS CLI and the Session Manager plugin are installed.");
-        else SetPill(_reqPill, "AWS tools: missing " + (haveAws ? "plugin" : havePlugin ? "CLI" : "CLI + plugin"), Level.Red, "Open Tools > Install or check AWS tools to install them automatically.");
+        else SetPill(_reqPill, "AWS tools: missing " + (haveAws ? "plugin" : havePlugin ? "CLI" : "CLI + plugin"), Level.Red, "Click Add / change servers to install them automatically.");
 
         // auth pill (updated by background check)
         SetPill(_authPill, _authText, _authLevel, _authTip);
@@ -546,7 +542,9 @@ public sealed class DashboardForm : Form
         // the window shows one primary account at a time; the summary and tray cover every connection
         var viewIdx = Enumerable.Range(0, ordered.Count).Where(i => PKey(ordered[i].Profile) == _view).ToList();
         var viewProfiles = viewIdx.Select(i => ordered[i].Profile).ToList();
-        _rowGroups = viewProfiles.Distinct().Count() > 1 ? viewProfiles : new List<string>();
+        // organizations (member accounts) are shown as headings whenever the sign-in has more than one, even for accounts found before this view existed
+        var memberCount = Profiles().Count(x => AwsProfiles.PrimaryKey(x) == _view);
+        _rowGroups = viewProfiles.Distinct().Count() > 1 || memberCount > 1 ? viewProfiles : new List<string>();
         UpdateGrid(viewIdx.Select(i => rows[i]).ToList());
 
         // overall
@@ -656,7 +654,7 @@ public sealed class DashboardForm : Form
                 {
                     Name = r.Name, InstanceId = r.InstanceId, Port = r.Port.ToString(), StatusText = r.StatusText, Message = r.Message,
                     Since = r.Since.HasValue ? Ago(r.Since.Value) : "", KnownType = tun != null, IsWindows = tun?.IsRdp ?? false,
-                    IsProd = r.Name.Contains("prod", StringComparison.OrdinalIgnoreCase),
+                    Environment = EnvOf(tun), IsProd = EnvironmentClassifier.IsProd(EnvOf(tun)),
                     Level = r.Level switch { Level.Green => CardLevel.Green, Level.Amber => CardLevel.Amber, Level.Red => CardLevel.Red, _ => CardLevel.Grey },
                     Actions = ActionsFor(tun, up),
                 };
@@ -681,7 +679,7 @@ public sealed class DashboardForm : Form
         {
             var count = _rowGroups.Count(x => x == names[g]);
             var head = _groupHeads[g];
-            head.Text = $"{names[g].ToUpperInvariant()}    {count} server{(count == 1 ? "" : "s")}";
+            head.Text = $"{_cfg.AliasOr(names[g], names[g]).ToUpperInvariant()}    {count} server{(count == 1 ? "" : "s")}";
             if (!_cardHost.Controls.Contains(head)) _cardHost.Controls.Add(head);
             _cardHost.SetFlowBreak(head, true);
             _cardHost.Controls.SetChildIndex(head, idx++);
@@ -713,10 +711,10 @@ public sealed class DashboardForm : Form
     string PLabel(string profile)
     {
         var p = Profiles().FirstOrDefault(x => x.Name == profile);
-        return p == null ? profile : AwsProfiles.PrimaryName(p);
+        return p == null ? _cfg.AliasOr("key:" + profile, profile) : _cfg.AliasOr(AwsProfiles.PrimaryKey(p), AwsProfiles.PrimaryName(p));
     }
 
-    /// <summary>Keeps the account drop-down in step with the saved servers. It lists primary accounts only; the current one is the default.</summary>
+    /// <summary>Keeps the account switcher in step with the saved servers. It lists primary accounts only; the current one is the default.</summary>
     void FillAccounts()
     {
         var prim = _cfg.Tunnels.Where(t => !string.IsNullOrWhiteSpace(t.Profile))
@@ -727,53 +725,101 @@ public sealed class DashboardForm : Form
             _view = prim.Any(x => x.Key == cur) ? cur : prim.FirstOrDefault().Key;
             _viewChosen = prim.Count > 0;
         }
-        var sig = string.Join("|", prim.Select(x => x.Key + ":" + x.Label + ":" + x.Count)) + "#" + _view;
-        if (sig == _acctSig || _acct.DroppedDown) return;
-        _acctSig = sig;
-        _acct.BeginUpdate();
-        _acct.Items.Clear();
-        foreach (var x in prim) _acct.Items.Add(new AcctItem($"{x.Label}   ({x.Count})", x.Key, false));
-        _acct.Items.Add(new AcctItem("+  Add AWS account...", null, true));
-        _acct.SelectedIndex = prim.FindIndex(x => x.Key == _view);
-        _acct.EndUpdate();
+        _prim.Clear();
+        _prim.AddRange(prim);
+        _chip.Title = prim.FirstOrDefault(x => x.Key == _view).Label ?? "";
     }
 
-    void DrawAcctItem(object? sender, DrawItemEventArgs e)
+    void ShowAccountMenu()
     {
-        if (e.Index < 0 && _acct.SelectedItem is not AcctItem) { e.Graphics.FillRectangle(Brushes.White, e.Bounds); return; }
-        var it = (e.Index >= 0 ? _acct.Items[e.Index] : _acct.SelectedItem) as AcctItem;
-        var inList = (e.State & DrawItemState.ComboBoxEdit) == 0;
-        var hot = inList && (e.State & DrawItemState.Selected) != 0;
-        using (var bg = new SolidBrush(hot ? AppTheme.Accent : Color.White)) e.Graphics.FillRectangle(bg, e.Bounds);
-        if (it == null) return;
-        if (it.IsAdd && inList && !hot) { using var line = new Pen(AppTheme.Line); e.Graphics.DrawLine(line, e.Bounds.Left + 8, e.Bounds.Top, e.Bounds.Right - 8, e.Bounds.Top); }
-        var fore = hot ? Color.White : it.IsAdd ? AppTheme.Accent : AppTheme.Ink;
-        using var f = it.IsAdd ? AppTheme.Semi(9.5f) : AppTheme.Body(9.5f);
-        TextRenderer.DrawText(e.Graphics, it.Text, f, new Rectangle(e.Bounds.Left + 8, e.Bounds.Top, e.Bounds.Width - 12, e.Bounds.Height), fore,
-            TextFormatFlags.VerticalCenter | TextFormatFlags.Left | TextFormatFlags.EndEllipsis | TextFormatFlags.NoPrefix);
+        var menu = new ContextMenuStrip { Renderer = new AccountMenuRenderer(), ShowImageMargin = true, Font = AppTheme.Body(10f), BackColor = Color.White, Padding = new Padding(0, 6, 0, 6), MinimumSize = new Size(_chip.Width, 0) };
+        menu.Disposed += (_, _) => { foreach (ToolStripItem i in menu.Items) i.Image?.Dispose(); };
+        void Add(string text, EventHandler click, Image? img, bool accent = false, string? shortcut = null, bool bold = false)
+        {
+            var it = new ToolStripMenuItem(text, img, click) { Padding = new Padding(2, 9, 2, 9), ImageScaling = ToolStripItemImageScaling.None, Tag = accent ? "accent" : null };
+            if (shortcut != null) it.ShortcutKeyDisplayString = shortcut;
+            if (bold) it.Font = AppTheme.Semi(10f);
+            menu.Items.Add(it);
+        }
+        foreach (var a in _prim)
+        {
+            var key = a.Key;
+            var cur = key == _view;
+            Add($"{a.Label}    ({a.Count})", (_, _) => SwitchAccount(key), AccountChip.Avatar(a.Label, 28, cur ? AppTheme.Accent : Color.FromArgb(214, 232, 230), cur ? Color.White : AppTheme.Teal900), shortcut: cur ? "current" : null, bold: cur);
+        }
+        if (_prim.Count > 0) menu.Items.Add(new ToolStripSeparator());
+        Add("Add AWS account...", (_, _) => OpenSetup(addAccount: true), AccountChip.Avatar("+", 28, Color.White, AppTheme.Accent), accent: true);
+        if (_prim.Count > 0 || Profiles().Count > 0) Add("Manage accounts...", (_, _) => ManageAccounts(), null);
+        menu.Show(_chip, new Point(_chip.Width - menu.PreferredSize.Width, _chip.Height + 4));
     }
 
-    void OnAcctPicked()
+    void SwitchAccount(string key)
     {
-        if (_acct.SelectedItem is not AcctItem it) return;
-        if (it.IsAdd) { _acctSig = ""; OpenSetup(addAccount: true); return; }
-        _view = it.Key;
+        if (key == _view) return;
+        _view = key;
         _viewChosen = true;
         // remember it as the current account (also what the setup wizard opens on)
-        var mine = _cfg.Tunnels.FirstOrDefault(t => PKey(t.Profile) == it.Key)?.Profile;
+        var mine = _cfg.Tunnels.FirstOrDefault(t => PKey(t.Profile) == key)?.Profile;
         if (mine != null)
         {
             try { var c = ConfigStore.Load() ?? _cfg; c.Profile = mine; ConfigStore.Save(c); _cfg.Profile = mine; _cfgStamp = DateTime.MinValue; } catch { }
         }
-        _acctSig = "";
         _selected = -1;
         RefreshAll();
+    }
+
+    void ManageAccounts()
+    {
+        ShowDashboard();
+        using var dlg = new AccountsDialog();
+        dlg.ShowDialog(this);
+        if (!dlg.Changed) return;
+        _cfg = ConfigStore.Load() ?? _cfg;
+        _cfgStamp = DateTime.MinValue;
+        _profStamp = DateTime.MinValue;
+        _viewChosen = false;
+        _nextAuthCheck = DateTime.MinValue;
+        _mgr.Poke();
+        RefreshAll();
+    }
+
+    // what kind of server each one is: its saved environment, else what the last scan read from the server's tags
+    Dictionary<string, string> _envMap = new();
+    DateTime _envStamp = DateTime.MinValue;
+
+    string EnvOf(TunnelConfig? t)
+    {
+        if (t == null) return "";
+        if (!string.IsNullOrWhiteSpace(t.Environment)) return EnvironmentClassifier.Normalise(t.Environment);
+        try
+        {
+            var st = File.Exists(DiscoveryCache.Path) ? File.GetLastWriteTimeUtc(DiscoveryCache.Path) : DateTime.MinValue;
+            if (st != _envStamp)
+            {
+                _envStamp = st;
+                _envMap = new Dictionary<string, string>(StringComparer.Ordinal);
+                foreach (var rec in DiscoveryCache.Load().Scans)
+                    foreach (var sv in rec.Servers) if (!string.IsNullOrWhiteSpace(sv.Environment)) _envMap[rec.Profile + "|" + sv.InstanceId] = sv.Environment;
+            }
+        }
+        catch { }
+        return _envMap.TryGetValue(t.Profile + "|" + t.InstanceId, out var e) ? e : EnvironmentClassifier.Classify(Array.Empty<KeyValuePair<string, string>>(), t.Name);
     }
 
     void ShowDetail()
     {
         // only worth a line of text when something is not right
-        if (_selected < 0 || _selected >= _rows.Count || _rows[_selected].Level == Level.Green) { _detail.Text = ""; return; }
+        if (_selected < 0 || _selected >= _rows.Count)
+        {
+            // nothing selected: point out organization accounts under this sign-in that have no servers added yet
+            var members = Profiles().Where(x => AwsProfiles.PrimaryKey(x) == _view).Select(x => x.Name).ToList();
+            var empty = members.Count(m => !_cfg.Tunnels.Any(t => t.Profile == m));
+            _detail.Text = members.Count > 1 && empty > 0 && _cfg.Tunnels.Count > 0
+                ? $"{empty} more account{(empty == 1 ? "" : "s")} under this sign-in {(empty == 1 ? "has" : "have")} no servers added yet. Click Add / change servers to include {(empty == 1 ? "it" : "them")}."
+                : "";
+            return;
+        }
+        if (_rows[_selected].Level == Level.Green) { _detail.Text = ""; return; }
         var r = _rows[_selected];
         _detail.Text = $"{r.Name}: {r.Message}";
     }
@@ -787,7 +833,7 @@ public sealed class DashboardForm : Form
             if (_cfg.Tunnels.Count == 0) { _authText = "AWS sign-in: not set up yet"; _authLevel = Level.Grey; _authTip = "Set up your connections to choose an AWS profile."; return; }
             var accounts = _cfg.Tunnels.Where(t => t.Enabled && !string.IsNullOrWhiteSpace(t.Profile))
                                        .Select(t => t.Profile).Distinct().ToList();
-            if (accounts.Count == 0) { _authText = "AWS sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Use Tools > Set up / change connections to choose an AWS account."; return; }
+            if (accounts.Count == 0) { _authText = "AWS sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Click Add / change servers to choose an AWS account."; return; }
             var failed = new List<string>();
             string firstProblem = "";
             foreach (var acct in accounts)
@@ -806,7 +852,7 @@ public sealed class DashboardForm : Form
             {
                 _authText = "AWS sign-in needed: " + string.Join(", ", failed);
                 _authLevel = Level.Red;
-                _authTip = firstProblem + " Use Tools > Sign in to AWS.";
+                _authTip = firstProblem + " Use AWS > Sign in again.";
             }
         }
         catch (Exception ex) { _authText = "AWS sign-in: unknown"; _authLevel = Level.Amber; _authTip = ex.Message; }
@@ -834,7 +880,7 @@ public sealed class DashboardForm : Form
     /// <summary>
     /// Once a day (the first time SSMConnect runs that day, and again if the PC stays on past midnight) every watched
     /// account is listed again in the background. Nothing opens: differences show as a tray notification and under
-    /// Tools > Server changes. Saved PuTTY / WinSCP sessions stay exactly as they are until the person changes them.
+    /// Servers > What changed since the last scan. Saved PuTTY / WinSCP sessions stay exactly as they are until the person changes them.
     /// </summary>
     void StartServerWatch()
     {
@@ -855,7 +901,7 @@ public sealed class DashboardForm : Form
             var cfg = ConfigStore.Load() ?? _cfg;
             if (DiscoveryMonitor.Accounts(cfg).Count == 0)
             {
-                if (interactive) MessageBox.Show(this, "No AWS account is set up yet. Use Tools > Set up / change connections first.", "SSMConnect");
+                if (interactive) MessageBox.Show(this, "No AWS account is set up yet. Click Add / change servers first.", "SSMConnect");
                 return;
             }
             var changes = await Task.Run(() => DiscoveryMonitor.RunAsync(cfg, force));
@@ -888,7 +934,7 @@ public sealed class DashboardForm : Form
         {
             var scans = DiscoveryCache.Load().Scans.Where(s => s.ScannedUtc != default).ToList();
             var when = scans.Count == 0 ? "not scanned yet" : "last scanned " + scans.Max(s => s.ScannedUtc).ToLocalTime().ToString("g");
-            MessageBox.Show(this, "No server changes to review (" + when + ").\n\nSSMConnect checks once a day in the background. Use Tools > Scan for server changes now to check immediately.", "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            MessageBox.Show(this, "No server changes to review (" + when + ").\n\nSSMConnect checks once a day in the background. Use Servers > Scan for new or changed servers to check immediately.", "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Information);
             return;
         }
         ShowDashboard();
@@ -906,7 +952,6 @@ public sealed class DashboardForm : Form
         using (var wizard = new WizardForm(addAccount)) wizard.ShowDialog(this);
         _cfg = ConfigStore.Load() ?? _cfg;
         _viewChosen = false;   // the account the wizard finished on becomes the current one
-        _acctSig = "";
         _cfgStamp = DateTime.MinValue;
         _nextAuthCheck = DateTime.MinValue;
         RefreshAll();
@@ -914,18 +959,18 @@ public sealed class DashboardForm : Form
 
     async Task SignInAsync()
     {
-        if (AwsCli.FindAws() == null) { MessageBox.Show(this, "The AWS CLI is not installed yet. Use Tools > Install or check AWS tools.", "SSMConnect"); return; }
+        if (AwsCli.FindAws() == null) { MessageBox.Show(this, "The AWS CLI is not installed yet. Click Add / change servers.", "SSMConnect"); return; }
         var used = _cfg.Tunnels.Select(t => t.Profile).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
         var targets = (_authFailed.Count > 0 ? _authFailed : used).ToList();
-        if (targets.Count == 0) { MessageBox.Show(this, "No AWS account is set up yet. Use Tools > Set up / change connections.", "SSMConnect"); return; }
+        if (targets.Count == 0) { MessageBox.Show(this, "No AWS account is set up yet. Click Add / change servers.", "SSMConnect"); return; }
 
         foreach (var name in targets)
         {
             var info = AwsProfiles.Find(name);
-            if (info == null) { MessageBox.Show(this, $"The AWS profile \"{name}\" no longer exists on this PC. Use Tools > Add or manage AWS accounts to add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning); continue; }
+            if (info == null) { MessageBox.Show(this, $"The AWS profile \"{name}\" no longer exists on this PC. Use AWS > Add AWS account to add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning); continue; }
             if (info.Kind != ProfileKind.Sso)
             {
-                MessageBox.Show(this, $"\"{name}\" uses access keys, so there is nothing to sign in to. If it fails, check the keys in Tools > Add or manage AWS accounts.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show(this, $"\"{name}\" uses access keys, so there is nothing to sign in to. If it fails, remove the account in AWS > Manage accounts and add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 continue;
             }
             Balloon(4000, "SSMConnect", $"A browser window will open. Sign in to AWS account \"{name}\" there.", ToolTipIcon.Info);

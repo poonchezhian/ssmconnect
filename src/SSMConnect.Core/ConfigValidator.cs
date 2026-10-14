@@ -37,9 +37,9 @@ public static class ConfigValidator
     /// <summary>Returns null when the tunnel is fine, otherwise a plain-language reason.</summary>
     public static string? ValidateTunnel(TunnelConfig t, IEnumerable<TunnelConfig> all)
     {
-        if (string.IsNullOrWhiteSpace(t.Profile)) return "No AWS account is chosen for this server. Use Tools > Set up / change connections.";
+        if (string.IsNullOrWhiteSpace(t.Profile)) return "No AWS account is chosen for this server. Use Add / change servers.";
         if (!ProfileName.IsMatch(t.Profile)) return "The AWS profile name contains characters that are not allowed.";
-        if (!RegionName.IsMatch(t.Region ?? "")) return $"'{t.Region}' does not look like an AWS region (for example ap-south-1). Use Tools > Set up / change connections.";
+        if (!RegionName.IsMatch(t.Region ?? "")) return $"'{t.Region}' does not look like an AWS region (for example ap-south-1). Use Add / change servers.";
         if (!InstanceId.IsMatch(t.InstanceId ?? "")) return $"'{t.InstanceId}' is not a valid EC2 instance ID (it looks like i-0123456789abcdef0).";
         if (t.LocalPort is < 1024 or > 65535) return $"Local port {t.LocalPort} is not allowed. Use a port from 1024 to 65535.";
         if (t.RemotePort is < 1 or > 65535) return $"Remote port {t.RemotePort} is not valid.";

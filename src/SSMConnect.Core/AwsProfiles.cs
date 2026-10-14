@@ -143,6 +143,33 @@ public static class AwsProfiles
     public static void SaveRegion(string profile, string region) =>
         Upsert(ConfigPath, profile == "default" ? "default" : "profile " + profile, new() { ["region"] = region });
 
+    /// <summary>Removes one account profile (and, for access keys, its stored keys) from the AWS files. A copy of each file is kept as .ssmconnect.bak.</summary>
+    public static void RemoveProfile(string profile)
+    {
+        DeleteSection(ConfigPath, profile == "default" ? "default" : "profile " + profile);
+        DeleteSection(CredentialsPath, profile);
+    }
+
+    /// <summary>Removes a company sign-in definition. Call only when no remaining profile uses it.</summary>
+    public static void RemoveSsoSession(string session) => DeleteSection(ConfigPath, "sso-session " + session);
+
+    static void DeleteSection(string path, string section)
+    {
+        if (!File.Exists(path)) return;
+        var lines = File.ReadAllLines(path).ToList();
+        var header = "[" + section + "]";
+        var start = lines.FindIndex(l => l.Trim() == header);
+        if (start < 0) return;
+        try { File.Copy(path, path + ".ssmconnect.bak", overwrite: true); } catch { }
+        var end = start + 1;
+        while (end < lines.Count && !lines[end].TrimStart().StartsWith("[")) end++;
+        lines.RemoveRange(start, end - start);
+        while (start < lines.Count && start > 0 && lines[start - 1].Trim().Length == 0 && lines[start].Trim().Length == 0) lines.RemoveAt(start);
+        var temp = path + ".tmp";
+        File.WriteAllText(temp, string.Join(Environment.NewLine, lines) + Environment.NewLine, new UTF8Encoding(false));
+        File.Move(temp, path, overwrite: true);
+    }
+
     // ---- ini helpers -------------------------------------------------------------------------
     static Dictionary<string, Dictionary<string, string>> ReadIni(string path)
     {

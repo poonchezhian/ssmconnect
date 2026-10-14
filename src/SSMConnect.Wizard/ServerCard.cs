@@ -24,6 +24,7 @@ public sealed record CardAction(string Id, string Text, bool Enabled);
 public sealed class CardData
 {
     public string Name = "", StatusText = "", Message = "", Port = "", InstanceId = "", Since = "";
+    public string Environment = "";
     public bool IsWindows, IsProd, KnownType;
     public CardLevel Level;
     public List<CardAction> Actions = new();
@@ -73,7 +74,7 @@ public sealed class ServerCard : Control
 
     static bool SameAs(CardData a, CardData b) =>
         a.Name == b.Name && a.StatusText == b.StatusText && a.Message == b.Message && a.Port == b.Port && a.Level == b.Level && a.Since == b.Since &&
-        a.IsWindows == b.IsWindows && a.IsProd == b.IsProd && a.KnownType == b.KnownType && a.InstanceId == b.InstanceId &&
+        a.IsWindows == b.IsWindows && a.IsProd == b.IsProd && a.Environment == b.Environment && a.KnownType == b.KnownType && a.InstanceId == b.InstanceId &&
         a.Actions.Count == b.Actions.Count && a.Actions.Zip(b.Actions).All(p => p.First == p.Second);
 
     public static int HeightFor(float scale) => (int)(104 * scale);
@@ -133,13 +134,15 @@ public sealed class ServerCard : Control
         using var small = AppTheme.Body(8.5f);
         using var tiny = AppTheme.Body(8f);
 
-        // PROD tag
-        if (_d.IsProd)
+        // environment tag (from the server's AWS tags): red for production, a quiet grey for everything else
+        if (!string.IsNullOrWhiteSpace(_d.Environment))
         {
-            var w = TextRenderer.MeasureText("PROD", tiny).Width + 14 * s;
+            var envText = _d.IsProd ? "PROD" : _d.Environment.ToUpperInvariant();
+            if (envText.Length > 12) envText = envText.Substring(0, 12);
+            var w = TextRenderer.MeasureText(envText, tiny).Width + 14 * s;
             var r = new RectangleF(right - w, 17 * s, w, 20 * s);
-            using (var p = Round(r, 10 * s)) using (var b = new SolidBrush(BadBg)) g.FillPath(b, p);
-            TextRenderer.DrawText(g, "PROD", tiny, Rectangle.Round(r), BadFg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            using (var p = Round(r, 10 * s)) using (var b = new SolidBrush(_d.IsProd ? BadBg : Color.FromArgb(232, 240, 240))) g.FillPath(b, p);
+            TextRenderer.DrawText(g, envText, tiny, Rectangle.Round(r), _d.IsProd ? BadFg : Color.FromArgb(70, 96, 100), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
             right -= w + 8 * s;
         }
         TextRenderer.DrawText(g, _d.Name, nameFont, new Rectangle((int)tx, (int)(16 * s), (int)(right - tx), (int)(22 * s)), AppTheme.Ink,

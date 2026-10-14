@@ -151,6 +151,17 @@ public sealed class TunnelManager : IDisposable
 
             if (slot.Proc is { HasExited: false })
             {
+                // Safety first: a tunnel must only ever listen on this PC (127.0.0.1 / ::1). If anything else shows up, close it.
+                if (IsExposed(tunnel.LocalPort))
+                {
+                    AppLog.Error($"Tunnel {tunnel.Name}: port {tunnel.LocalPort} is open to the network. Closing the session.");
+                    StopSlot(slot);
+                    slot.Refreshing = false;
+                    slot.BackoffSeconds = 60;
+                    slot.NextStart = DateTime.UtcNow.AddSeconds(60);
+                    SetState(slot, TunnelStates.Error, $"Stopped for safety: port {tunnel.LocalPort} was reachable from the network, not only from this PC.");
+                    continue;
+                }
                 // Fallback detection: process alive and the local port is listening => the tunnel is up.
                 if ((slot.State == TunnelStates.Starting || slot.Refreshing) && IsListening(tunnel.LocalPort))
                 {
@@ -229,6 +240,13 @@ public sealed class TunnelManager : IDisposable
         catch { return false; }
     }
 
+    /// <summary>True when something listens on the port on an address other than this PC's own loopback.</summary>
+    static bool IsExposed(int port)
+    {
+        try { return IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Any(l => l.Port == port && !System.Net.IPAddress.IsLoopback(l.Address)); }
+        catch { return false; }
+    }
+
     void Start(Slot slot, AppConfig cfg)
     {
         var t = slot.Tunnel;
@@ -236,14 +254,25 @@ public sealed class TunnelManager : IDisposable
 
         if (AwsCli.FindAws() == null)
         {
-            SetState(slot, TunnelStates.Error, "AWS CLI is not installed. Use Tools > Install or check AWS tools in the dashboard.");
+            SetState(slot, TunnelStates.Error, "AWS CLI is not installed. Click Add / change servers in the dashboard to install it.");
             slot.NextStart = DateTime.UtcNow.AddSeconds(10);
             return;
         }
         if (AwsCli.FindPlugin() == null)
         {
-            SetState(slot, TunnelStates.Error, "The Session Manager plugin is not installed. Use Tools > Install or check AWS tools in the dashboard.");
+            SetState(slot, TunnelStates.Error, "The Session Manager plugin is not installed. Click Add / change servers in the dashboard to install it.");
             slot.NextStart = DateTime.UtcNow.AddSeconds(10);
+            return;
+        }
+
+        // Never start on a port another program already owns: that program could answer in place of the server and the
+        // dashboard would wrongly show "connected" (and SSH / RDP would send the login to it).
+        if (IsListening(t.LocalPort))
+        {
+            if (slot.Refreshing && slot.Failures < 3) { slot.Failures++; slot.NextStart = DateTime.UtcNow.AddSeconds(2); return; }   // the old session is still letting go of the port
+            slot.BackoffSeconds = Math.Min(slot.BackoffSeconds * 2, 60);
+            slot.NextStart = DateTime.UtcNow.AddSeconds(slot.BackoffSeconds);
+            SetState(slot, TunnelStates.Error, AwsCli.FriendlyError("address already in use", t.LocalPort) + $" Trying again in {slot.BackoffSeconds}s.");
             return;
         }
 

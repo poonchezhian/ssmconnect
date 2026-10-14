@@ -31,6 +31,8 @@ public sealed class TunnelConfig
     public string Protocol { get; set; } = "ssh";
     [JsonIgnore] public bool IsRdp => string.Equals(Protocol, "rdp", StringComparison.OrdinalIgnoreCase);
     public string UserName { get; set; } = "ec2-user";
+    /// <summary>What kind of server this is (Production, Staging, ...), taken from the server's AWS tags when it was found.</summary>
+    public string Environment { get; set; } = "";
     public string? KeyFile { get; set; }
     public bool Enabled { get; set; } = true;
 }
@@ -42,6 +44,12 @@ public sealed class AppConfig
     public string Region { get; set; } = "";
 
     public List<TunnelConfig> Tunnels { get; set; } = new();
+    /// <summary>Friendly names the person gave to accounts. Key: the primary account key or a profile name.</summary>
+    public Dictionary<string, string> Aliases { get; set; } = new();
+
+    /// <summary>The friendly name for an account key (or the given fallback when none was set).</summary>
+    public string AliasOr(string key, string fallback) =>
+        Aliases != null && Aliases.TryGetValue(key, out var a) && !string.IsNullOrWhiteSpace(a) ? a : fallback;
 }
 
 public sealed class DiscoveredServer
@@ -78,7 +86,7 @@ public sealed class DiscoveredServer
         }
     }
 
-    public bool IsProd => Environment.Contains("prod", StringComparison.OrdinalIgnoreCase);
+    public bool IsProd => EnvironmentClassifier.IsProd(Environment);
     public bool IsWindows => Platform.Contains("windows", StringComparison.OrdinalIgnoreCase);
 }
 

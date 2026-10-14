@@ -97,6 +97,16 @@ public static class DiscoveryCache
         }
     }
 
+    /// <summary>Drops everything remembered about an account (used when the account is removed).</summary>
+    public static void Forget(string profile)
+    {
+        lock (Gate)
+        {
+            var state = Load();
+            if (state.Scans.RemoveAll(x => string.Equals(x.Profile, profile, StringComparison.OrdinalIgnoreCase)) > 0) Save(state);
+        }
+    }
+
     public static void RecordFailure(string profile, string region, string error)
     {
         lock (Gate)

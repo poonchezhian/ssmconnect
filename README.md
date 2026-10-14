@@ -2,7 +2,7 @@
 
 SSH-style access to AWS servers **with port 22 closed**, using AWS Systems Manager (SSM) Session Manager.
 
-SSMConnect is a small Windows app for developers who just want to connect. A four-step wizard finds your servers, opens secure tunnels through SSM, and saves ready-to-use sessions in **PuTTY**, **WinSCP** and **MobaXterm**. No SSH keys on open ports, no bastion host, no infrastructure knowledge needed.
+SSMConnect is a small Windows app for developers who just want to connect. A short wizard finds your servers (Linux over SSH, Windows over Remote Desktop), opens secure tunnels through SSM, and saves ready-to-use sessions in **PuTTY**, **WinSCP** and **MobaXterm**. No SSH keys on open ports, no bastion host, no infrastructure knowledge needed.
 
 > **Status:** early release. Please test against a non-production server first.
 
@@ -21,10 +21,22 @@ PuTTY / WinSCP / MobaXterm  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  y
 ```
 
 - The **dashboard** (`SSMConnect.Wizard.exe`) opens automatically when the install finishes. It shows every server with a live status that turns **green** once the tunnel is really up, and says in plain words what is wrong when it is not. A **tray icon** shows the same status at a glance and lets you start, stop or restart your connections.
-- The **setup wizard** (opened from the dashboard's Setup menu) lists running EC2 instances, shows which ones SSM can reach, and assigns each a local port starting at `2201`.
+- The **setup wizard** (the dashboard's **Add / change servers** button) lists running EC2 instances, shows which ones SSM can reach, and assigns each a local port starting at `2201`.
 - The **tunnel manager** runs inside the same app (dashboard and tray icon), **as you, not as an administrator**. It keeps one `aws ssm start-session` port-forward alive per server, reacts to config changes immediately, writes its live status to `%LOCALAPPDATA%\SSMConnect\status.json`, and restarts tunnels that drop (idle timeout, network blip). The tray icon starts at every sign-in, so your connections come back by themselves. If you exit the tray icon, the connections stop.
-- The servers found by setup are remembered (`%LOCALAPPDATA%\SSMConnect\discovery.json`) and shown again next time. Once a day, the first time SSMConnect runs that day, it quietly re-lists the servers of every account you use. Nothing opens: new, removed, renamed, unreachable or key-changed servers appear as a tray notification and under **Tools > Server changes since the last scan**. Your saved PuTTY / WinSCP sessions stay as they are until you update them. **Tools > Scan for server changes now** checks immediately; an expired AWS sign-in is skipped and retried an hour later.
+- The servers found by setup are remembered (`%LOCALAPPDATA%\SSMConnect\discovery.json`) and shown again next time. Once a day, the first time SSMConnect runs that day, it quietly re-lists the servers of every account you use. Nothing opens: new, removed, renamed, unreachable or key-changed servers appear as a tray notification and under **Servers > What changed since the last scan**. Your saved PuTTY / WinSCP sessions stay as they are until you update them. **Servers > Scan for new or changed servers** checks immediately; an expired AWS sign-in is skipped and retried an hour later.
 - Saved sessions are named `SSC - <server name>` (older `SSMConnect - ` sessions are replaced automatically), carry the server's login user and key file, and point at `127.0.0.1:<local port>`. Your own sessions are never touched.
+
+## AWS accounts and organizations
+
+- A **primary account** is one company sign-in (AWS IAM Identity Center) or one set of access keys. Under a company sign-in there are usually several **organization accounts** (member accounts); SSMConnect finds all of them when you sign in, so you never pick them one by one.
+- The **account switcher** (top right of the dashboard) lists your primary accounts only, with the current one on top. The window shows **one primary account at a time**; its servers are grouped under a quiet heading per organization account. Switching is only a view change: connections of other accounts keep running.
+- **Add AWS account** (in the switcher, or **AWS > Add AWS account**) opens the setup wizard on one page: paste your company's sign-in address (it is usually pre-filled), sign in once in the browser, and continue to region and servers. Access keys are a small link on the same page.
+- **AWS > Manage accounts** lets you give any account or organization a **friendly name** (shown in the switcher, the headings and the wizard; the AWS profile name is not changed) and **remove** an account. Removing deletes its saved connections from SSMConnect and its login from `~/.aws`; your PuTTY / WinSCP sessions and the servers in AWS are not touched.
+- When you open the server step, SSMConnect checks that every organization account under the sign-in has been searched, even if the account was found before, so the grouping is always complete.
+
+## Server types come from tags
+
+A server's type (Production, Staging, UAT, Test, Development, ...) is read from its AWS tags, not its name: `Environment` first, then `Env`, `Stage`, `Tier` and similar, in any letter case. Values such as `prod`, `PRD` or `production` all show as **PROD** (red); `non-prod` and `pre-prod` are never treated as production. The server name is used only as a last resort when a server has no such tag. Tag your instances with `Environment` for the most reliable result.
 
 ## Requirements
 
@@ -46,7 +58,7 @@ The `SSMConnect-Setup` installer includes the Session Manager plugin and install
 2. Run it, read and accept the Apache 2.0 licence, install.
 3. Leave **Open the SSMConnect dashboard now** ticked on the last page. The dashboard opens and, on first run, starts the four-step setup. It also offers a desktop shortcut (File > Create desktop shortcut).
    To pin it to the taskbar, right-click the open SSMConnect window's taskbar button and choose **Pin to taskbar** (Windows does not let apps do this for you).
-4. In the wizard, **add your AWS account** first (company sign-in URL or access keys; the wizard looks up your accounts and roles for you), then choose a region once it connects. Add more accounts later from **Tools > Add or manage AWS accounts**; servers from different accounts can run side by side.
+4. In the wizard, **add your AWS account** first (company sign-in URL or access keys; the wizard looks up your accounts and roles for you), then choose a region once it connects. Add more accounts later from the account switcher; servers from different accounts can run side by side.
 5. Open PuTTY / WinSCP / MobaXterm and pick the session called `SSC - <your server>`.
 
 ## Updates
@@ -100,7 +112,7 @@ The update check reads `https://api.github.com/repos/poonchezhian/ssmconnect/rel
 | Symptom | Fix |
 |---|---|
 | Server shows **SSM ready: No** | SSM Agent not running, or the instance role lacks SSM permissions |
-| "Your AWS sign-in has expired" | Click **Sign in (SSO)** in the wizard, then try again |
+| "Your AWS sign-in has expired" | Click **AWS > Sign in again** in the dashboard (or **Sign in again** in the wizard) |
 | Row is amber / red in the dashboard | The **Details** column says what to do (sign in, install a tool, start the connections, port already in use) |
 | Tray icon missing | Check the hidden-icons arrow in the taskbar, or open SSMConnect from the Start menu |
 | MobaXterm sessions missing | Close MobaXterm, then click Apply again |
@@ -108,9 +120,18 @@ The update check reads `https://api.github.com/repos/poonchezhian/ssmconnect/rel
 
 ## Known limitations
 
-- Windows only. Linux servers over SSH; Windows (RDP) servers are not supported yet.
+- Windows only. Linux servers over SSH and Windows servers over Remote Desktop.
+- Accounts are grouped by organization account only; the organizational-unit folders above them are not shown. One region is searched per scan.
 - Nothing runs as an administrator or SYSTEM. Each Windows user has their own settings, tunnels and tray icon, and uses their own `~/.aws` sign-in. Tunnels run only while that user is signed in to Windows.
 - Anyone logged in on the same PC at the same time can reach the local tunnel ports (`127.0.0.1:2201` and up). They still need valid SSH credentials for the server, so the SSH login is what protects it.
+
+## Tunnel security
+
+- Tunnels listen on this PC only (`127.0.0.1`). If a tunnel port is ever found open to the network, SSMConnect closes that session and reports it.
+- A tunnel is never started on a port another program already uses, so nothing else can answer in place of your server and the dashboard cannot show a false green.
+- Everything read from `config.json` (instance ID, account, region, ports, login) is validated before it is passed to the AWS CLI, which is always started with an argument list, never a command line string.
+- Sessions are closed when SSMConnect exits (they are tied to the app), and no password or key is stored by SSMConnect. A copied Windows password leaves the clipboard after 60 seconds.
+- Access keys you type are written only to your own `~/.aws/credentials`, exactly as the AWS CLI does; a `.ssmconnect.bak` copy of each AWS file is kept beside it before any change.
 - The installer and executables are not code-signed yet, so Windows SmartScreen may warn on first run.
 - MobaXterm configuration is best effort (its `.ini` is backed up to `MobaXterm.ini.ssmconnect.bak` first).
 

@@ -155,7 +155,7 @@ public static class AwsCli
         {
             "ec2", "describe-instances",
             "--filters", "Name=instance-state-name,Values=running",
-            "--query", "Reservations[].Instances[].[InstanceId,PrivateIpAddress,Tags[?Key=='Name']|[0].Value,Tags[?Key=='Environment']|[0].Value,KeyName]",
+            "--query", "Reservations[].Instances[].[InstanceId,PrivateIpAddress,Tags[?Key=='Name']|[0].Value,KeyName,Tags]",
             "--output", "json"
         }, TimeSpan.FromSeconds(60), ct);
         if (!ec2.Ok) throw new InvalidOperationException(FriendlyError(ec2.Error));
@@ -187,15 +187,33 @@ public static class AwsCli
                     InstanceId = id,
                     PrivateIp = Str(row, 1),
                     Name = string.IsNullOrWhiteSpace(Str(row, 2)) ? id : Str(row, 2),
-                    Environment = Str(row, 3),
-                    KeyName = Str(row, 4),
-                    KeyFingerprint = prints.TryGetValue(Str(row, 4), out var fpr) ? fpr : "",
+                    Environment = EnvironmentClassifier.Classify(TagsOf(row), string.IsNullOrWhiteSpace(Str(row, 2)) ? id : Str(row, 2)),
+                    KeyName = Str(row, 3),
+                    KeyFingerprint = prints.TryGetValue(Str(row, 3), out var fpr) ? fpr : "",
                     Platform = string.IsNullOrEmpty(m.platform) ? "Linux" : m.platform,
                     SsmOnline = m.online,
                     OsName = m.os ?? "",
                 });
             }
         return result.OrderByDescending(s => s.SsmOnline).ThenBy(s => s.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>All tags of an instance as key/value pairs (the last column of the describe-instances row).</summary>
+    static List<KeyValuePair<string, string>> TagsOf(JsonElement row)
+    {
+        var list = new List<KeyValuePair<string, string>>();
+        try
+        {
+            if (row.GetArrayLength() > 4 && row[4].ValueKind == JsonValueKind.Array)
+                foreach (var t in row[4].EnumerateArray())
+                {
+                    var k = t.TryGetProperty("Key", out var kk) ? kk.GetString() : null;
+                    var v = t.TryGetProperty("Value", out var vv) ? vv.GetString() : null;
+                    if (!string.IsNullOrEmpty(k)) list.Add(new(k!, v ?? ""));
+                }
+        }
+        catch { }
+        return list;
     }
 
     static string Str(JsonElement row, int i) =>
@@ -217,17 +235,17 @@ public static class AwsCli
         if (Has("RegisterClient") || Has("InvalidRequestException") && Has("sso"))
             return "AWS did not accept the company sign-in URL or its region. Check the URL (like https://yourcompany.awsapps.com/start) and the region of the sign-in page with your AWS admin.";
         if (Has("Token has expired") || Has("ExpiredToken") || Has("sso login") || Has("SSO session") || Has("SSO token") || Has("The security token included in the request is expired"))
-            return "Your AWS sign-in has expired. Sign in again: Tools > Sign in to AWS (SSO) in the dashboard, or the Sign in (SSO) button in setup.";
+            return "Your AWS sign-in has expired. Sign in again: AWS > Sign in again in the dashboard.";
         if (Has("Unable to locate credentials") || Has("NoCredentialProviders"))
-            return "No AWS credentials found for this account. Use Tools > Sign in to AWS, or add the account again in Tools > Set up / change connections.";
+            return "No AWS credentials found for this account. Use AWS > Sign in again, or add the account with AWS > Add AWS account.";
         if (Has("could not be found") && Has("profile"))
-            return "That AWS account profile does not exist on this PC. Open Tools > Set up / change connections and add or choose an account.";
+            return "That AWS account profile does not exist on this PC. Open AWS > Add AWS account and add it again.";
         if (Has("ssm:StartSession") || Has("not authorized to perform") && Has("ssm"))
             return "Your AWS role is not allowed to start SSM sessions (needs ssm:StartSession on this server). Ask your AWS admin.";
         if (Has("UnauthorizedOperation") || Has("AccessDenied"))
             return "Your AWS role does not have permission for this action. Ask your AWS admin (needs ec2:DescribeInstances, ssm:DescribeInstanceInformation, ssm:StartSession).";
         if (Has("SessionManagerPlugin is not found") || Has("session-manager-plugin") && (Has("not found") || Has("not recognized")))
-            return "The Session Manager plugin is missing. Open Tools > Set up connections to install it.";
+            return "The Session Manager plugin is missing. Click Add / change servers to install it.";
         if (Has("address already in use") || Has("only one usage of each socket"))
             return localPort is int p
                 ? $"Local port {p} is already used by another program. Run setup again to pick a free port."

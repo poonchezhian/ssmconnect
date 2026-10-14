@@ -73,6 +73,7 @@ public sealed class WizardForm : Form
     /// <summary>Accounts whose servers were listed by the latest search. Saved connections of these accounts are replaced by the new selection; all others are kept.</summary>
     HashSet<string> _scannedProfiles = new(StringComparer.Ordinal);
     bool _connected, _profilesLoaded, _loadingProfiles;
+    int _testSeq;
     readonly Label _authResult = new() { AutoSize = true, MaximumSize = new Size(ContentWidth, 0) };
     // step 2
     readonly ListView _list = new() { CheckBoxes = true, FullRowSelect = true, View = View.Details, Width = ContentWidth, Height = 250, HideSelection = false };
@@ -430,7 +431,7 @@ public sealed class WizardForm : Form
             {
                 var members = g.ToList();
                 var rep = members.FirstOrDefault(x => x.Name == select) ?? members.FirstOrDefault(x => x.Name == _cfg.Profile) ?? members[0];
-                var label = AwsProfiles.PrimaryName(rep) + (members.Count > 1 ? $"   ({members.Count} accounts)" : "");
+                var label = _cfg.AliasOr(AwsProfiles.PrimaryKey(rep), AwsProfiles.PrimaryName(rep)) + (members.Count > 1 ? $"   ({members.Count} accounts)" : "");
                 _profile.Items.Add(new PrimaryItem(rep, label));
                 if (members.Any(x => x.Name == select)) pick = _profile.Items.Count - 1;
                 else if (pick < 0 && members.Any(x => x.Name == _cfg.Profile)) pick = _profile.Items.Count - 1;
@@ -483,9 +484,11 @@ public sealed class WizardForm : Form
         if (SelectedProfile is not { } pr) { _authResult.ForeColor = Bad; _authResult.Text = "Choose an AWS account first, or add one."; return; }
         _authResult.ForeColor = SystemColors.ControlText;
         _authResult.Text = "Connecting...";
+        var seq = ++_testSeq;
         _connected = false;
         _ssoBtn.Visible = false;
         var r = await AwsCli.WhoAmIAsync(new AppConfig { Profile = pr.Name, Region = pr.Region ?? "" });
+        if (seq != _testSeq) return;   // the person picked another account meanwhile
         if (!r.Ok)
         {
             _authResult.ForeColor = Bad;
@@ -500,6 +503,7 @@ public sealed class WizardForm : Form
         // Only now, with the account connected, can the region be chosen.
         _regionHint.Text = "Loading regions...";
         var regions = await AwsCli.ListRegionsAsync(pr.Name);
+        if (seq != _testSeq) return;
         if (!string.IsNullOrEmpty(pr.Region) && !regions.Contains(pr.Region)) regions.Add(pr.Region);
         var keep = _cfg.Profile == pr.Name ? _cfg.Region : "";
         _region.Items.Clear();
@@ -658,7 +662,8 @@ public sealed class WizardForm : Form
     string GroupTitle(string profile, int count)
     {
         var id = _profiles.FirstOrDefault(x => x.Name == profile)?.AccountId;
-        return profile + (string.IsNullOrEmpty(id) ? "" : "   -   " + id) + $"   -   {count} server{(count == 1 ? "" : "s")}";
+        var shown = _cfg.AliasOr(profile, profile);
+        return shown + (string.IsNullOrEmpty(id) ? "" : "   -   " + id) + $"   -   {count} server{(count == 1 ? "" : "s")}";
     }
 
     void FillServerList()
@@ -1012,6 +1017,7 @@ public sealed class WizardForm : Form
                     Profile = prof, Region = _cfg.Region,
                     Name = existing?.Name ?? label, InstanceId = s.InstanceId, LocalPort = port, RemotePort = s.IsWindows ? 3389 : 22, Protocol = s.IsWindows ? "rdp" : "ssh",
                     UserName = s.IsWindows ? (existing?.UserName ?? typed) : typed,
+                    Environment = s.Environment,
                     KeyFile = keyFile ?? (s.IsWindows ? existing?.KeyFile : null),
                 });
             }
@@ -1158,7 +1164,9 @@ public sealed class WizardForm : Form
         {
             LoadCachedServers();
             var key = _cfg.Profile + "|" + _cfg.Region;
-            if (_autoFoundFor != key) { _autoFoundFor = key; _ = FindServersAsync(); } // no button to press: it starts by itself
+            // an account that was found before still needs a fresh look when the saved result does not cover all of its member accounts
+            var covered = TargetProfiles().All(x => _scannedProfiles.Contains(x));
+            if (_autoFoundFor != key || !covered) { _autoFoundFor = key; _ = FindServersAsync(); } // no button to press: it starts by itself
         }
         if (_idx == 3) EnterKeysStep();
         if (_idx != 4) _applyCts?.Cancel();
