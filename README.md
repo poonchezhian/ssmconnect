@@ -38,11 +38,11 @@ PuTTY / WinSCP / MobaXterm  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  y
 
 On the AWS side, each server needs the SSM Agent running and an instance role that allows SSM (for example `AmazonSSMManagedInstanceCore`). Your own role needs `ec2:DescribeInstances`, `ssm:DescribeInstanceInformation` and `ssm:StartSession`. The wizard tells you plainly when something is missing.
 
-The `SSMConnect-Setup` installer includes the AWS CLI and the Session Manager plugin and installs them only if they are missing. If either is ever removed later, the setup wizard detects what is missing and offers an **Install missing components automatically** button. It downloads the official installers from Amazon, checks their digital signature, and installs them (one Windows permission prompt each). PuTTY, WinSCP and MobaXterm are never bundled.
+The `SSMConnect-Setup` installer includes the Session Manager plugin and installs it only if it is missing. The AWS CLI is not bundled (it would push the installer past GitHub's 25 MB web-upload limit): the first time you open SSMConnect, the setup wizard detects what is missing and offers an **Install missing components automatically** button. It downloads the official installers from Amazon, checks their digital signature, and installs them (one Windows permission prompt each). PuTTY, WinSCP and MobaXterm are never bundled.
 
 ## Install
 
-1. [Download SSMConnect-Setup-x64.exe](https://github.com/poonchezhian/ssmconnect/releases/latest/download/SSMConnect-Setup-x64.exe) (or pick a version on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases)). It is the only file you need and it installs the AWS tools too if they are missing.
+1. [Download SSMConnect-Setup-x64.exe](https://github.com/poonchezhian/ssmconnect/releases/latest/download/SSMConnect-Setup-x64.exe) (or pick a version on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases)). It is the only file you need. It installs the Session Manager plugin if missing, and the app fetches the AWS CLI from Amazon on first start if that is missing.
 2. Run it, read and accept the Apache 2.0 licence, install.
 3. Leave **Open the SSMConnect dashboard now** ticked on the last page. The dashboard opens and, on first run, starts the four-step setup. It also offers a desktop shortcut (File > Create desktop shortcut).
    To pin it to the taskbar, right-click the open SSMConnect window's taskbar button and choose **Pin to taskbar** (Windows does not let apps do this for you).
@@ -75,7 +75,7 @@ Run from an elevated PowerShell. `build.ps1` installs the build tools it needs (
 powershell -ExecutionPolicy Bypass -File .\build.ps1
 ```
 
-Output in `installer\output\`: a single file, `SSMConnect-Setup-<version>-x64.exe`.
+Output in `installer\output\`: a single file, `SSMConnect-Setup-<version>-x64.exe`. The build stops if that file reaches 24 MB, because GitHub's web upload accepts files only up to 25 MB. The latest build is also kept in the repository at `dist\SSMConnect-Setup-x64.exe`.
 
 ```
 .github\workflows       release.yml: builds on every push; a pushed tag like v1.1.0 publishes the GitHub Release
@@ -83,7 +83,7 @@ src\SSMConnect.Core      shared library: AWS CLI wrapper, tunnel manager, config
 src\SSMConnect.Wizard    WinForms dashboard, tray icon and setup wizard (also handles --cleanup)
 installer\               WiX v3 (Product.wxs = embedded MSI, Bundle.wxs = the single setup EXE), build script
 VERSION                  current version (updated by build.ps1, matched by release tags)
-build.ps1                publishes the app self-contained, then builds the single setup EXE
+build.ps1                publishes the app framework-dependent (.NET 8 Desktop Runtime, downloaded by the setup file when missing), then builds the single setup EXE
 install-build-tools.ps1  installs .NET 8 SDK and WiX v3 for building
 ```
 

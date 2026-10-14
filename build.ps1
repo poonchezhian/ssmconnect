@@ -17,7 +17,7 @@
       powershell -ExecutionPolicy Bypass -File .\build.ps1
 
   1. Installs missing build tools (.NET 8 SDK, WiX v3.14) via install-build-tools.ps1
-  2. Publishes SSMConnect (dashboard, tray icon and tunnel manager) as a self-contained single-file x64 executable into build\publish\
+  2. Publishes SSMConnect (dashboard, tray icon and tunnel manager) as a framework-dependent single-file x64 executable (needs the .NET 8 Desktop Runtime, which the setup file downloads if missing) into build\publish\
   3. Builds the single redistributable installer\output\SSMConnect-Setup-<version>-x64.exe
      (AWS CLI v2 + Session Manager plugin + SSMConnect). Nothing else is left in that folder.
 #>
@@ -52,8 +52,8 @@ $pub = Join-Path $PSScriptRoot 'build\publish'
 Remove-Item -Recurse -Force $pub -ErrorAction SilentlyContinue
 
 foreach ($proj in 'SSMConnect.Wizard') {
-    dotnet publish "src\$proj\$proj.csproj" -c Release -r win-x64 --self-contained true `
-        -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:EnableCompressionInSingleFile=true -p:Version=$Version `
+    dotnet publish "src\$proj\$proj.csproj" -c Release -r win-x64 --self-contained false `
+        -p:PublishSingleFile=true -p:Version=$Version `
         -o (Join-Path $pub $proj)
     if ($LASTEXITCODE) { throw "publish failed for $proj" }
 }

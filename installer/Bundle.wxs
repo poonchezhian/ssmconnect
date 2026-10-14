@@ -16,12 +16,15 @@
 -->
 <!--
   SSMConnect-Setup.exe: one-click bundle (WiX Burn) that installs, in order:
-    1. AWS CLI v2                 (skipped if already present)
+    1. .NET 8 Desktop Runtime (downloaded from Microsoft only if missing; not embedded)
     2. AWS Session Manager plugin (skipped if already present)
     3. SSMConnect.msi
+  The AWS CLI (50 MB) is NOT bundled, to keep the setup file under 25 MB (the limit of GitHub's web upload): the app's setup wizard downloads
+  it from Amazon (signature-checked) the first time it is opened, if it is missing. build-installer.ps1 fails the build if
+  the setup file grows to 95 MB or more.
   The Apache-2.0 licence is shown by the bootstrapper before anything is installed.
-  AWS CLI and the plugin are Permanent: uninstalling SSMConnect leaves them for other tools that use them.
-  Variables from build-installer.ps1: Version, IconFile, BaDll, BaConfig, LicenseRtf, AwsCliMsi, PluginExe, SsmMsi
+  The plugin is Permanent: uninstalling SSMConnect leaves it for other tools that use it.
+  Variables from build-installer.ps1: Version, IconFile, BaDll, BaConfig, LicenseRtf, PluginExe, SsmMsi, RuntimeExe, RuntimeUrl, RuntimeVersion
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
      xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
@@ -43,15 +46,20 @@
       <Payload Name="License.rtf" SourceFile="$(var.LicenseRtf)" />
     </BootstrapperApplicationRef>
 
-    <util:FileSearch Id="FindAwsCli" Variable="AwsCliInstalled" Result="exists"
-                     Path="[ProgramFiles64Folder]Amazon\AWSCLIV2\aws.exe" />
     <util:FileSearch Id="FindPlugin" Variable="PluginInstalled" Result="exists"
                      Path="[ProgramFiles64Folder]Amazon\SessionManagerPlugin\bin\session-manager-plugin.exe" />
 
-    <Chain>
-      <MsiPackage Id="AwsCli" SourceFile="$(var.AwsCliMsi)" Compressed="yes"
-                  InstallCondition="NOT AwsCliInstalled" Permanent="yes" Vital="yes" DisplayInternalUI="no" />
+    <!-- .NET 8 Desktop Runtime: detected by its registry entry, downloaded (not embedded) only when missing -->
+    <util:RegistrySearch Id="FindRuntime" Root="HKLM" Key="SOFTWARE\dotnet\Setup\InstalledVersions\x64\sharedfx\Microsoft.WindowsDesktop.App"
+                         Value="$(var.RuntimeVersion)" Variable="RuntimeInstalled" Result="exists" Win64="yes" />
 
+    <Chain>
+      <ExePackage Id="DotNetDesktopRuntime" SourceFile="$(var.RuntimeExe)" Compressed="no" DownloadUrl="$(var.RuntimeUrl)"
+                  InstallCommand="/install /quiet /norestart" InstallCondition="NOT RuntimeInstalled" Permanent="yes" Vital="yes"
+                  DetectCondition="RuntimeInstalled">
+        <ExitCode Value="1638" Behavior="success" />
+        <ExitCode Value="3010" Behavior="scheduleReboot" />
+      </ExePackage>
       <ExePackage Id="SessionManagerPlugin" SourceFile="$(var.PluginExe)" Compressed="yes"
                   InstallCommand="/quiet" InstallCondition="NOT PluginInstalled" Permanent="yes" Vital="yes"
                   DetectCondition="PluginInstalled" />

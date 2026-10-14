@@ -738,7 +738,6 @@ namespace SSMConnect.BA
         {
             _list.PreviewOnly = preview;
             _list.Set(
-                "AwsCli", "AWS CLI", "Lets this PC talk to AWS",
                 "SessionManagerPlugin", "Session Manager plugin", "Opens the secure tunnel to your servers",
                 "SSMConnect", "SSMConnect", "Finds your servers and keeps connections ready");
             foreach (var i in _list.Items)
@@ -827,7 +826,7 @@ namespace SSMConnect.BA
             _verb = "Installing";
             Page(0, "Welcome to SSMConnect",
                 (_continued ? "The previous version was removed" + (Directory.Exists(DataDir) ? " and your settings were kept" : "") + ". " : "") +
-                "Connect to your AWS servers over SSH or Remote Desktop, with no ports to open. Items already on this PC show a green tick. Anything missing can be ticked or unticked below.",
+                "Connect to your AWS servers over SSH or Remote Desktop, with no ports to open. Items already on this PC show a green tick. The AWS CLI is downloaded from Amazon the first time you open SSMConnect, if it is missing.",
                 false, false, false, true);
             ShowComponents(true);
             Buttons("Next", ShowLicense, null, null, "Cancel", () => Close());

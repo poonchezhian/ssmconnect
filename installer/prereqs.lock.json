@@ -1,4 +1,4 @@
 ﻿{
-    "AWSCLIV2.msi":  "A987B1FF67A11BB940B59CAEA6BF1238D9160C03CFEE555247B2A9D0FCA154BB",
-    "SessionManagerPluginSetup.exe":  "116A121CA6A781B7985D0C9FA3C5C9143440ACDE7822DE2E32733665EED30347"
+    "SessionManagerPluginSetup.exe":  "116A121CA6A781B7985D0C9FA3C5C9143440ACDE7822DE2E32733665EED30347",
+    "RuntimeUrl":  "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/8.0.32/windowsdesktop-runtime-8.0.32-win-x64.exe"
 }

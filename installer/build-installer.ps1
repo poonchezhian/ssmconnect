@@ -89,8 +89,28 @@ function Get-Prereq([string] $Url, [string] $Name) {
     }
     return $path
 }
-$awsMsi = Get-Prereq 'https://awscli.amazonaws.com/AWSCLIV2.msi' 'AWSCLIV2.msi'
 $pluginExe = Get-Prereq 'https://s3.amazonaws.com/session-manager-downloads/plugin/latest/windows/SessionManagerPluginSetup.exe' 'SessionManagerPluginSetup.exe'
+
+# ---- 3b. .NET 8 Desktop Runtime (NOT embedded: the setup file downloads it only on PCs that lack it, which keeps the setup file small) ----
+$rtName = 'windowsdesktop-runtime-win-x64.exe'
+$rtPath = Join-Path $pre $rtName
+$lockFile = Join-Path $here 'prereqs.lock.json'
+$lock = @{}
+if (Test-Path $lockFile) { (Get-Content $lockFile -Raw | ConvertFrom-Json).PSObject.Properties | ForEach-Object { $lock[$_.Name] = $_.Value } }
+if (-not (Test-Path $rtPath) -or -not $lock.ContainsKey('RuntimeUrl')) {
+    Write-Host "Downloading $rtName (build machine only, not embedded) ..."
+    $r = Invoke-WebRequest -Uri 'https://aka.ms/dotnet/8.0/windowsdesktop-runtime-win-x64.exe' -OutFile $rtPath -UseBasicParsing -PassThru
+    $lock['RuntimeUrl'] = [string]$r.BaseResponse.ResponseUri.AbsoluteUri   # final, version-specific address
+    $lock | ConvertTo-Json | Set-Content $lockFile -Encoding UTF8
+}
+$sig = Get-AuthenticodeSignature $rtPath
+if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -notmatch 'Microsoft') {
+    Remove-Item $rtPath -Force
+    throw "$rtName failed the Authenticode check (status: $($sig.Status)). Deleted; re-run to download again."
+}
+$rtUrl = $lock['RuntimeUrl']
+$rtVer = ((Get-Item $rtPath).VersionInfo.ProductVersion -split '[.\s]')[0..2] -join '.'
+Write-Host "Runtime $rtVer from $rtUrl"
 
 # ---- 4. Setup window (managed bootstrapper application, .NET Framework 4.8 which ships with Windows 10/11) ----
 $baOut = Join-Path $obj 'ba'
@@ -103,14 +123,21 @@ $baConfig = Join-Path $here 'BA\BootstrapperCore.config'
 # ---- 5. One-click bundle ----
 $setup = Join-Path $out "SSMConnect-Setup-$Version-x64.exe"
 & "$bin\candle.exe" -nologo -arch x64 -ext WixBalExtension -ext WixUtilExtension `
-    "-dVersion=$Version" "-dIconFile=$IconFile" "-dBaDll=$baDll" "-dBaConfig=$baConfig" "-dLicenseRtf=$licenseRtf" "-dAwsCliMsi=$awsMsi" "-dPluginExe=$pluginExe" "-dSsmMsi=$msi" `
+    "-dVersion=$Version" "-dIconFile=$IconFile" "-dBaDll=$baDll" "-dBaConfig=$baConfig" "-dLicenseRtf=$licenseRtf" "-dPluginExe=$pluginExe" "-dSsmMsi=$msi" "-dRuntimeExe=$rtPath" "-dRuntimeUrl=$rtUrl" "-dRuntimeVersion=$rtVer" `
     -out "$obj\" (Join-Path $here 'Bundle.wxs')
 if ($LASTEXITCODE) { throw 'candle failed (Bundle.wxs)' }
 & "$bin\light.exe" -nologo -ext WixBalExtension -ext WixUtilExtension -pdbout "$obj\SSMConnect.setup.wixpdb" -out $setup "$obj\Bundle.wixobj"
 if ($LASTEXITCODE) { throw 'light failed (bundle)' }
 
-# Remove leftovers from older builds so installer\output holds exactly one file to redistribute
-Get-ChildItem $out -File | Where-Object { $_.FullName -ne $setup } | Remove-Item -Force
+# The setup file is uploaded through GitHub's web page, which accepts files up to 25 MB. Fail loudly before that.
+$maxBytes = 24MB
+$size = (Get-Item $setup).Length
+Write-Host ('Setup file size: {0:N1} MB (limit {1} MB)' -f ($size / 1MB), ($maxBytes / 1MB))
+if ($size -ge $maxBytes) { Remove-Item $setup -Force; throw ('The setup file is {0:N1} MB, over the {1} MB limit for the GitHub web upload. Remove or shrink something before building again.' -f ($size / 1MB), ($maxBytes / 1MB)) }
+
+# Remove leftovers (and the runtime copy light.exe places beside the setup file) so installer\output holds exactly one file
+Get-ChildItem $out -File -Recurse | Where-Object { $_.FullName -ne $setup } | Remove-Item -Force
+Get-ChildItem $out -Directory | Remove-Item -Recurse -Force
 
 foreach ($f in $setup) {
     Write-Host ''
