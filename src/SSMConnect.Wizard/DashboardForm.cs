@@ -60,6 +60,15 @@ public sealed class DashboardForm : Form
     readonly CardFlow _cardHost = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, FlowDirection = FlowDirection.LeftToRight, BackColor = AppTheme.Page, Padding = new Padding(0, 4, 0, 0) };
     readonly List<ServerCard> _cards = new();
     readonly List<Label> _groupHeads = new();
+    // account switcher (top right of the header)
+    sealed record AcctItem(string Text, string? Account, bool IsAdd)
+    {
+        public override string ToString() => Text;
+    }
+    readonly ComboBox _acct = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 270, FlatStyle = FlatStyle.Flat, BackColor = Color.White };
+    string? _view;              // account whose servers are shown; null = every account
+    bool _viewChosen;           // false until the first fill picks the current account
+    string _acctSig = "";
     List<string> _rowGroups = new();   // account (profile) of each row, same order as _rows
     int _selected = -1;
     readonly Button _btnStart = new() { Text = "Start" }, _btnStop = new() { Text = "Stop" }, _btnRestart = new() { Text = "Restart" }, _btnAdd = new() { Text = "Add / change servers..." };
@@ -222,6 +231,11 @@ public sealed class DashboardForm : Form
         Controls.Add(_hdr);
         host.BringToFront();
         _cardHost.BringToFront();
+        _hdr.Controls.Add(_acct);
+        void PlaceAcct() { var f = DeviceDpi / 96f; _acct.Width = (int)(270 * f); _acct.Left = _hdr.Width - _acct.Width - (int)(24 * f); _acct.Top = (_hdr.Height - _acct.Height) / 2; }
+        _hdr.Resize += (_, _) => PlaceAcct();
+        _hdr.HandleCreated += (_, _) => PlaceAcct();
+        _acct.SelectionChangeCommitted += (_, _) => OnAcctPicked();
         _hdr.Set("SSMConnect", "Your AWS servers, one click away. Secure SSH and Remote Desktop through SSM, with no open ports.");
         _cardHost.SizeChanged += (_, _) => LayoutCards();
     }
@@ -515,9 +529,11 @@ public sealed class DashboardForm : Form
         var rows = new List<Row>();
         var multiAccount = _cfg.Tunnels.Select(x => x.Profile).Distinct().Count() > 1;
         // servers of one account sit together (accounts in the order they were first added)
+        FillAccounts();
         var order = _cfg.Tunnels.Select(x => x.Profile).Distinct().ToList();
         var ordered = multiAccount ? _cfg.Tunnels.OrderBy(x => order.IndexOf(x.Profile)).ToList() : _cfg.Tunnels.ToList();
-        _rowGroups = multiAccount ? ordered.Select(x => x.Profile).ToList() : new List<string>();
+        if (_view != null) ordered = ordered.Where(x => x.Profile == _view).ToList();
+        _rowGroups = multiAccount && _view == null ? ordered.Select(x => x.Profile).ToList() : new List<string>();
         foreach (var t in ordered)
         {
             var label = t.Name;
@@ -682,6 +698,62 @@ public sealed class DashboardForm : Form
         }
         if (names.Count == 0) for (var i = 0; i < _cards.Count; i++) _cardHost.Controls.SetChildIndex(_cards[i], i);
         LayoutCards();
+    }
+
+    /// <summary>Keeps the account drop-down in step with the saved servers. The current account is the default.</summary>
+    void FillAccounts()
+    {
+        var accts = _cfg.Tunnels.Select(x => x.Profile).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
+        if (!_viewChosen || (_view != null && !accts.Contains(_view)))
+        {
+            _view = accts.Contains(_cfg.Profile) ? _cfg.Profile : accts.Count > 1 ? null : accts.FirstOrDefault();
+            _viewChosen = accts.Count > 0;
+        }
+        var sig = string.Join("|", accts.Select(a => a + ":" + _cfg.Tunnels.Count(t => t.Profile == a))) + "#" + (_view ?? "*");
+        if (sig == _acctSig || _acct.DroppedDown) return;
+        _acctSig = sig;
+        var items = new List<AcctItem>();
+        foreach (var a in accts)
+        {
+            var n = _cfg.Tunnels.Count(t => t.Profile == a);
+            items.Add(new AcctItem($"{a}   ({n})", a, false));
+        }
+        if (accts.Count > 1) items.Add(new AcctItem($"All accounts   ({_cfg.Tunnels.Count})", null, false));
+        items.Add(new AcctItem("+  Add AWS account...", null, true));
+        _acct.BeginUpdate();
+        _acct.Items.Clear();
+        foreach (var i in items) _acct.Items.Add(i);
+        var pick = items.FindIndex(i => !i.IsAdd && i.Account == _view && (_view != null || i.Text.StartsWith("All")));
+        _acct.SelectedIndex = pick >= 0 ? pick : -1;
+        _acct.EndUpdate();
+    }
+
+    void OnAcctPicked()
+    {
+        if (_acct.SelectedItem is not AcctItem it) return;
+        if (it.IsAdd) { AddAccountFlow(); return; }
+        _view = it.Account;
+        _viewChosen = true;
+        if (it.Account != null)
+        {
+            try { var c = ConfigStore.Load() ?? _cfg; c.Profile = it.Account; ConfigStore.Save(c); _cfg.Profile = it.Account; _cfgStamp = DateTime.MinValue; } catch { }
+        }
+        _acctSig = "";
+        _selected = -1;
+        RefreshAll();
+    }
+
+    /// <summary>Small two-step flow: sign in / add the account, then pick its servers.</summary>
+    void AddAccountFlow()
+    {
+        ShowDashboard();
+        string? created = null;
+        using (var dlg = new ProfileDialog()) { if (dlg.ShowDialog(this) == DialogResult.OK) created = dlg.CreatedProfile; }
+        _acctSig = "";
+        if (created == null) { RefreshAll(); return; }
+        try { var c = ConfigStore.Load() ?? _cfg; c.Profile = created; ConfigStore.Save(c); } catch { }
+        OpenSetup();   // the server wizard opens on the new account
+        if (_cfg.Tunnels.Any(t => t.Profile == created)) { _view = created; _viewChosen = true; _acctSig = ""; RefreshAll(); }
     }
 
     void ShowDetail()
