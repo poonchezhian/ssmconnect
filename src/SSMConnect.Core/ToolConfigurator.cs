@@ -35,6 +35,27 @@ public static class ToolConfigurator
         return Prefix + (clean.Length == 0 ? t.InstanceId : clean);
     }
 
+    /// <summary>
+    /// After a reinstall with the saved settings kept, the PuTTY / WinSCP sessions may be gone (uninstall removes them).
+    /// Recreates the missing ones from the saved servers. Tools that were never used on this PC are left alone.
+    /// </summary>
+    public static void RestoreMissingSessions(IEnumerable<TunnelConfig> tunnels)
+    {
+        var ssh = tunnels.Where(t => !t.IsRdp).ToList();
+        if (ssh.Count == 0) return;
+        foreach (var (root, apply) in new (string, Action<IEnumerable<TunnelConfig>>)[] { (PuttyKey, ConfigurePutty), (WinScpKey, ConfigureWinScp) })
+        {
+            try
+            {
+                string[] have;
+                using (var k = Registry.CurrentUser.OpenSubKey(root)) { if (k == null) continue; have = k.GetSubKeyNames(); }
+                var missing = ssh.Where(t => !have.Contains(Munge(SessionName(t)), StringComparer.OrdinalIgnoreCase)).ToList();
+                if (missing.Count > 0) apply(missing);
+            }
+            catch { /* best effort */ }
+        }
+    }
+
     // ---- PuTTY -------------------------------------------------------------------------------
     public static void ConfigurePutty(IEnumerable<TunnelConfig> tunnels)
     {

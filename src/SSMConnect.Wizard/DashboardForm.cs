@@ -98,6 +98,7 @@ public sealed class DashboardForm : Form
     {
         _startHidden = startHidden;
         _cfg = ConfigStore.LoadOrRecover(out _loadWarning);
+        try { ToolConfigurator.RestoreMissingSessions(_cfg.Tunnels); } catch { }   // settings kept from an earlier install
         _allowShow = !startHidden;
 
         AutoScaleDimensions = new SizeF(96F, 96F);

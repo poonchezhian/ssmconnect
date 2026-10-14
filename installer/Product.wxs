@@ -80,7 +80,7 @@
         <Shortcut Id="DashboardShortcut" Name="SSMConnect" Description="Dashboard: see and control your SSM connections"
                   Target="[INSTALLFOLDER]SSMConnect.Wizard.exe" WorkingDirectory="INSTALLFOLDER" />
         <Shortcut Id="UninstallShortcut" Name="Uninstall SSMConnect" Description="Remove SSMConnect from this PC"
-                  Target="[SystemFolder]msiexec.exe" Arguments="/x [ProductCode]" />
+                  Target="[INSTALLFOLDER]SSMConnect.Wizard.exe" Arguments="--uninstall" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="RemoveAppMenuDir" On="uninstall" />
         <RegistryValue Root="HKCU" Key="Software\SSMConnect" Name="StartMenuShortcut" Type="integer" Value="1" KeyPath="yes" />
       </Component>

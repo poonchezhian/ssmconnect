@@ -28,6 +28,14 @@ static class Program
             return 0;
         }
 
+        // Start-menu "Uninstall SSMConnect": opens the setup's uninstall page (with the keep-my-settings choice)
+        if (args.Contains("--uninstall", StringComparer.OrdinalIgnoreCase))
+        {
+            try { Uninstaller.Start(); }
+            catch (Exception ex) { MessageBox.Show(ex.Message, "SSMConnect"); }
+            return 0;
+        }
+
         ApplicationConfiguration.Initialize();
 
         // One dashboard / tray icon per Windows session. A second launch just brings the first to the front.

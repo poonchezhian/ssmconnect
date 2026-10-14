@@ -438,7 +438,17 @@ namespace SSMConnect.BA
         readonly bool _silent;         // Display = none (/quiet): no window, runs by itself
         readonly bool _auto;           // /quiet or /passive: no questions asked
         readonly bool _continued;      // started again by this setup after it removed an older copy
-        readonly bool _updateMode;     // started by the app's "Update now": upgrade in place, no questions asked
+        bool _updateMode;              // "Update now" from the app, or Upgrade chosen on the existing-copy page: upgrade in place
+        readonly bool _purge;          // command line RemoveSettings=1: an unattended uninstall also deletes the saved settings
+        readonly RadioButton _rbUp = new RadioButton();
+        readonly RadioButton _rbUn = new RadioButton();
+        readonly Label _rbUpText = new Label();
+        readonly Label _rbUnText = new Label();
+        readonly CheckBox _keep = new CheckBox();   // "Keep my settings" (uninstall)
+        string _backupDir;             // temporary copy of the saved settings while an old copy is removed
+        bool _keepSettings;            // an uninstall that is running should hand the settings back afterwards
+        bool _upgradeChosen, _fallbackTried;
+        bool _sameVersion;
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         struct OSVERSIONINFOEX
@@ -473,7 +483,10 @@ namespace SSMConnect.BA
             try
             {
                 foreach (var a in ba.Command.GetCommandLineArgs())
+                {
                     if (string.Equals(a, "/ssmupdate", StringComparison.OrdinalIgnoreCase) || string.Equals(a, "-ssmupdate", StringComparison.OrdinalIgnoreCase)) _updateMode = true;
+                    if (string.Equals(a, "RemoveSettings=1", StringComparison.OrdinalIgnoreCase)) _purge = true;
+                }
             }
             catch { }
             var cont = Environment.GetEnvironmentVariable("SSMCONNECT_CONTINUE");
@@ -532,12 +545,25 @@ namespace SSMConnect.BA
             _launch.Checked = true;
             _launch.ForeColor = Theme.Ink;
             _launch.Cursor = Cursors.Hand;
+            _rbUp.SetBounds(Pad, 128, InnerW, 24);
+            _rbUp.Font = Theme.Semi(9.5f); _rbUp.ForeColor = Theme.Ink; _rbUp.Cursor = Cursors.Hand; _rbUp.Checked = true;
+            _rbUpText.SetBounds(Pad + 24, 154, InnerW - 24, 38);
+            _rbUn.SetBounds(Pad, 204, InnerW, 24);
+            _rbUn.Font = Theme.Semi(9.5f); _rbUn.ForeColor = Theme.Ink; _rbUn.Cursor = Cursors.Hand;
+            _rbUnText.SetBounds(Pad + 24, 230, InnerW - 24, 38);
+            foreach (var l in new[] { _rbUpText, _rbUnText }) { l.ForeColor = Theme.Muted; l.Font = Theme.Body(8.5f, FontStyle.Regular); }
+            _keep.SetBounds(Pad + 24, 272, InnerW - 24, 40);
+            _keep.Text = "Keep my settings (servers, keys and saved sessions) so a future install picks them up";
+            _keep.Checked = true; _keep.ForeColor = Theme.Ink; _keep.Cursor = Cursors.Hand;
+            _rbUp.CheckedChanged += (s, e) => ChoiceChanged();
+            _rbUn.CheckedChanged += (s, e) => ChoiceChanged();
+            ChoiceVisible(false);
             _bar.SetBounds(Pad, 296, InnerW, 8);
             _status.SetBounds(Pad, 312, InnerW, 22);
             _status.ForeColor = Theme.Muted;
             _status.Font = Theme.Body(8.5f, FontStyle.Regular);
 
-            _page.Controls.AddRange(new Control[] { _title, _text, _list, _license, _accept, _launch, _bar, _status });
+            _page.Controls.AddRange(new Control[] { _title, _text, _rbUp, _rbUpText, _rbUn, _rbUnText, _keep, _list, _license, _accept, _launch, _bar, _status });
             _bottom.Controls.AddRange(new Control[] { _b1, _b2, _b3 });
             Controls.AddRange(new Control[] { _brand, _page, _bottom });
 
@@ -646,6 +672,24 @@ namespace SSMConnect.BA
             _status.ForeColor = Theme.Blend(Color.White, Theme.Muted, t);
             _accept.ForeColor = Theme.Blend(Color.White, Theme.Ink, t);
             _launch.ForeColor = Theme.Blend(Color.White, Theme.Ink, t);
+            _rbUp.ForeColor = Theme.Blend(Color.White, Theme.Ink, t);
+            _rbUn.ForeColor = Theme.Blend(Color.White, Theme.Ink, t);
+            _keep.ForeColor = Theme.Blend(Color.White, Theme.Ink, t);
+            _rbUpText.ForeColor = Theme.Blend(Color.White, Theme.Muted, t);
+            _rbUnText.ForeColor = Theme.Blend(Color.White, Theme.Muted, t);
+        }
+
+        void ChoiceVisible(bool v)
+        {
+            _rbUp.Visible = v; _rbUpText.Visible = v; _rbUn.Visible = v; _rbUnText.Visible = v; _keep.Visible = v;
+        }
+
+        void ChoiceChanged()
+        {
+            if (!_rbUp.Visible) return;
+            _keep.Enabled = _rbUn.Checked;
+            _b1.Text = _rbUn.Checked ? "Uninstall" : (_sameVersion ? "Reinstall" : "Upgrade");
+            LayoutButtons();
         }
 
         void SetProgress(int pct)
@@ -684,6 +728,7 @@ namespace SSMConnect.BA
             _status.Visible = progress;
             _launch.Visible = launch;
             _list.Visible = list;
+            ChoiceVisible(false);
             _text.Height = list ? 56 : (license ? 26 : 130);
             _status.Text = "";
             BeginTransition();
@@ -725,34 +770,63 @@ namespace SSMConnect.BA
                 StartInstall();
                 return;
             }
-            if (_auto) { if (_uninstallMode) StartUninstall(); else StartInstall(); return; }
+            if (_auto) { if (_uninstallMode) { _keepSettings = !_purge; StartUninstall(); } else StartInstall(); return; }
             if (_uninstallMode)
             {
-                Page(0, "Uninstall SSMConnect", "This removes SSMConnect and its saved settings from this PC. The AWS CLI and Session Manager plugin are left in place.", false, false, false, false);
-                Buttons("Uninstall", StartUninstall, "Cancel", () => Close(), null, null);
+                Page(0, "Uninstall SSMConnect", "This removes SSMConnect from this PC. The AWS CLI and Session Manager plugin are left in place.", false, false, false, false);
+                _text.Height = 50;
+                _keep.SetBounds(Pad, 150, InnerW, 40);
+                _keep.Visible = true; _keep.Enabled = true;
+                Buttons("Uninstall", () => { _keepSettings = _keep.Checked; StartUninstall(); }, "Cancel", () => Close(), null, null);
                 return;
             }
 
             var found = _continued ? new List<InstalledCopy>() : ExistingInstall.Find();
-            if (found.Count > 0)
-            {
-                var v = found[0].Version;
-                Page(0, "SSMConnect is already installed",
-                    "SSMConnect " + (string.IsNullOrEmpty(v) ? "" : v + " ") +
-                    "is already on this PC. It has to be removed before version " + _version + " can be installed. " +
-                    "Setup will uninstall the old copy for you; you do not need to open Windows Settings.",
-                    false, false, false, false);
-                Buttons("Uninstall, then install " + _version, () => RemoveExisting(true), "Uninstall only", () => RemoveExisting(false), "Cancel", () => Close());
-                return;
-            }
+            if (found.Count > 0) { ShowExisting(found[0]); return; }
             ShowWelcome();
+        }
+
+        /// <summary>SSMConnect is already installed: choose between an in-place upgrade and an uninstall.</summary>
+        void ShowExisting(InstalledCopy copy)
+        {
+            var inst = copy.Version ?? "";
+            Version have, mine;
+            bool newer = Version.TryParse(inst, out have) && Version.TryParse(_version, out mine) && have > mine;
+            _sameVersion = string.Equals(inst, _version, StringComparison.OrdinalIgnoreCase);
+            Page(0, "SSMConnect is already installed",
+                "Version " + (inst.Length == 0 ? "(unknown)" : inst) + " is on this PC. What would you like to do?", false, false, false, false);
+            _text.Height = 50;
+            _rbUp.Text = newer ? "Upgrade" : (_sameVersion ? "Reinstall version " + _version : "Upgrade to version " + _version);
+            _rbUpText.Text = newer
+                ? "A newer version (" + inst + ") is already installed, so this older setup cannot replace it."
+                : "Replaces the program files in place. Your servers, keys and saved sessions are kept as they are.";
+            _rbUn.Text = "Uninstall SSMConnect";
+            _rbUnText.Text = "Removes SSMConnect from this PC. The AWS CLI and Session Manager plugin are left in place.";
+            _keep.SetBounds(Pad + 24, 272, InnerW - 24, 40);
+            ChoiceVisible(true);
+            _rbUp.Enabled = !newer;
+            _rbUp.Checked = !newer;
+            _rbUn.Checked = newer;
+            Buttons("Upgrade", ApplyChoice, "Cancel", () => Close(), null, null);
+            ChoiceChanged();
+        }
+
+        void ApplyChoice()
+        {
+            if (_rbUn.Checked) { RemoveExisting(false, _keep.Checked); return; }
+            _updateMode = true;
+            _upgradeChosen = true;
+            // the running app is closed first so its files can be replaced; Windows Installer then upgrades in place
+            foreach (var p in Process.GetProcessesByName("SSMConnect.Wizard")) { try { p.Kill(); p.WaitForExit(3000); } catch { } }
+            BackupSettings();   // safety copy only; handed back below if anything ever removes the originals
+            StartInstall();
         }
 
         void ShowWelcome()
         {
             _verb = "Installing";
             Page(0, "Welcome to SSMConnect",
-                (_continued ? "The previous version has been uninstalled. " : "") +
+                (_continued ? "The previous version was removed" + (Directory.Exists(DataDir) ? " and your settings were kept" : "") + ". " : "") +
                 "Connect to your AWS servers over SSH or Remote Desktop, with no ports to open. Items already on this PC show a green tick. Anything missing can be ticked or unticked below.",
                 false, false, false, true);
             ShowComponents(true);
@@ -768,18 +842,22 @@ namespace SSMConnect.BA
             _b1.Enabled = false;
         }
 
-        void RemoveExisting(bool thenInstall)
+        void RemoveExisting(bool thenInstall, bool keep)
         {
             _installOnlyAfterRemove = thenInstall;
             _busy = true;
             _verb = "Uninstalling";
-            Page(2, "Removing the old version", "Please wait. Windows may ask you to approve this.", false, true, false, false);
+            if (keep) BackupSettings();
+            Page(2, thenInstall ? "Replacing the old version" : "Uninstalling SSMConnect",
+                thenInstall ? "The in-place upgrade could not finish, so setup is replacing the old copy instead. Your settings are kept. Windows may ask you to approve this."
+                            : "Please wait. Windows may ask you to approve this.", false, true, false, false);
             _bar.Reset();
             _bar.Indeterminate();
             Buttons(null, null, null, null, null, null);
             Run(() =>
             {
                 var err = ExistingInstall.RemoveAll(s => OnUi(() => _status.Text = s));
+                if (keep) RestoreSettings(false);
                 OnUi(() =>
                 {
                     _busy = false;
@@ -787,13 +865,13 @@ namespace SSMConnect.BA
                     if (err != null)
                     {
                         Page(3, "Could not remove it", err, false, false, false, false);
-                        Buttons("Try again", () => AfterDetect(), "Close", () => Close(), null, null);
+                        Buttons("Try again", () => { _upgradeChosen = false; AfterDetect(); }, "Close", () => Close(), null, null);
                         return;
                     }
                     if (!_installOnlyAfterRemove)
                     {
                         _ba.ExitCode = 0;
-                        Page(3, "SSMConnect was removed", "The existing installation has been uninstalled.", false, false, false, false);
+                        Page(3, "SSMConnect was uninstalled", keep ? "Your settings were kept. If you install SSMConnect again, it picks them up." : "Your settings were removed too.", false, false, false, false);
                         Buttons("Close", () => Close(), null, null, null, null);
                         return;
                     }
@@ -844,10 +922,11 @@ namespace SSMConnect.BA
         {
             _busy = true;
             _verb = "Uninstalling";
-            Page(2, "Uninstalling SSMConnect", "Removing the app and its saved settings.", false, true, false, true);
+            Page(2, "Uninstalling SSMConnect", _keepSettings ? "Removing the app. Your settings are kept." : "Removing the app and its saved settings.", false, true, false, true);
+            if (_keepSettings) BackupSettings();
             ShowComponents(false);
             // only SSMConnect itself is removed
-            _list.Set("SSMConnect", "SSMConnect", "The app and its saved settings");
+            _list.Set("SSMConnect", "SSMConnect", _keepSettings ? "The app (settings are kept)" : "The app and its saved settings");
             _list.ActiveText = "Removing...";
             _list.DoneText = "Removed";
             _bar.Reset();
@@ -876,6 +955,7 @@ namespace SSMConnect.BA
             {
                 _busy = false;
                 if (e.Status < 0) { Failed(e.Status); return; }
+                RestoreSettings(!_uninstallMode);
                 _ba.ExitCode = 0;
                 _bar.SetTarget(100);
                 _list.FinishRemaining();
@@ -888,7 +968,7 @@ namespace SSMConnect.BA
                     t.Stop(); t.Dispose();
                     if (_uninstallMode)
                     {
-                        Page(3, "SSMConnect was uninstalled", "Thank you for using SSMConnect.", false, false, false, false);
+                        Page(3, "SSMConnect was uninstalled", _keepSettings ? "Your settings were kept. If you install SSMConnect again, it picks them up." : "Thank you for using SSMConnect.", false, false, false, false);
                         Buttons("Close", () => Close(), null, null, null, null);
                         return;
                     }
@@ -912,12 +992,62 @@ namespace SSMConnect.BA
         void Failed(int status)
         {
             _busy = false;
+            if (_uninstallMode && _keepSettings) RestoreSettings(false);
+            if (_upgradeChosen && !_fallbackTried && !_silent)
+            {
+                // the in-place upgrade did not complete: replace the old copy instead, with the settings carried over
+                _fallbackTried = true;
+                _updateMode = false;
+                RemoveExisting(true, true);
+                return;
+            }
             _ba.ExitCode = status;
             if (_silent) { Close(); return; }
             Page(3, _verb == "Uninstalling" ? "Uninstall did not finish" : "Setup did not finish",
                 "Something went wrong while " + _verb.ToLowerInvariant() + " (code 0x" + status.ToString("X8") + (_lastStatus != 0 ? ", error " + _lastStatus : "") + "). The details are in the setup log in %TEMP% (files named SSMConnect_*.log). Running setup again is safe.",
                 false, false, false, false);
             Buttons("Close", () => Close(), null, null, null, null);
+        }
+
+        // ---------------------------------------------------------------- saved settings (kept across uninstall / upgrade)
+        static string DataDir { get { return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "SSMConnect"); } }
+
+        void BackupSettings()
+        {
+            try
+            {
+                var src = DataDir;
+                if (!Directory.Exists(src)) return;
+                // never replace a good backup with an already-emptied folder
+                if (_backupDir != null && !File.Exists(Path.Combine(src, "config.json"))) return;
+                var dst = _backupDir ?? Path.Combine(Path.GetTempPath(), "ssmconnect-keep-" + Guid.NewGuid().ToString("N"));
+                if (Directory.Exists(dst)) Directory.Delete(dst, true);
+                CopyDir(src, dst);
+                _backupDir = dst;
+            }
+            catch { }
+        }
+
+        /// <summary>Puts the saved settings back. With onlyIfMissing the backup is used only when the originals are gone.</summary>
+        void RestoreSettings(bool onlyIfMissing)
+        {
+            try
+            {
+                if (_backupDir == null || !Directory.Exists(_backupDir)) return;
+                if (!(onlyIfMissing && File.Exists(Path.Combine(DataDir, "config.json")))) CopyDir(_backupDir, DataDir);
+                Directory.Delete(_backupDir, true);
+                _backupDir = null;
+            }
+            catch { }
+        }
+
+        static void CopyDir(string from, string to)
+        {
+            Directory.CreateDirectory(to);
+            foreach (var f in Directory.GetFiles(from))
+                try { File.Copy(f, Path.Combine(to, Path.GetFileName(f)), true); } catch { }
+            foreach (var d in Directory.GetDirectories(from))
+                CopyDir(d, Path.Combine(to, Path.GetFileName(d)));
         }
 
         void FinishClicked()

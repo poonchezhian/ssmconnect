@@ -65,7 +65,7 @@ Use **File > Uninstall SSMConnect** in the dashboard, the **Uninstall SSMConnect
 
 To remove only the saved sessions and settings, run `SSMConnect.Wizard.exe --cleanup`.
 
-Running the setup EXE on a PC that already has SSMConnect shows a prompt in the installer itself: **Uninstall it, then install this version**, **Uninstall only** or **Cancel**. You never need to visit Windows Settings, and only one copy is ever installed. **Help > About** shows the version and build number (for example `1.0.7`, build 7).
+Running the setup EXE on a PC that already has SSMConnect asks what to do, with two radio buttons: **Upgrade** (replaces the program in place and keeps your servers, keys and saved sessions) or **Uninstall**. Uninstall has a **Keep my settings** tick box (on by default); when kept, installing SSMConnect again picks the servers up where you left off. For unattended use, an uninstall run with `/quiet` also keeps the settings unless you add `RemoveSettings=1`. **Help > About** shows the version and build number.
 
 ## Build from source
 
