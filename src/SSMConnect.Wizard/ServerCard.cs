@@ -148,7 +148,7 @@ public sealed class ServerCard : Control
         TextRenderer.DrawText(g, _d.Name, nameFont, new Rectangle((int)tx, (int)(16 * s), (int)(right - tx), (int)(22 * s)), AppTheme.Ink,
             TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
         // second line: the operating system, or - when something is not right - what is wrong
-        var osText = !_d.KnownType ? "Server" : _d.IsWindows ? "Windows" : "Linux";
+        var osText = (!_d.KnownType ? "Server" : _d.IsWindows ? "Windows" : "Linux") + (string.IsNullOrEmpty(_d.Port) ? "" : "  -  local port " + _d.Port);
         var problem = _d.Level != CardLevel.Green;
         TextRenderer.DrawText(g, problem && !string.IsNullOrEmpty(_d.Message) ? _d.Message : osText, small,
             new Rectangle((int)tx, (int)(38 * s), (int)(Width - tx - 14 * s), (int)(18 * s)),

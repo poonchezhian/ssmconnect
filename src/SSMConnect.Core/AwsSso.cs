@@ -68,7 +68,11 @@ public static class AwsSso
         IReadOnlyList<SsoAccount> accounts, Action<string>? progress = null, CancellationToken ct = default)
     {
         var all = AwsProfiles.List();
-        var existing = all.Where(p => p.Kind == ProfileKind.Sso && p.SsoSession == session && p.AccountId != null).ToList();
+        // accounts that already have a profile under the same sign-in are reused, even when an older profile used another nickname for it
+        var sess = AwsProfiles.SessionInfo(session);
+        var key = "sso:" + AwsProfiles.NormaliseUrl(sess.StartUrl);
+        var existing = all.Where(p => p.Kind == ProfileKind.Sso && p.AccountId != null &&
+                                      (p.SsoSession == session || (sess.StartUrl != null && AwsProfiles.PrimaryKey(p) == key))).ToList();
         var taken = new HashSet<string>(all.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
         var result = new List<(string Profile, SsoAccount Account)>();
         var i = 0;
@@ -89,6 +93,47 @@ public static class AwsSso
             result.Add((name, a));
         }
         return result;
+    }
+
+    /// <summary>What a silent look for new organization accounts found.</summary>
+    public sealed record SyncResult(List<string> Added, List<string> NeedSignIn);
+
+    /// <summary>
+    /// Looks, for every company sign-in that is still signed in, for AWS accounts the person gained access to since the last time,
+    /// and saves a profile for each. Never opens a browser: a sign-in that has expired is reported in NeedSignIn instead.
+    /// </summary>
+    public static async Task<SyncResult> SyncMembersAsync(CancellationToken ct = default)
+    {
+        var added = new List<string>();
+        var need = new List<string>();
+        var all = AwsProfiles.List();
+        foreach (var g in all.Where(p => p.Kind == ProfileKind.Sso && !string.IsNullOrEmpty(p.SsoSession)).GroupBy(AwsProfiles.PrimaryKey).ToList())
+        {
+            ct.ThrowIfCancellationRequested();
+            string? session = null, token = null;
+            foreach (var s in g.Select(p => p.SsoSession!).Distinct(StringComparer.Ordinal))
+            {
+                token = ReadAccessToken(s);
+                if (token != null) { session = s; break; }
+            }
+            var label = AwsProfiles.PrimaryName(g.First());
+            if (token == null || session == null) { need.Add(label); continue; }
+            try
+            {
+                var region = AwsProfiles.SessionInfo(session).SsoRegion;
+                if (string.IsNullOrEmpty(region)) continue;
+                var accounts = await ListAccountsAsync(token, region, ct);
+                var known = g.Where(p => p.AccountId != null).Select(p => p.AccountId!).ToHashSet(StringComparer.Ordinal);
+                var fresh = accounts.Where(a => !known.Contains(a.Id)).ToList();
+                if (fresh.Count == 0) continue;
+                var role = g.Select(p => p.RoleName).FirstOrDefault(r => !string.IsNullOrEmpty(r)) ?? "";
+                var made = await AddAllAccountsAsync(session, token, region, role, fresh, null, ct);
+                added.AddRange(made.Select(m => $"{m.Account.Name} ({m.Account.Id})"));
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { AppLog.Warn("Could not look for new AWS accounts under " + label + ": " + ex.Message); }
+        }
+        return new SyncResult(added, need);
     }
 
     public static async Task<List<string>> ListRolesAsync(string token, string ssoRegion, string accountId, CancellationToken ct = default)

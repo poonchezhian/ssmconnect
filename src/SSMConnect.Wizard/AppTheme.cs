@@ -110,21 +110,23 @@ public static class AppTheme
         b.FlatStyle = FlatStyle.Flat;
         b.UseVisualStyleBackColor = false;
         b.Cursor = Cursors.Hand;
-        b.FlatAppearance.BorderSize = primary ? 0 : 1;
-        b.FlatAppearance.BorderColor = Line;
-        b.FlatAppearance.MouseOverBackColor = primary ? AccentHover : Color.FromArgb(232, 243, 242);
-        b.FlatAppearance.MouseDownBackColor = b.FlatAppearance.MouseOverBackColor;
-        void Paint()
-        {
-            if (!b.Enabled) { b.BackColor = primary ? Color.FromArgb(178, 207, 204) : Page; b.ForeColor = Color.FromArgb(135, 150, 152); return; }
-            b.BackColor = primary ? Accent : Color.White;
-            b.ForeColor = primary ? Color.White : Ink;
-        }
+        b.FlatAppearance.BorderSize = 0;
+        b.FlatAppearance.MouseOverBackColor = b.FlatAppearance.MouseDownBackColor = Page;
         b.Font = primary ? Semi() : Body();
-        b.EnabledChanged += (_, _) => Paint();
-        b.TextChanged += (_, _) => { };
-        Paint();
+        ButtonLook.Attach(b, primary);
     }
+
+    public static GraphicsPath RoundRect(RectangleF r, float rad)
+    {
+        var p = new GraphicsPath();
+        var d = Math.Max(0.1f, Math.Min(rad * 2, Math.Min(r.Width, r.Height)));
+        p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90); p.CloseFigure();
+        return p;
+    }
+
+    public static Color Mix(Color a, Color b, float t) =>
+        Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
 
     /// <summary>Quiet, flat table in the app font: no heavy borders, soft header, light row lines.</summary>
     public static void StyleGrid(DataGridView g)
@@ -207,5 +209,188 @@ public sealed class HeaderBand : Panel
                 else { using var p = new Pen(Color.FromArgb(120, 255, 255, 255), 2f); g.DrawEllipse(p, rect); }
             }
         }
+    }
+}
+
+/// <summary>A button that stays hoverable (so its tooltip always shows) while it has nothing to do, and can carry a small drawn icon.</summary>
+public sealed class ActionButton : Button
+{
+    /// <summary>False dims the button and ignores clicks, but unlike Enabled=false it still shows its tooltip.</summary>
+    public bool Available
+    {
+        get => _available;
+        set { if (_available != value) { _available = value; Invalidate(); } }
+    }
+    bool _available = true;
+
+    /// <summary>"play", "stop", "restart" or "plus"; drawn to the left of the text.</summary>
+    public string Glyph { get; set; } = "";
+
+    protected override void OnClick(EventArgs e) { if (_available) base.OnClick(e); }
+}
+
+/// <summary>Rounded, softly shaded buttons with hover and pressed states, drawn on top of the standard Button so every existing click handler keeps working.</summary>
+static class ButtonLook
+{
+    sealed class State { public bool Hover, Down, Attached, Primary, Kbd; }
+    static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, State> States = new();
+
+    public static void Attach(Button b, bool primary)
+    {
+        var st = States.GetOrCreateValue(b);
+        st.Primary = primary;
+        if (st.Attached) { b.Invalidate(); return; }
+        st.Attached = true;
+        try { typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(b, true); } catch { }
+        b.MouseEnter += (_, _) => { st.Hover = true; b.Invalidate(); };
+        b.MouseLeave += (_, _) => { st.Hover = false; st.Down = false; b.Invalidate(); };
+        b.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) { st.Down = true; b.Invalidate(); } };
+        b.MouseUp += (_, _) => { st.Down = false; b.Invalidate(); };
+        b.EnabledChanged += (_, _) => b.Invalidate();
+        b.GotFocus += (_, _) => { st.Kbd = Control.MouseButtons == MouseButtons.None; b.Invalidate(); };
+        b.LostFocus += (_, _) => b.Invalidate();
+        b.Paint += (_, e) => Draw(b, e.Graphics, st);
+    }
+
+    static void Draw(Button b, Graphics g, State st)
+    {
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        g.Clear(b.Parent?.BackColor ?? AppTheme.Page);
+        var s = b.DeviceDpi / 96f;
+        var off = !b.Enabled || (b is ActionButton { Available: false });
+        var hot = !off && st.Hover;
+        var down = !off && st.Down;
+        var r = new RectangleF(0.5f, 0.5f, b.Width - 2f, b.Height - 3.5f);
+        float rad = Math.Min(10 * s, r.Height / 2);
+
+        Color top, bottom, border, text;
+        if (st.Primary)
+        {
+            if (off) { top = bottom = border = Color.FromArgb(184, 210, 207); text = Color.FromArgb(244, 250, 249); }
+            else if (down) { top = AppTheme.AccentHover; bottom = AppTheme.Mix(AppTheme.AccentHover, Color.Black, 0.12f); border = bottom; text = Color.White; }
+            else if (hot) { top = AppTheme.Mix(AppTheme.Accent, Color.White, 0.26f); bottom = AppTheme.Mix(AppTheme.Accent, Color.White, 0.06f); border = AppTheme.Accent; text = Color.White; }
+            else { top = AppTheme.Mix(AppTheme.Accent, Color.White, 0.14f); bottom = AppTheme.Accent; border = AppTheme.AccentHover; text = Color.White; }
+        }
+        else
+        {
+            if (off) { top = bottom = Color.FromArgb(246, 249, 249); border = Color.FromArgb(226, 234, 235); text = Color.FromArgb(150, 163, 165); }
+            else if (down) { top = Color.FromArgb(214, 234, 232); bottom = Color.FromArgb(224, 240, 238); border = AppTheme.Accent; text = AppTheme.Teal900; }
+            else if (hot) { top = Color.FromArgb(240, 249, 248); bottom = Color.FromArgb(222, 241, 239); border = Color.FromArgb(110, 190, 183); text = AppTheme.Teal900; }
+            else { top = Color.White; bottom = Color.FromArgb(243, 248, 248); border = Color.FromArgb(205, 220, 221); text = AppTheme.Ink; }
+        }
+
+        // a soft shadow under raised buttons
+        if (!off && !down)
+        {
+            var sh = new RectangleF(r.X, r.Y + 1.5f * s, r.Width, r.Height);
+            using var sp = AppTheme.RoundRect(sh, rad);
+            using var sb = new SolidBrush(Color.FromArgb(st.Primary ? 46 : 22, 5, 60, 56));
+            g.FillPath(sb, sp);
+        }
+        using (var path = AppTheme.RoundRect(r, rad))
+        {
+            using (var br = new LinearGradientBrush(new RectangleF(r.X, r.Y - 1, r.Width, r.Height + 2), top, bottom, 90f)) g.FillPath(br, path);
+            using var pen = new Pen(border, 1f);
+            g.DrawPath(pen, path);
+        }
+
+        // optional icon + text, centred together
+        var glyph = (b as ActionButton)?.Glyph ?? "";
+        var cell = new Rectangle(0, 0, b.Width, b.Height - 3);
+        var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
+        if (glyph.Length > 0)
+        {
+            float icon = 12 * s, gap = 8 * s;
+            var tw = TextRenderer.MeasureText(g, b.Text, b.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+            var x0 = (b.Width - (icon + gap + tw)) / 2f;
+            DrawGlyph(g, glyph, new RectangleF(x0, (b.Height - 3 - icon) / 2f, icon, icon), text, s);
+            TextRenderer.DrawText(g, b.Text, b.Font, new Rectangle((int)(x0 + icon + gap), 0, tw + 4, cell.Height), text, flags);
+        }
+        else TextRenderer.DrawText(g, b.Text, b.Font, cell, text, flags | TextFormatFlags.HorizontalCenter);
+
+        if (b.Focused && st.Kbd && !off)
+        {
+            var fr = new RectangleF(r.X + 3 * s, r.Y + 3 * s, r.Width - 6 * s, r.Height - 6 * s);
+            using var fp = AppTheme.RoundRect(fr, Math.Max(2f, rad - 3 * s));
+            using var pen = new Pen(Color.FromArgb(st.Primary ? 150 : 110, st.Primary ? Color.White : AppTheme.Accent)) { DashStyle = DashStyle.Dot };
+            g.DrawPath(pen, fp);
+        }
+    }
+
+    static void DrawGlyph(Graphics g, string kind, RectangleF r, Color c, float s)
+    {
+        using var brush = new SolidBrush(c);
+        using var pen = new Pen(c, 2f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
+        float cx = r.X + r.Width / 2, cy = r.Y + r.Height / 2;
+        switch (kind)
+        {
+            case "play":
+                g.FillPolygon(brush, new[] { new PointF(r.X + 2 * s, r.Y), new PointF(r.X + 2 * s, r.Bottom), new PointF(r.Right, cy) });
+                break;
+            case "stop":
+                using (var p = AppTheme.RoundRect(new RectangleF(r.X + 1 * s, r.Y + 1 * s, r.Width - 2 * s, r.Height - 2 * s), 2 * s)) g.FillPath(brush, p);
+                break;
+            case "plus":
+                g.DrawLine(pen, cx, r.Y + 1 * s, cx, r.Bottom - 1 * s);
+                g.DrawLine(pen, r.X + 1 * s, cy, r.Right - 1 * s, cy);
+                break;
+            case "restart":
+            {
+                float rad = r.Width / 2 - 1.5f * s;
+                var ring = new RectangleF(cx - rad, cy - rad, rad * 2, rad * 2);
+                const float startDeg = 30f, sweep = 285f;
+                g.DrawArc(pen, ring, startDeg, sweep);
+                var th = (startDeg + sweep) * Math.PI / 180.0;          // where the arc ends
+                float ex = cx + rad * (float)Math.Cos(th), ey = cy + rad * (float)Math.Sin(th);
+                float tx = -(float)Math.Sin(th), ty = (float)Math.Cos(th);   // direction of travel (clockwise)
+                float nx = -ty, ny = tx, a = 3.6f * s;
+                g.FillPolygon(brush, new[]
+                {
+                    new PointF(ex + tx * a * 1.2f, ey + ty * a * 1.2f),
+                    new PointF(ex + nx * a, ey + ny * a),
+                    new PointF(ex - nx * a, ey - ny * a),
+                });
+                break;
+            }
+        }
+    }
+}
+
+/// <summary>A soft teal card with an "i" badge, a short title and a few lines of plain-language help.</summary>
+public sealed class HintCard : Control
+{
+    string _title = "", _body = "";
+    public HintCard()
+    {
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint | ControlStyles.ResizeRedraw, true);
+        Height = 92;
+    }
+
+    public void Set(string title, string body) { _title = title; _body = body; Invalidate(); }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+        g.Clear(Parent?.BackColor ?? AppTheme.Page);
+        var s = DeviceDpi / 96f;
+        var r = new RectangleF(0.5f, 0.5f, Width - 2, Height - 2);
+        using (var path = AppTheme.RoundRect(r, 12 * s))
+        {
+            using (var br = new LinearGradientBrush(r, Color.FromArgb(234, 247, 245), Color.FromArgb(221, 240, 237), 0f)) g.FillPath(br, path);
+            using var pen = new Pen(Color.FromArgb(188, 221, 217));
+            g.DrawPath(pen, path);
+        }
+        var ic = new RectangleF(18 * s, (Height - 34 * s) / 2f, 34 * s, 34 * s);
+        using (var br = new SolidBrush(AppTheme.Accent)) g.FillEllipse(br, ic);
+        using (var f = AppTheme.Semi(13f))
+            TextRenderer.DrawText(g, "i", f, Rectangle.Round(ic), Color.White, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        int tx = (int)(66 * s), tw = Width - tx - (int)(18 * s);
+        using (var f = AppTheme.Semi(10f))
+            TextRenderer.DrawText(g, _title, f, new Rectangle(tx, (int)(12 * s), tw, (int)(22 * s)), AppTheme.Teal900, TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis);
+        using (var f = AppTheme.Body(9f))
+            TextRenderer.DrawText(g, _body, f, new Rectangle(tx, (int)(36 * s), tw, Height - (int)(44 * s)), Color.FromArgb(38, 82, 82), TextFormatFlags.NoPadding | TextFormatFlags.WordBreak);
     }
 }

@@ -181,6 +181,19 @@ public static class DiscoveryMonitor
         var list = cfg.Tunnels.Where(t => !string.IsNullOrWhiteSpace(t.Profile) && !string.IsNullOrWhiteSpace(t.Region))
                               .Select(t => (t.Profile, t.Region)).ToList();
         if (!string.IsNullOrWhiteSpace(cfg.Profile) && !string.IsNullOrWhiteSpace(cfg.Region)) list.Add((cfg.Profile, cfg.Region));
+        // every other AWS account under the same company sign-in is watched too, not only those that already have saved connections
+        try
+        {
+            var profiles = AwsProfiles.List();
+            var preferred = cfg.Tunnels.Select(t => t.Profile).ToHashSet(StringComparer.Ordinal);
+            foreach (var (profile, region) in list.ToList())
+            {
+                var p = profiles.FirstOrDefault(x => x.Name == profile);
+                if (p == null || p.Kind != ProfileKind.Sso) continue;
+                foreach (var m in AwsProfiles.SameSignIn(p, profiles, preferred)) list.Add((m.Name, region));
+            }
+        }
+        catch (Exception ex) { AppLog.Warn("Could not list the organization accounts to watch: " + ex.Message); }
         return list.Distinct().ToList();
     }
 
@@ -188,9 +201,27 @@ public static class DiscoveryMonitor
     /// Scans every watched account that is due (all of them when <paramref name="force"/>). Never prompts and never opens
     /// a browser: an expired sign-in is simply skipped and tried again later. Returns the new differences found.
     /// </summary>
+    static DateTime _lastSync = DateTime.MinValue;
+
+    /// <summary>Company sign-ins that had expired, so their organization accounts could not be checked in the last run.</summary>
+    public static IReadOnlyList<string> NeedSignIn { get; private set; } = Array.Empty<string>();
+
     public static async Task<List<string>> RunAsync(AppConfig cfg, bool force, CancellationToken ct = default)
     {
         var all = new List<string>();
+        // first look for AWS accounts added under the existing sign-ins (organizations), once a day or on a manual scan
+        if (force || _lastSync.Date != DateTime.Now.Date)
+        {
+            try
+            {
+                var sync = await AwsSso.SyncMembersAsync(ct);
+                NeedSignIn = sync.NeedSignIn;
+                if (sync.NeedSignIn.Count == 0) _lastSync = DateTime.Now;
+                foreach (var a in sync.Added) all.Add("New AWS account found under your sign-in: " + a);
+            }
+            catch (OperationCanceledException) { throw; }
+            catch (Exception ex) { AppLog.Warn("Looking for new AWS accounts failed: " + ex.Message); }
+        }
         var configured = cfg.Tunnels.Select(t => t.InstanceId).ToHashSet(StringComparer.Ordinal);
         foreach (var (profile, region) in Accounts(cfg))
         {

@@ -52,7 +52,11 @@ public sealed class DashboardForm : Form
     DateTime _cfgStamp = DateTime.MinValue;
 
     // UI
-    readonly Label _svcPill = NewPill(), _authPill = NewPill(), _reqPill = NewPill();
+    readonly Pill _svcPill = NewPill(), _authPill = NewPill(), _reqPill = NewPill();
+    // chips naming the organization accounts under the current sign-in, with how many servers each has
+    readonly FlowLayoutPanel _orgStrip = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Dock = DockStyle.Fill, Visible = false, Margin = new Padding(0, 0, 0, 2), Padding = Padding.Empty };
+    string _orgSig = "";
+    readonly Dictionary<Control, string> _tipText = new();
     sealed class CardFlow : FlowLayoutPanel
     {
         public CardFlow() { DoubleBuffered = true; }
@@ -69,7 +73,7 @@ public sealed class DashboardForm : Form
     DateTime _profStamp = DateTime.MinValue;
     List<string> _rowGroups = new();   // account (profile) of each row, same order as _rows
     int _selected = -1;
-    readonly Button _btnStart = new() { Text = "Start" }, _btnStop = new() { Text = "Stop" }, _btnRestart = new() { Text = "Restart" }, _btnAdd = new() { Text = "Add / change servers..." };
+    readonly ActionButton _btnStart = new() { Text = "Start", Glyph = "play" }, _btnStop = new() { Text = "Stop", Glyph = "stop" }, _btnRestart = new() { Text = "Restart", Glyph = "restart" }, _btnAdd = new() { Text = "Add / change servers...", Glyph = "plus" };
     // update banner
     readonly Panel _updateBar = new() { Dock = DockStyle.Top, Height = 46, Visible = false, BackColor = Color.FromArgb(224, 242, 241), Padding = new Padding(14, 0, 14, 0) };
     readonly Label _updateText = new() { AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(4, 70, 66) };
@@ -81,7 +85,7 @@ public sealed class DashboardForm : Form
     DateTime _toolsChecked = DateTime.MinValue;
     readonly Label _summary = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 11f), Margin = new Padding(0, 0, 0, 8) };
     readonly Label _detail = new() { AutoSize = true, MaximumSize = new Size(900, 0), Margin = new Padding(0, 8, 0, 0), ForeColor = Color.FromArgb(40, 40, 40) };
-    readonly ToolTip _tips = new() { AutoPopDelay = 15000 };
+    readonly ToolTip _tips = new() { AutoPopDelay = 15000, InitialDelay = 250, ReshowDelay = 100, ShowAlways = true };
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
     readonly NotifyIcon _tray = new();
     readonly Dictionary<Level, Icon> _icons = new();
@@ -165,23 +169,62 @@ public sealed class DashboardForm : Form
     }
 
     // ---- layout ------------------------------------------------------------------------------
-    static Label NewPill() => new()
+    /// <summary>A rounded status pill (status colour dot + text). Chips for organization accounts use the same shape without the dot.</summary>
+    sealed class Pill : Label
     {
-        AutoSize = true,
-        Padding = new Padding(12, 6, 12, 6),
+        public bool ShowDot = true;
+        public Pill()
+        {
+            AutoSize = false;
+            SetStyle(ControlStyles.UserPaint | ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.ResizeRedraw, true);
+        }
+
+        protected override void OnPaint(PaintEventArgs e)
+        {
+            var g = e.Graphics;
+            g.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+            g.Clear(Parent?.BackColor ?? AppTheme.Page);
+            var s = DeviceDpi / 96f;
+            using (var path = AppTheme.RoundRect(new RectangleF(0.5f, 0.5f, Width - 2, Height - 2), (Height - 2) / 2f))
+            using (var b = new SolidBrush(BackColor)) g.FillPath(b, path);
+            var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix | TextFormatFlags.EndEllipsis | TextFormatFlags.SingleLine;
+            if (ShowDot)
+            {
+                var tw = TextRenderer.MeasureText(Text, Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
+                float dot = 9 * s, gap = 9 * s;
+                var x0 = Math.Max(10 * s, (Width - (dot + gap + tw)) / 2f);
+                using (var b = new SolidBrush(ForeColor)) g.FillEllipse(b, x0, (Height - dot) / 2f, dot, dot);
+                TextRenderer.DrawText(g, Text, Font, new Rectangle((int)(x0 + dot + gap), 0, Math.Max(10, Width - (int)(x0 + dot + gap) - (int)(8 * s)), Height), ForeColor, flags);
+            }
+            else TextRenderer.DrawText(g, Text, Font, ClientRectangle, ForeColor, flags | TextFormatFlags.HorizontalCenter);
+        }
+    }
+
+    static Pill NewPill() => new()
+    {
+        AutoSize = false,
+        Dock = DockStyle.Fill,
+        Height = 40,
         Margin = new Padding(0, 0, 10, 0),
         Font = new Font("Segoe UI Semibold", 9.5f),
-        TextAlign = ContentAlignment.MiddleLeft,
     };
 
     void BuildLayout()
     {
-        var pills = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Padding = new Padding(0, 0, 0, 10) };
-        pills.Controls.AddRange(new Control[] { _svcPill, _authPill, _reqPill });
+        // three equal status pills across the full width, then the summary line, then the organization chips
+        var pills = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 0, 0, 10) };
+        for (var i = 0; i < 3; i++) pills.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
+        pills.RowStyles.Add(new RowStyle(SizeType.AutoSize));
+        _reqPill.Margin = Padding.Empty;
+        pills.Controls.Add(_svcPill, 0, 0);
+        pills.Controls.Add(_authPill, 1, 0);
+        pills.Controls.Add(_reqPill, 2, 0);
 
-        var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 4, 0, 0) };
-        top.Controls.Add(pills);
-        top.Controls.Add(_summary);
+        var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 4, 0, 0) };
+        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
+        top.Controls.Add(pills, 0, 0);
+        top.Controls.Add(_summary, 0, 1);
+        top.Controls.Add(_orgStrip, 0, 2);
 
         var detailHost = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = AppTheme.Page };
         _detail.AutoSize = false; _detail.Dock = DockStyle.Fill; _detail.TextAlign = ContentAlignment.MiddleLeft; _detail.MaximumSize = Size.Empty; _detail.Margin = Padding.Empty;
@@ -190,8 +233,9 @@ public sealed class DashboardForm : Form
         // one bottom bar: the three connection controls share one size, the main action sits on the right
         var bar = new Panel { Dock = DockStyle.Bottom, Height = 64, BackColor = Color.White };
         bar.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, 0, bar.Width, 0); };
-        foreach (var b in new[] { _btnStart, _btnStop, _btnRestart, _btnAdd }) { b.AutoSize = false; b.Height = 38; bar.Controls.Add(b); }
-        _btnStart.Width = _btnStop.Width = _btnRestart.Width = 120; _btnAdd.Width = 230;
+        foreach (var b in new[] { _btnStart, _btnStop, _btnRestart, _btnAdd }) { b.AutoSize = false; b.Height = 40; bar.Controls.Add(b); }
+        _btnStart.Width = _btnStop.Width = _btnRestart.Width = 124; _btnAdd.Width = 250;
+        SetTip(_btnAdd, "Open the setup wizard to find servers in your AWS accounts and choose which ones to connect to.");
         _btnStart.Click += async (_, _) => await ServiceActionAsync("start");
         _btnStop.Click += async (_, _) => await ServiceActionAsync("stop");
         _btnRestart.Click += async (_, _) => await ServiceActionAsync("restart");
@@ -243,7 +287,7 @@ public sealed class DashboardForm : Form
         var f = DeviceDpi / 96f;
         var avail = _cardHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2;
         var gap = (int)(12 * f);
-        var cols = Math.Max(1, avail / (int)(350 * f));
+        var cols = Math.Max(1, avail / (int)(330 * f));
         var w = Math.Max((int)(300 * f), (avail - gap * (cols - 1)) / cols);
         _cardHost.SuspendLayout();
         foreach (var c in _cards) { c.Width = w; c.Height = ServerCard.HeightFor(f); c.Margin = new Padding(0, 0, gap, gap); }
@@ -543,9 +587,10 @@ public sealed class DashboardForm : Form
         var viewIdx = Enumerable.Range(0, ordered.Count).Where(i => PKey(ordered[i].Profile) == _view).ToList();
         var viewProfiles = viewIdx.Select(i => ordered[i].Profile).ToList();
         // organizations (member accounts) are shown as headings whenever the sign-in has more than one, even for accounts found before this view existed
-        var memberCount = Profiles().Count(x => AwsProfiles.PrimaryKey(x) == _view);
+        var memberCount = ViewMembers().Count;
         _rowGroups = viewProfiles.Distinct().Count() > 1 || memberCount > 1 ? viewProfiles : new List<string>();
         UpdateGrid(viewIdx.Select(i => rows[i]).ToList());
+        UpdateOrgStrip();
 
         // overall
         var enabled = rows.Where(r => r.Level != Level.Grey || r.StatusText != "Off").ToList();
@@ -576,7 +621,7 @@ public sealed class DashboardForm : Form
         foreach (var m in new[] { _mStart, _trayStart }) m.Enabled = !_busy && !running;
         foreach (var m in new[] { _mStop, _trayStop }) m.Enabled = !_busy && running;
         foreach (var m in new[] { _mRestart, _trayRestart }) m.Enabled = !_busy;
-        _btnStart.Enabled = !_busy && !running; _btnStop.Enabled = !_busy && running; _btnRestart.Enabled = !_busy;
+        UpdateServiceButtons(running);
 
         NotifyOnChange(overall, rows);
         _overall = overall;
@@ -711,7 +756,78 @@ public sealed class DashboardForm : Form
     string PLabel(string profile)
     {
         var p = Profiles().FirstOrDefault(x => x.Name == profile);
-        return p == null ? _cfg.AliasOr("key:" + profile, profile) : _cfg.AliasOr(AwsProfiles.PrimaryKey(p), AwsProfiles.PrimaryName(p));
+        return p == null ? _cfg.AliasOr("key:" + profile, profile) : AwsProfiles.PrimaryLabel(_cfg, p, Profiles());
+    }
+
+    /// <summary>The AWS accounts (organizations) under the sign-in being shown, one per AWS account even if an account was saved twice.</summary>
+    List<ProfileInfo> ViewMembers()
+    {
+        if (_view == null) return new List<ProfileInfo>();
+        var group = Profiles().Where(x => AwsProfiles.PrimaryKey(x) == _view).ToList();
+        return AwsProfiles.OneEach(group, _cfg.Tunnels.Select(t => t.Profile).ToHashSet(StringComparer.Ordinal));
+    }
+
+    int ServersIn(ProfileInfo m)
+    {
+        var all = Profiles();
+        return _cfg.Tunnels.Count(t => t.Profile == m.Name || (m.AccountId != null && all.FirstOrDefault(p => p.Name == t.Profile)?.AccountId == m.AccountId));
+    }
+
+    void SetTip(Control c, string text)
+    {
+        if (_tipText.TryGetValue(c, out var old) && old == text) return;
+        _tipText[c] = text;
+        _tips.SetToolTip(c, text);
+    }
+
+    /// <summary>Start / Stop / Restart: dimmed when they have nothing to do, with a hover note that says what each one does (or why it is dimmed).</summary>
+    void UpdateServiceButtons(bool running)
+    {
+        _btnStart.Available = !_busy && !running;
+        _btnStop.Available = !_busy && running;
+        _btnRestart.Available = !_busy;
+        SetTip(_btnStart, _busy ? "Working... one moment."
+            : running ? "Already running: your connections are open. Use Restart to reconnect them all."
+            : "Open all your secure connections now. Each server gets a local port that PuTTY, WinSCP or Remote Desktop connects through.");
+        SetTip(_btnStop, _busy ? "Working... one moment."
+            : running ? "Close every secure connection. Open PuTTY, WinSCP and Remote Desktop sessions will drop. Your servers in AWS are not touched."
+            : "Nothing is running, so there is nothing to stop.");
+        SetTip(_btnRestart, _busy ? "Working... one moment."
+            : "Close and reopen every connection. Use this after your PC wakes from sleep, or when a server card shows a problem.");
+    }
+
+    /// <summary>Shows each organization account under the current sign-in as a chip with its server count; accounts without servers are greyed.</summary>
+    void UpdateOrgStrip()
+    {
+        var items = ViewMembers()
+            .Select(m => (Name: _cfg.AliasOr(m.Name, m.Name), Count: ServersIn(m), Id: m.AccountId ?? ""))
+            .OrderByDescending(x => x.Count).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var sig = string.Join("|", items.Select(i => i.Name + ":" + i.Count));
+        if (sig == _orgSig) return;
+        _orgSig = sig;
+        _orgStrip.SuspendLayout();
+        foreach (var c in _orgStrip.Controls.Cast<Control>().ToList()) { _orgStrip.Controls.Remove(c); c.Dispose(); }
+        if (items.Count > 1)
+        {
+            _orgStrip.Controls.Add(new Label { Text = "Organization accounts", AutoSize = true, ForeColor = Color.FromArgb(94, 110, 114), Margin = new Padding(0, 6, 10, 0) });
+            foreach (var it in items)
+            {
+                var text = it.Count > 0 ? $"{it.Name}    {it.Count}" : it.Name;
+                var font = AppTheme.Body(8.5f);
+                var chip = new Pill
+                {
+                    ShowDot = false, Text = text, Font = font, Height = 26, Margin = new Padding(0, 0, 8, 6),
+                    Width = TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width + 28,
+                    BackColor = it.Count > 0 ? Color.FromArgb(214, 238, 234) : Color.FromArgb(234, 240, 240),
+                    ForeColor = it.Count > 0 ? Color.FromArgb(4, 70, 66) : Color.FromArgb(105, 122, 126),
+                };
+                _tips.SetToolTip(chip, (it.Id.Length > 0 ? "AWS account " + it.Id + ". " : "") + (it.Count > 0 ? $"{it.Count} server{(it.Count == 1 ? "" : "s")} added." : "No servers added yet. Use Add / change servers to include this account."));
+                _orgStrip.Controls.Add(chip);
+            }
+        }
+        _orgStrip.Visible = items.Count > 1;
+        _orgStrip.ResumeLayout(true);
+        LayoutCards();
     }
 
     /// <summary>Keeps the account switcher in step with the saved servers. It lists primary accounts only; the current one is the default.</summary>
@@ -812,8 +928,8 @@ public sealed class DashboardForm : Form
         if (_selected < 0 || _selected >= _rows.Count)
         {
             // nothing selected: point out organization accounts under this sign-in that have no servers added yet
-            var members = Profiles().Where(x => AwsProfiles.PrimaryKey(x) == _view).Select(x => x.Name).ToList();
-            var empty = members.Count(m => !_cfg.Tunnels.Any(t => t.Profile == m));
+            var members = ViewMembers();
+            var empty = members.Count(m => ServersIn(m) == 0);
             _detail.Text = members.Count > 1 && empty > 0 && _cfg.Tunnels.Count > 0
                 ? $"{empty} more account{(empty == 1 ? "" : "s")} under this sign-in {(empty == 1 ? "has" : "have")} no servers added yet. Click Add / change servers to include {(empty == 1 ? "it" : "them")}."
                 : "";
@@ -905,8 +1021,14 @@ public sealed class DashboardForm : Form
                 return;
             }
             var changes = await Task.Run(() => DiscoveryMonitor.RunAsync(cfg, force));
-            if (changes.Count > 0) NotifyChanges(changes);
-            else if (interactive) MessageBox.Show(this, "Scan finished. Nothing has changed since the last scan.", "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            var expired = DiscoveryMonitor.NeedSignIn;
+            if (changes.Count > 0 && !interactive) NotifyChanges(changes);
+            else if (changes.Count > 0)
+                MessageBox.Show(this, $"Scan finished. {(changes.Count == 1 ? "1 change" : changes.Count + " changes")}:\n\n" + string.Join("\n", changes.Take(12)) + (changes.Count > 12 ? $"\n...and {changes.Count - 12} more (Servers > What changed since the last scan)." : ""), "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            else if (interactive)
+                MessageBox.Show(this, "Scan finished. Nothing has changed since the last scan." +
+                    (expired.Count > 0 ? "\n\nNew AWS accounts under " + string.Join(", ", expired) + " could not be checked because that sign-in has expired. Use AWS > Sign in again, then scan again." : ""),
+                    "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Information);
         }
         catch (Exception ex) { AppLog.Warn("Server scan failed: " + ex.Message); }
         finally { _scanning = false; }

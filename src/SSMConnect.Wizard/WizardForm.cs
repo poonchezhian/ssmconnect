@@ -39,6 +39,7 @@ public sealed class WizardForm : Form
     readonly Button _next = new() { Text = "Next >", AutoSize = true, MinimumSize = new Size(120, 36), Padding = new Padding(10, 2, 10, 2) };
     readonly HeaderBand _hdr = new() { Dock = DockStyle.Top, Height = 84 };
     int _idx;
+    readonly HintCard _hint = new() { Dock = DockStyle.Bottom, Height = 92 };
     List<DiscoveredServer> _servers = new();
 
     // step 0
@@ -127,6 +128,7 @@ public sealed class WizardForm : Form
         BuildServersStep(host);
         BuildKeysStep(host);
         BuildApplyStep(host);
+        host.Controls.Add(_hint);   // after the step pages (which fill the space), so it sits along the bottom
 
         _back.Tag = null; _next.Tag = "primary";
         AppTheme.RoomyRows(_list);
@@ -429,12 +431,12 @@ public sealed class WizardForm : Form
             var pick = -1;
             foreach (var g in groups)
             {
-                var members = g.ToList();
-                var rep = members.FirstOrDefault(x => x.Name == select) ?? members.FirstOrDefault(x => x.Name == _cfg.Profile) ?? members[0];
-                var label = _cfg.AliasOr(AwsProfiles.PrimaryKey(rep), AwsProfiles.PrimaryName(rep)) + (members.Count > 1 ? $"   ({members.Count} accounts)" : "");
+                var members = AwsProfiles.OneEach(g, Pref());   // an account saved twice counts once
+                var rep = g.FirstOrDefault(x => x.Name == select) ?? g.FirstOrDefault(x => x.Name == _cfg.Profile) ?? members[0];
+                var label = AwsProfiles.PrimaryLabel(_cfg, rep, g) + (members.Count > 1 ? $"   ({members.Count} accounts)" : "");
                 _profile.Items.Add(new PrimaryItem(rep, label));
-                if (members.Any(x => x.Name == select)) pick = _profile.Items.Count - 1;
-                else if (pick < 0 && members.Any(x => x.Name == _cfg.Profile)) pick = _profile.Items.Count - 1;
+                if (g.Any(x => x.Name == select)) pick = _profile.Items.Count - 1;
+                else if (pick < 0 && g.Any(x => x.Name == _cfg.Profile)) pick = _profile.Items.Count - 1;
             }
             if (pick < 0 && groups.Count == 1) pick = 0;
             _profile.SelectedIndex = pick; // -1 leaves it empty so nothing is assumed
@@ -461,12 +463,19 @@ public sealed class WizardForm : Form
             _authResult.Text = "Choose an account from the list, or add a new one.";
             return;
         }
-        var sib = AwsProfiles.SameSignIn(pr, _profiles);
-        _profileInfo.Text = pr.Kind == ProfileKind.Sso
-            ? (sib.Count > 1 ? $"Includes {sib.Count} AWS accounts. Their servers are listed together, grouped by account." : "One AWS account.")
-            : "Access keys saved on this PC.";
+        _profileInfo.Text = ProfileInfoText(pr);
         _regionHint.Text = "";
         _ = TestAsync();
+    }
+
+    /// <summary>Profiles with saved connections, which win when one AWS account was saved under two profile names.</summary>
+    HashSet<string> Pref() => _cfg.Tunnels.Select(t => t.Profile).ToHashSet(StringComparer.Ordinal);
+
+    string ProfileInfoText(ProfileInfo pr)
+    {
+        if (pr.Kind != ProfileKind.Sso) return "Access keys saved on this PC.";
+        var n = AwsProfiles.SameSignIn(pr, _profiles, Pref()).Count;
+        return n > 1 ? $"Includes {n} AWS accounts. Their servers are listed together, grouped by account." : "One AWS account.";
     }
 
     void ClearServers()
@@ -570,7 +579,7 @@ public sealed class WizardForm : Form
     /// <summary>The accounts to search: every account under the same company sign-in when that is ticked, otherwise just the chosen one.</summary>
     List<string> TargetProfiles()
     {
-        if (SelectedProfile is { } pr) return AwsProfiles.SameSignIn(pr, _profiles).Select(x => x.Name).ToList();
+        if (SelectedProfile is { } pr) return AwsProfiles.SameSignIn(pr, _profiles, Pref()).Select(x => x.Name).ToList();
         return string.IsNullOrWhiteSpace(_cfg.Profile) ? new List<string>() : new List<string> { _cfg.Profile };
     }
 
@@ -583,10 +592,17 @@ public sealed class WizardForm : Form
         if (targets.Count == 0) return;
         var region = _cfg.Region;
         _findResult.ForeColor = SystemColors.ControlText;
-        _findResult.Text = targets.Count > 1 ? $"Searching {targets.Count} accounts for servers..." : "Searching for your servers...";
+        _findResult.Text = "Checking for new AWS accounts under this sign-in...";
         if (_findBtn != null) _findBtn.Enabled = false;
         try
         {
+            // organization accounts added since the last time are picked up here, so a rescan covers them too
+            if (await SyncOrganizationsAsync())
+            {
+                targets = TargetProfiles();
+                if (SelectedProfile is { } sp) _profileInfo.Text = ProfileInfoText(sp);
+            }
+            _findResult.Text = targets.Count > 1 ? $"Searching {targets.Count} accounts for servers..." : "Searching for your servers...";
             var configured = _cfg.Tunnels.Select(t => t.InstanceId).ToHashSet();
             var results = new List<DiscoveredServer>();
             var failed = new List<string>();
@@ -628,6 +644,18 @@ public sealed class WizardForm : Form
             _findResult.Text = ex.Message;
         }
         finally { if (_findBtn != null) _findBtn.Enabled = true; }
+    }
+
+    /// <summary>Looks (silently, no browser) for AWS accounts that were added under the signed-in company sign-in. True when new ones were saved.</summary>
+    async Task<bool> SyncOrganizationsAsync()
+    {
+        try
+        {
+            var r = await AwsSso.SyncMembersAsync();
+            if (r.Added.Count > 0) { _profiles = AwsProfiles.List(); return true; }
+        }
+        catch { /* a convenience: the scan continues with the accounts already saved */ }
+        return false;
     }
 
     /// <summary>Shows the servers from the last scan straight away, without calling AWS.</summary>
@@ -1123,6 +1151,15 @@ public sealed class WizardForm : Form
         "Saving your connections to your SSH and file-transfer tools.",
     };
 
+    static readonly (string Title, string Body)[] Hints =
+    {
+        ("What are these two tools?", "The AWS CLI talks to your AWS account. The Session Manager plugin opens a private, encrypted tunnel to each server, so no server needs a public address or an open port. Both are free from Amazon."),
+        ("Which account should I pick?", "Pick your company sign-in once. Every AWS account under it comes along automatically, and you sign in through your browser, so SSMConnect never sees your AWS password. Several accounts? They are grouped under the one sign-in."),
+        ("", ""),
+        ("", ""),
+        ("What happens when I finish?", "Your servers appear on the dashboard as cards, and the tunnels stay open while SSMConnect runs in the system tray. Open PuTTY, WinSCP or Remote Desktop straight from a card, with no ports to remember."),
+    };
+
     void OnNext()
     {
         if (_idx == _steps.Count - 1) { Close(); return; }
@@ -1157,6 +1194,9 @@ public sealed class WizardForm : Form
         _title.Text = Titles[_idx];
         _hdr.Set(Titles[_idx][(Titles[_idx].IndexOf(" - ", StringComparison.Ordinal) + 3)..], $"Step {_idx + 1} of 5   |   {Subtitles[_idx]}", _idx);
         _back.Enabled = _idx > 0;
+        // short plain-language help on the pages that are mostly empty; the two table pages need the room
+        _hint.Visible = _idx is 0 or 1 or 4;
+        if (_idx < Hints.Length) _hint.Set(Hints[_idx].Title, Hints[_idx].Body);
         _next.Text = _idx == _steps.Count - 1 ? "Finish" : "Next >";
         _next.Enabled = true;
         if (_idx == 0) RefreshPrereqs();

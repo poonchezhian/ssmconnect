@@ -81,18 +81,82 @@ public static class AwsProfiles
 
     public static ProfileInfo? Find(string? name) => name == null ? null : List().FirstOrDefault(p => p.Name == name);
 
-    /// <summary>The saved profiles that share this profile's company sign-in, which are the other AWS accounts reachable with it.</summary>
-    public static List<ProfileInfo> SameSignIn(ProfileInfo p, IEnumerable<ProfileInfo> all)
+    /// <summary>
+    /// The saved profiles that share this profile's company sign-in (the other AWS accounts reachable with it), one per AWS account.
+    /// Profiles that point at the same account are counted once; <paramref name="preferred"/> names (those with saved connections) win.
+    /// </summary>
+    public static List<ProfileInfo> SameSignIn(ProfileInfo p, IEnumerable<ProfileInfo> all, ISet<string>? preferred = null)
     {
         if (p.Kind != ProfileKind.Sso) return new List<ProfileInfo> { p };
-        var list = all.Where(x => x.Kind == ProfileKind.Sso &&
-                (p.SsoSession != null ? x.SsoSession == p.SsoSession : x.SsoSession == null && p.StartUrl != null && x.StartUrl == p.StartUrl)).ToList();
-        if (!list.Any(x => x.Name == p.Name)) list.Add(p);
-        return list.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        var key = PrimaryKey(p);
+        var group = all.Where(x => PrimaryKey(x) == key).ToList();
+        if (!group.Any(x => x.Name == p.Name)) group.Add(p);
+        return OneEach(group, preferred, p.Name);
+    }
+
+    /// <summary>One profile per AWS account: when several profiles point at the same account, the one with saved connections (then the chosen one, then the shortest name) is kept.</summary>
+    public static List<ProfileInfo> OneEach(IEnumerable<ProfileInfo> group, ISet<string>? preferred = null, string? favourite = null)
+    {
+        var result = new List<ProfileInfo>();
+        foreach (var set in group.GroupBy(x => string.IsNullOrEmpty(x.AccountId) ? "n:" + x.Name : "a:" + x.AccountId))
+        {
+            var best = set.OrderByDescending(x => preferred != null && preferred.Contains(x.Name))
+                          .ThenByDescending(x => favourite != null && x.Name == favourite)
+                          .ThenBy(x => x.Name.Length)
+                          .ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).First();
+            result.Add(best);
+        }
+        return result.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>The sign-in address reduced to what identifies it (its host), so two nicknames that differ only in letter case, or a trailing slash, count as one sign-in.</summary>
+    public static string NormaliseUrl(string? url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return "";
+        var u = url.Trim();
+        try { if (Uri.TryCreate(u, UriKind.Absolute, out var uri)) return uri.Host.ToLowerInvariant(); } catch { }
+        return u.TrimEnd('/', '#').ToLowerInvariant();
     }
 
     /// <summary>Identifies the primary account (the company sign-in, or an access-key login) a profile belongs to.</summary>
-    public static string PrimaryKey(ProfileInfo p) => p.Kind == ProfileKind.Sso ? "sso:" + (p.SsoSession ?? p.StartUrl ?? p.Name) : "key:" + p.Name;
+    public static string PrimaryKey(ProfileInfo p)
+    {
+        if (p.Kind != ProfileKind.Sso) return "key:" + p.Name;
+        var host = NormaliseUrl(p.StartUrl);
+        return "sso:" + (host.Length > 0 ? host : (p.SsoSession ?? p.Name).ToLowerInvariant());
+    }
+
+    /// <summary>Keys older versions used for friendly names (the sign-in's nickname or full address).</summary>
+    public static IEnumerable<string> LegacyKeys(ProfileInfo p)
+    {
+        if (p.Kind != ProfileKind.Sso) yield break;
+        if (!string.IsNullOrEmpty(p.SsoSession)) yield return "sso:" + p.SsoSession;
+        if (!string.IsNullOrEmpty(p.StartUrl)) yield return "sso:" + p.StartUrl;
+        yield return "sso:" + p.Name;
+    }
+
+    /// <summary>The friendly name of a primary account: the one the person gave it, else the sign-in's own name.</summary>
+    public static string PrimaryLabel(AppConfig cfg, ProfileInfo p, IEnumerable<ProfileInfo> all)
+    {
+        var key = PrimaryKey(p);
+        if (cfg.Aliases != null)
+        {
+            if (cfg.Aliases.TryGetValue(key, out var a) && !string.IsNullOrWhiteSpace(a)) return a;
+            foreach (var m in all.Where(x => PrimaryKey(x) == key).Append(p))
+                foreach (var k in LegacyKeys(m))
+                    if (cfg.Aliases.TryGetValue(k, out var b) && !string.IsNullOrWhiteSpace(b)) return b;
+        }
+        return PrimaryName(p);
+    }
+
+    /// <summary>The address and region a named company sign-in (sso-session) is set up with.</summary>
+    public static (string? StartUrl, string? SsoRegion) SessionInfo(string session)
+    {
+        var cfg = ReadIni(ConfigPath);
+        if (cfg.TryGetValue("sso-session " + session, out var d))
+            return (d.TryGetValue("sso_start_url", out var u) && u.Length > 0 ? u : null, d.TryGetValue("sso_region", out var r) && r.Length > 0 ? r : null);
+        return (null, null);
+    }
 
     /// <summary>A short friendly name for the primary account: the sign-in's nickname, or the company part of its address.</summary>
     public static string PrimaryName(ProfileInfo p)
