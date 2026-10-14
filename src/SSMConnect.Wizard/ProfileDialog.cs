@@ -51,6 +51,8 @@ public sealed class ProfileDialog : Form
     readonly ComboBox _found = new() { Width = 560, DropDownStyle = ComboBoxStyle.DropDownList };
     readonly Label _foundStatus = new() { AutoSize = true, MaximumSize = new Size(W, 0), ForeColor = Muted, Margin = new Padding(0, 0, 0, 8) };
     List<SsoCandidate> _cands = new();
+    List<SsoAccount> _accounts = new();
+    readonly CheckBox _allAccounts = new() { AutoSize = true, Checked = true, Visible = false, MaximumSize = new Size(W, 0), Margin = new Padding(0, 4, 0, 6) };
 
     /// <summary>Name of the profile that was saved, when the dialog returns OK.</summary>
     public string? CreatedProfile { get; private set; }
@@ -100,6 +102,7 @@ public sealed class ProfileDialog : Form
         _signIn.Margin = new Padding(0, 4, 0, 6);
         _ssoPanel.Controls.Add(_signIn);
         _ssoPanel.Controls.Add(_ssoStatus);
+        _ssoPanel.Controls.Add(_allAccounts);
         _ssoPanel.Controls.Add(Cap("AWS account"));
         _ssoPanel.Controls.Add(_account);
         _ssoPanel.Controls.Add(Cap("Role"));
@@ -133,7 +136,7 @@ public sealed class ProfileDialog : Form
         _rbSso.CheckedChanged += (_, _) => { _ssoPanel.Visible = _rbSso.Checked; _keysPanel.Visible = !_rbSso.Checked; };
         _signIn.Click += async (_, _) => await SignInAsync();
         _account.SelectedIndexChanged += async (_, _) => await LoadRolesAsync();
-        _save.Click += (_, _) => Save();
+        _save.Click += async (_, _) => await SaveAsync();
         Shown += async (_, _) => await DetectAsync();
     }
 
@@ -244,7 +247,11 @@ public sealed class ProfileDialog : Form
             _account.Items.Clear();
             _account.Items.AddRange(accounts.Cast<object>().ToArray());
             if (accounts.Count == 0) throw new InvalidOperationException("You are signed in, but no AWS accounts are assigned to you. Ask your AWS admin.");
-            Say($"Signed in. Found {accounts.Count} account(s). Pick one below.", true, _ssoStatus);
+            _accounts = accounts;
+            _allAccounts.Visible = accounts.Count > 1;
+            _allAccounts.Checked = true;
+            _allAccounts.Text = $"Add all {accounts.Count} accounts I can access (recommended). Their servers are then listed under each account's name.";
+            Say(accounts.Count > 1 ? $"Signed in. Found {accounts.Count} accounts under this sign-in." : "Signed in. Found 1 account.", true, _ssoStatus);
             _account.SelectedIndex = 0;
         }
         catch (Exception ex)
@@ -277,13 +284,16 @@ public sealed class ProfileDialog : Form
         catch (Exception ex) { Say(ex.Message, false); _manualRow.Visible = true; }
     }
 
-    void Save()
+    async Task SaveAsync()
     {
         if (!ValidName()) return;
         var name = _name.Text.Trim();
-        if (AwsProfiles.Find(name) != null &&
+        var all = _rbSso.Checked && _allAccounts.Visible && _allAccounts.Checked && !_manualRow.Visible && _accounts.Count > 1 && _token.Length > 0;
+        // with "all accounts" the nickname names the sign-in; each account gets a profile named after the account itself
+        if (!all && AwsProfiles.Find(name) != null &&
             MessageBox.Show(this, $"An AWS profile called \"{name}\" already exists on this PC. Replace its settings?", "Account exists", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes)
             return;
+        _save.Enabled = false;
         try
         {
             if (_rbSso.Checked)
@@ -297,6 +307,16 @@ public sealed class ProfileDialog : Form
                 if (!System.Text.RegularExpressions.Regex.IsMatch(account, @"^\d{12}$")) { Say("Pick an account (or type the 12-digit account ID).", false); return; }
                 if (!System.Text.RegularExpressions.Regex.IsMatch(role, @"^[\w+=,.@\-]{1,64}$")) { Say("Pick a role (or type the role name).", false); return; }
                 AwsProfiles.SaveSsoSession(name, url, ssoRegion);
+                if (all)
+                {
+                    var made = await AwsSso.AddAllAccountsAsync(name, _token, ssoRegion, role, _accounts, s => Say(s, null));
+                    if (made.Count == 0) { Say("None of the accounts could be set up (no role is assigned to you in them). Ask your AWS admin.", false); return; }
+                    var pick = made.FirstOrDefault(m => m.Account != null && m.Account.Id == account);
+                    CreatedProfile = pick.Profile ?? made[0].Profile;
+                    DialogResult = DialogResult.OK;
+                    Close();
+                    return;
+                }
                 AwsProfiles.SaveSsoProfile(name, name, account, role);
             }
             else
@@ -308,5 +328,6 @@ public sealed class ProfileDialog : Form
             Close();
         }
         catch (Exception ex) { Say(ex.Message, false); }
+        finally { if (!IsDisposed) _save.Enabled = true; }
     }
 }

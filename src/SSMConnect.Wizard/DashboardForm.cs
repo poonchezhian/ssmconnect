@@ -59,6 +59,8 @@ public sealed class DashboardForm : Form
     }
     readonly CardFlow _cardHost = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, FlowDirection = FlowDirection.LeftToRight, BackColor = AppTheme.Page, Padding = new Padding(0, 4, 0, 0) };
     readonly List<ServerCard> _cards = new();
+    readonly List<Label> _groupHeads = new();
+    List<string> _rowGroups = new();   // account (profile) of each row, same order as _rows
     int _selected = -1;
     readonly Button _btnStart = new() { Text = "Start" }, _btnStop = new() { Text = "Stop" }, _btnRestart = new() { Text = "Restart" }, _btnAdd = new() { Text = "Add / change servers..." };
     // update banner
@@ -233,6 +235,7 @@ public sealed class DashboardForm : Form
         var w = Math.Max((int)(300 * f), (avail - gap * (cols - 1)) / cols);
         _cardHost.SuspendLayout();
         foreach (var c in _cards) { c.Width = w; c.Height = ServerCard.HeightFor(f); c.Margin = new Padding(0, 0, gap, gap); }
+        foreach (var h in _groupHeads) { h.Width = Math.Max(avail, 200); h.Height = (int)(26 * f); h.Margin = new Padding(0, (int)(6 * f), 0, (int)(2 * f)); }
         _cardHost.ResumeLayout();
     }
 
@@ -511,9 +514,13 @@ public sealed class DashboardForm : Form
         // rows
         var rows = new List<Row>();
         var multiAccount = _cfg.Tunnels.Select(x => x.Profile).Distinct().Count() > 1;
-        foreach (var t in _cfg.Tunnels)
+        // servers of one account sit together (accounts in the order they were first added)
+        var order = _cfg.Tunnels.Select(x => x.Profile).Distinct().ToList();
+        var ordered = multiAccount ? _cfg.Tunnels.OrderBy(x => order.IndexOf(x.Profile)).ToList() : _cfg.Tunnels.ToList();
+        _rowGroups = multiAccount ? ordered.Select(x => x.Profile).ToList() : new List<string>();
+        foreach (var t in ordered)
         {
-            var label = multiAccount ? $"{t.Name}  [{t.Profile}]" : t.Name;
+            var label = t.Name;
             var s = status?.Tunnels.FirstOrDefault(x => x.InstanceId == t.InstanceId && x.LocalPort == t.LocalPort);
             Row row;
             if (!t.Enabled) row = new Row(label, t.InstanceId, t.LocalPort, "Off", "This connection is turned off.", null, Level.Grey);
@@ -646,11 +653,35 @@ public sealed class DashboardForm : Form
                     Actions = ActionsFor(tun, up),
                 };
             }
+            ArrangeGroups(f);
             if (_selected >= _cards.Count) _selected = -1;
             for (var i = 0; i < _cards.Count; i++) _cards[i].Selected = i == _selected;
         }
         finally { _cardHost.ResumeLayout(); }
         ShowDetail();
+    }
+
+    /// <summary>With several accounts, puts a quiet heading above each account's servers.</summary>
+    void ArrangeGroups(float f)
+    {
+        var names = _rowGroups.Count == _cards.Count ? _rowGroups.Distinct().ToList() : new List<string>();
+        while (_groupHeads.Count > names.Count) { var h = _groupHeads[^1]; _groupHeads.RemoveAt(_groupHeads.Count - 1); _cardHost.Controls.Remove(h); h.Dispose(); }
+        while (_groupHeads.Count < names.Count)
+            _groupHeads.Add(new Label { AutoSize = false, TextAlign = ContentAlignment.BottomLeft, ForeColor = Color.FromArgb(105, 112, 120), Font = new Font(Font.FontFamily, 9f, FontStyle.Bold), BackColor = AppTheme.Page });
+        var idx = 0;
+        for (var g = 0; g < names.Count; g++)
+        {
+            var count = _rowGroups.Count(x => x == names[g]);
+            var head = _groupHeads[g];
+            head.Text = $"{names[g].ToUpperInvariant()}    {count} server{(count == 1 ? "" : "s")}";
+            if (!_cardHost.Controls.Contains(head)) _cardHost.Controls.Add(head);
+            _cardHost.SetFlowBreak(head, true);
+            _cardHost.Controls.SetChildIndex(head, idx++);
+            for (var i = 0; i < _cards.Count; i++)
+                if (_rowGroups[i] == names[g]) _cardHost.Controls.SetChildIndex(_cards[i], idx++);
+        }
+        if (names.Count == 0) for (var i = 0; i < _cards.Count; i++) _cardHost.Controls.SetChildIndex(_cards[i], i);
+        LayoutCards();
     }
 
     void ShowDetail()

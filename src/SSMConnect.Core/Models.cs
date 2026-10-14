@@ -47,6 +47,8 @@ public sealed class AppConfig
 public sealed class DiscoveredServer
 {
     public string Name { get; set; } = "";
+    /// <summary>The saved AWS profile (account) this server was found in.</summary>
+    public string Profile { get; set; } = "";
     public string Environment { get; set; } = "";
     public string InstanceId { get; set; } = "";
     public string PrivateIp { get; set; } = "";

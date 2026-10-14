@@ -60,6 +60,37 @@ public static class AwsSso
         return list.OrderBy(a => a.Name, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    /// <summary>
+    /// Saves one profile for every account the person can use under this company sign-in, so all of them can be searched for servers.
+    /// Accounts that already have a profile are reused. The same role is used everywhere it exists, otherwise the account's first role.
+    /// </summary>
+    public static async Task<List<(string Profile, SsoAccount Account)>> AddAllAccountsAsync(string session, string token, string ssoRegion, string preferredRole,
+        IReadOnlyList<SsoAccount> accounts, Action<string>? progress = null, CancellationToken ct = default)
+    {
+        var all = AwsProfiles.List();
+        var existing = all.Where(p => p.Kind == ProfileKind.Sso && p.SsoSession == session && p.AccountId != null).ToList();
+        var taken = new HashSet<string>(all.Select(p => p.Name), StringComparer.OrdinalIgnoreCase);
+        var result = new List<(string Profile, SsoAccount Account)>();
+        var i = 0;
+        foreach (var a in accounts)
+        {
+            ct.ThrowIfCancellationRequested();
+            progress?.Invoke($"Setting up account {++i} of {accounts.Count}: {a.Name}...");
+            var have = existing.FirstOrDefault(p => p.AccountId == a.Id);
+            if (have != null) { result.Add((have.Name, a)); continue; }
+            List<string> roles;
+            try { roles = await ListRolesAsync(token, ssoRegion, a.Id, ct); }
+            catch { continue; }   // no role in this account for this person: skip it
+            if (roles.Count == 0) continue;
+            var role = roles.Contains(preferredRole) ? preferredRole : roles[0];
+            var name = AwsProfiles.ProfileNameFor(a.Name, a.Id, taken);
+            AwsProfiles.SaveSsoProfile(name, session, a.Id, role);
+            taken.Add(name);
+            result.Add((name, a));
+        }
+        return result;
+    }
+
     public static async Task<List<string>> ListRolesAsync(string token, string ssoRegion, string accountId, CancellationToken ct = default)
     {
         var r = await AwsCli.RunAsync(new AppConfig { Profile = "", Region = "" },

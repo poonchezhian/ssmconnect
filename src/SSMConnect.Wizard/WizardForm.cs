@@ -57,6 +57,9 @@ public sealed class WizardForm : Form
     readonly Label _regionHint = new() { AutoSize = true, ForeColor = Muted, MaximumSize = new Size(ContentWidth, 0) };
     readonly Button _ssoBtn = new() { Text = "Sign in (SSO)", AutoSize = true, MinimumSize = new Size(170, 38), Padding = new Padding(10, 2, 10, 2), Visible = false };
     List<ProfileInfo> _profiles = new();
+    /// <summary>Accounts whose servers were listed by the latest search. Saved connections of these accounts are replaced by the new selection; all others are kept.</summary>
+    HashSet<string> _scannedProfiles = new(StringComparer.Ordinal);
+    readonly CheckBox _allAccts = new() { AutoSize = true, Checked = true, Visible = false, MaximumSize = new Size(ContentWidth, 0), Margin = new Padding(0, 0, 0, 8) };
     bool _connected, _profilesLoaded, _loadingProfiles;
     readonly Label _authResult = new() { AutoSize = true, MaximumSize = new Size(ContentWidth, 0) };
     // step 2
@@ -298,6 +301,9 @@ public sealed class WizardForm : Form
         ClearServers();
         var pr = SelectedProfile;
         _ssoBtn.Visible = pr?.Kind == ProfileKind.Sso;
+        var siblings = pr == null ? new List<ProfileInfo>() : AwsProfiles.SameSignIn(pr, _profiles);
+        _allAccts.Visible = pr?.Kind == ProfileKind.Sso && siblings.Count > 1;
+        _allAccts.Text = $"Search all {siblings.Count} accounts under this sign-in (servers are listed under each account's name)";
         if (_profiles.Count == 0)
         {
             _profileInfo.Text = "";
@@ -329,6 +335,7 @@ public sealed class WizardForm : Form
     {
         _servers = new();
         _prevServers = new();
+        _scannedProfiles = new(StringComparer.Ordinal);
         _autoFoundFor = "";
         _list.Items.Clear();
         _findResult.Text = "";
@@ -389,6 +396,8 @@ public sealed class WizardForm : Form
         p.Controls.Add(Para("Find your servers, then tick the ones you want to connect to. Linux servers open in PuTTY, WinSCP or MobaXterm; Windows servers open in Remote Desktop (RDP). Servers marked \"No\" cannot be reached through SSM (the SSM agent or instance role is missing). The next step finds the SSH key for each Linux server."));
         var find = new Button { Text = "Find my servers", AutoSize = true, MinimumSize = new Size(190, 38), Padding = new Padding(10, 2, 10, 2) };
         p.Controls.Add(Row(find, _findResult));
+        p.Controls.Add(_allAccts);
+        _allAccts.CheckedChanged += (_, _) => { ClearServers(); _ = FindServersAsync(); };
         var all = new Button { Text = "Select all", AutoSize = true, MinimumSize = new Size(110, 30) };
         var none = new Button { Text = "Select none", AutoSize = true, MinimumSize = new Size(110, 30) };
         all.Click += (_, _) => SetAllChecked(true);
@@ -417,24 +426,61 @@ public sealed class WizardForm : Form
     Button? _findBtn;
     string _autoFoundFor = "";
 
-    /// <summary>Lists the servers of the chosen account and region. Starts by itself when the page opens.</summary>
+    /// <summary>The accounts to search: every account under the same company sign-in when that is ticked, otherwise just the chosen one.</summary>
+    List<string> TargetProfiles()
+    {
+        if (_allAccts.Visible && _allAccts.Checked && SelectedProfile is { } pr)
+            return AwsProfiles.SameSignIn(pr, _profiles).Select(x => x.Name).ToList();
+        return string.IsNullOrWhiteSpace(_cfg.Profile) ? new List<string>() : new List<string> { _cfg.Profile };
+    }
+
+    /// <summary>Lists the servers of the chosen account(s) and region. Starts by itself when the page opens.</summary>
     async Task FindServersAsync()
     {
         ApplyAwsFields();
         if (string.IsNullOrWhiteSpace(_cfg.Profile) || string.IsNullOrWhiteSpace(_cfg.Region)) return;
+        var targets = TargetProfiles();
+        if (targets.Count == 0) return;
+        var region = _cfg.Region;
         _findResult.ForeColor = SystemColors.ControlText;
-        _findResult.Text = "Searching for your servers...";
+        _findResult.Text = targets.Count > 1 ? $"Searching {targets.Count} accounts for servers..." : "Searching for your servers...";
         if (_findBtn != null) _findBtn.Enabled = false;
         try
         {
-            _servers = await AwsCli.DiscoverAsync(_cfg);
-            // remember the result; a manual scan also counts as "looked at", so pending daily-scan changes are cleared
-            DiscoveryCache.Update(_cfg.Profile, _cfg.Region, _servers, _cfg.Tunnels.Select(t => t.InstanceId).ToHashSet(), recordChanges: false);
-            DiscoveryCache.TakePending();
+            var configured = _cfg.Tunnels.Select(t => t.InstanceId).ToHashSet();
+            var results = new List<DiscoveredServer>();
+            var failed = new List<string>();
+            var scanned = new HashSet<string>(StringComparer.Ordinal);
+            Exception? lastError = null;
+            using var gate = new SemaphoreSlim(4);   // a few accounts at a time
+            await Task.WhenAll(targets.Select(async name =>
+            {
+                await gate.WaitAsync();
+                try
+                {
+                    var found = await AwsCli.DiscoverAsync(new AppConfig { Profile = name, Region = region });
+                    foreach (var sv in found) sv.Profile = name;
+                    DiscoveryCache.Update(name, region, found, configured, recordChanges: false);
+                    lock (results) { results.AddRange(found); scanned.Add(name); }
+                }
+                catch (Exception ex)
+                {
+                    lock (results) { lastError = ex; failed.Add(name + ": " + (ex.Message.Length > 90 ? ex.Message.Substring(0, 90) + "..." : ex.Message)); }
+                }
+                finally { gate.Release(); }
+            }));
+            if (scanned.Count == 0 && lastError != null) throw lastError;
+
+            DiscoveryCache.TakePending();   // a manual scan also counts as "looked at"
+            _servers = results.OrderBy(x => x.Profile, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+            _scannedProfiles = scanned;
             FillServerList();
-            var ready = _servers.Count(s => s.SsmOnline);
-            var win = _servers.Count(s => s.SsmOnline && s.IsWindows);
-            _findResult.Text = $"Account {_cfg.Profile}, {_cfg.Region}: {_servers.Count} running, {ready} ready ({ready - win} Linux over SSH, {win} Windows over RDP).";
+            var ready = _servers.Count(x => x.SsmOnline);
+            var win = _servers.Count(x => x.SsmOnline && x.IsWindows);
+            var where = scanned.Count > 1 ? $"{scanned.Count} accounts, {region}" : $"Account {scanned.First()}, {region}";
+            _findResult.Text = $"{where}: {_servers.Count} running, {ready} ready ({ready - win} Linux over SSH, {win} Windows over RDP)."
+                + (failed.Count > 0 ? $"\n{failed.Count} account(s) could not be read and were skipped: " + string.Join("; ", failed) : "");
+            if (failed.Count > 0) _findResult.ForeColor = Warn;
         }
         catch (Exception ex)
         {
@@ -444,17 +490,28 @@ public sealed class WizardForm : Form
         finally { if (_findBtn != null) _findBtn.Enabled = true; }
     }
 
-    /// <summary>Shows the servers from the last scan of this account straight away, without calling AWS.</summary>
+    /// <summary>Shows the servers from the last scan straight away, without calling AWS.</summary>
     void LoadCachedServers()
     {
         if (_servers.Count > 0 || string.IsNullOrWhiteSpace(_cfg.Profile) || string.IsNullOrWhiteSpace(_cfg.Region)) return;
-        var rec = DiscoveryCache.Get(_cfg.Profile, _cfg.Region);
-        if (rec == null || rec.Servers.Count == 0) return;
-        _servers = rec.Servers;
+        var all = new List<DiscoveredServer>();
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        DateTime newest = default;
+        foreach (var name in TargetProfiles())
+        {
+            var rec = DiscoveryCache.Get(name, _cfg.Region);
+            if (rec == null || rec.ScannedUtc == default) continue;
+            seen.Add(name);
+            foreach (var sv in rec.Servers) { sv.Profile = name; all.Add(sv); }
+            if (rec.ScannedUtc > newest) newest = rec.ScannedUtc;
+        }
+        if (all.Count == 0) return;
+        _servers = all.OrderBy(x => x.Profile, StringComparer.OrdinalIgnoreCase).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+        _scannedProfiles = seen;
         FillServerList();
-        var ready = _servers.Count(s => s.SsmOnline);
+        var ready = _servers.Count(x => x.SsmOnline);
         _findResult.ForeColor = Muted;
-        _findResult.Text = $"Showing the {_servers.Count} server(s) found on {rec.ScannedUtc.ToLocalTime():g}. Click \"Find my servers\" to refresh now ({ready} were ready).";
+        _findResult.Text = $"Showing the {_servers.Count} server(s) found on {newest.ToLocalTime():g}. Click \"Find my servers\" to refresh now ({ready} were ready).";
     }
 
     bool _deepScanned;
@@ -462,11 +519,22 @@ public sealed class WizardForm : Form
     readonly Dictionary<string, string> _manualKeys = new(StringComparer.OrdinalIgnoreCase);
     static string ManualId(DiscoveredServer s) => string.IsNullOrWhiteSpace(s.KeyName) ? s.InstanceId : "k:" + s.KeyName;
 
+    string GroupTitle(string profile, int count)
+    {
+        var id = _profiles.FirstOrDefault(x => x.Name == profile)?.AccountId;
+        return profile + (string.IsNullOrEmpty(id) ? "" : "   -   " + id) + $"   -   {count} server{(count == 1 ? "" : "s")}";
+    }
+
     void FillServerList()
     {
         var ticked = _list.CheckedItems.Cast<ListViewItem>().Where(i => i.Index < _prevServers.Count).Select(i => _prevServers[i.Index].InstanceId).ToHashSet();
         _prevServers = _servers.ToList();
         _list.Items.Clear();
+        _list.Groups.Clear();
+        // servers of several accounts are shown under a quiet heading per account; a single account needs no headings
+        var grouped = _servers.Select(x => x.Profile).Distinct().Count() > 1;
+        _list.ShowGroups = grouped;
+        var groups = new Dictionary<string, ListViewGroup>(StringComparer.Ordinal);
         foreach (var s in _servers)
         {
             var item = new ListViewItem(s.Name + (s.IsProd ? "  [PROD]" : "")) { UseItemStyleForSubItems = false };
@@ -476,10 +544,23 @@ public sealed class WizardForm : Form
             var osCell = item.SubItems[5];
             osCell.Text = s.IsWindows ? "Windows" : "Linux";
             if (s.SsmOnline) { osCell.BackColor = s.IsWindows ? AppTheme.WinBg : AppTheme.LinuxBg; osCell.ForeColor = s.IsWindows ? AppTheme.WinFg : AppTheme.LinuxFg; }
+            if (grouped)
+            {
+                if (!groups.TryGetValue(s.Profile, out var g))
+                {
+                    g = new ListViewGroup(GroupTitle(s.Profile, _servers.Count(x => x.Profile == s.Profile)));
+                    _list.Groups.Add(g);
+                    groups[s.Profile] = g;
+                }
+                item.Group = g;
+            }
             _list.Items.Add(item);
         }
         foreach (ListViewItem item in _list.Items)
-            item.Checked = ticked.Contains(_servers[item.Index].InstanceId) || _cfg.Tunnels.Any(t => t.InstanceId == _servers[item.Index].InstanceId && t.Profile == _cfg.Profile && t.Region == _cfg.Region);
+        {
+            var sv = _servers[item.Index];
+            item.Checked = ticked.Contains(sv.InstanceId) || _cfg.Tunnels.Any(t => t.InstanceId == sv.InstanceId && t.Profile == sv.Profile && t.Region == _cfg.Region);
+        }
     }
 
     List<DiscoveredServer> _prevServers = new();
@@ -530,7 +611,7 @@ public sealed class WizardForm : Form
         _keyGrid.Rows.Clear();
         foreach (var s in _keyServers)
         {
-            var existing = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == s.InstanceId && t.Profile == _cfg.Profile && t.Region == _cfg.Region);
+            var existing = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == s.InstanceId && t.Profile == s.Profile && t.Region == _cfg.Region);
             var user = existing != null && !string.IsNullOrWhiteSpace(existing.UserName) && existing.UserName != "ec2-user" ? existing.UserName : s.SuggestedUser;
             _keyGrid.Rows.Add(s.Name, user, "", "");
         }
@@ -617,7 +698,7 @@ public sealed class WizardForm : Form
                 var (m, h) = KeyFinder.Find(_keys, s.KeyName, s.KeyFingerprint);
                 if (m != null) { path = m.Path; how = h.StartsWith("verified") ? "Verified" : h.StartsWith("similar") ? "Check name" : "By name"; }
             }
-            var existing = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == s.InstanceId && t.Profile == _cfg.Profile && t.Region == _cfg.Region)?.KeyFile;
+            var existing = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == s.InstanceId && t.Profile == s.Profile && t.Region == _cfg.Region)?.KeyFile;
             if (path == null && !string.IsNullOrWhiteSpace(existing) && File.Exists(existing)) { path = existing; how = "Saved"; }
 
             var good = path != null && how is "Verified" or "By name" or "Chosen" or "Saved";
@@ -775,22 +856,24 @@ public sealed class WizardForm : Form
         try
         {
             ApplyAwsFields();
-            // Servers of other accounts / regions stay as they are; only this account + region is replaced.
-            var kept = _cfg.Tunnels.Where(t => !(t.Profile == _cfg.Profile && t.Region == _cfg.Region)).ToList();
+            // Servers of other accounts / regions stay as they are; only the accounts that were just searched (in this region) are replaced.
+            var scanned = _scannedProfiles.Count > 0 ? _scannedProfiles : new HashSet<string>(StringComparer.Ordinal) { _cfg.Profile };
+            var kept = _cfg.Tunnels.Where(t => !(scanned.Contains(t.Profile) && t.Region == _cfg.Region)).ToList();
             var used = new HashSet<int>(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Select(l => l.Port));
             foreach (var k in kept) used.Add(k.LocalPort);
             var tunnels = new List<TunnelConfig>();
             foreach (var s in chosen)
             {
-                var existing = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == s.InstanceId && t.Profile == _cfg.Profile && t.Region == _cfg.Region);
+                var prof = string.IsNullOrEmpty(s.Profile) ? _cfg.Profile : s.Profile;
+                var existing = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == s.InstanceId && t.Profile == prof && t.Region == _cfg.Region);
                 var port = existing?.LocalPort ?? NextFreePort(used, tunnels, s.IsWindows ? 3390 : 2201);
                 var typed = s.IsWindows ? "Administrator" : UserFor(s) ?? s.SuggestedUser;
                 var keyFile = s.IsWindows ? null : KeyPathFor(s) ?? existing?.KeyFile;
                 // two accounts can have a server with the same name: keep the saved session names unique
-                var label = kept.Any(k => k.Name == s.Name) || tunnels.Any(k => k.Name == s.Name) ? $"{s.Name} ({_cfg.Profile})" : s.Name;
+                var label = kept.Any(k => k.Name == s.Name) || tunnels.Any(k => k.Name == s.Name) ? $"{s.Name} ({prof})" : s.Name;
                 tunnels.Add(new TunnelConfig
                 {
-                    Profile = _cfg.Profile, Region = _cfg.Region,
+                    Profile = prof, Region = _cfg.Region,
                     Name = existing?.Name ?? label, InstanceId = s.InstanceId, LocalPort = port, RemotePort = s.IsWindows ? 3389 : 22, Protocol = s.IsWindows ? "rdp" : "ssh",
                     UserName = s.IsWindows ? (existing?.UserName ?? typed) : typed,
                     KeyFile = keyFile ?? (s.IsWindows ? existing?.KeyFile : null),

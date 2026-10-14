@@ -81,6 +81,27 @@ public static class AwsProfiles
 
     public static ProfileInfo? Find(string? name) => name == null ? null : List().FirstOrDefault(p => p.Name == name);
 
+    /// <summary>The saved profiles that share this profile's company sign-in, which are the other AWS accounts reachable with it.</summary>
+    public static List<ProfileInfo> SameSignIn(ProfileInfo p, IEnumerable<ProfileInfo> all)
+    {
+        if (p.Kind != ProfileKind.Sso) return new List<ProfileInfo> { p };
+        var list = all.Where(x => x.Kind == ProfileKind.Sso &&
+                (p.SsoSession != null ? x.SsoSession == p.SsoSession : x.SsoSession == null && p.StartUrl != null && x.StartUrl == p.StartUrl)).ToList();
+        if (!list.Any(x => x.Name == p.Name)) list.Add(p);
+        return list.OrderBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    /// <summary>A valid, unused profile name made from an account's name.</summary>
+    public static string ProfileNameFor(string accountName, string accountId, ISet<string> taken)
+    {
+        var slug = Regex.Replace(accountName ?? "", @"[^A-Za-z0-9_.@\-]+", "-").Trim('-');
+        if (slug.Length == 0) slug = "account-" + accountId;
+        if (slug.Length > 56) slug = slug.Substring(0, 56).Trim('-');
+        var name = slug;
+        if (taken.Contains(name)) name = slug + "-" + (accountId.Length >= 4 ? accountId.Substring(accountId.Length - 4) : accountId);
+        return name;
+    }
+
     // ---- writing -----------------------------------------------------------------------------
     public static void SaveSsoSession(string session, string startUrl, string ssoRegion, bool withScopes = true)
     {
