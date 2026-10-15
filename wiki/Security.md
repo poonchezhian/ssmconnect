@@ -22,4 +22,4 @@ SSMConnect is built so that connecting is easy and nothing extra is exposed.
 
 ## Reporting a security issue
 
-Please open an issue on the [repository](https://github.com/poonchezhian/ssmconnect/issues) without posting secrets, or contact the owner through the address in the repository's licence notice.
+Please report security problems privately, not as a public issue. Use **Report a vulnerability** on the repository's Security tab, or follow the instructions in the [security policy](https://github.com/poonchezhian/ssmconnect/security/policy). Do not include secrets, access keys or company names in the report.
