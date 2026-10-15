@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Report a security vulnerability (private)
+    url: https://github.com/poonchezhian/ssmconnect/security/advisories/new
+    about: Please do not open a public issue for security problems. Use this private form.
+  - name: Troubleshooting and FAQ
+    url: https://github.com/poonchezhian/ssmconnect/wiki/Troubleshooting
+    about: Many common problems, such as an expired sign-in or a server that is not SSM ready, are answered here.

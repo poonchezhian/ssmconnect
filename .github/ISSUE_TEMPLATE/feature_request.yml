@@ -1,0 +1,59 @@
+name: Feature request
+description: Suggest an improvement or a new capability.
+title: "[Idea] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        SSMConnect is designed for people with little infrastructure knowledge, so the best requests start with the problem you had.
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem are you trying to solve?
+      description: Describe the situation and what was hard.
+    validations:
+      required: true
+  - type: textarea
+    id: idea
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: What do you do today instead?
+      description: Workarounds or other tools you tried.
+  - type: dropdown
+    id: who
+    attributes:
+      label: Who would use this?
+      options:
+        - Just me
+        - My team
+        - Many people who connect to servers over AWS Systems Manager
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Signing in to AWS (other methods)
+        - Linux or macOS support
+        - Dashboard and screens
+        - Servers and tags
+        - Tools (PuTTY, WinSCP, MobaXterm, Remote Desktop)
+        - Installer and updates
+        - Documentation
+        - Something else
+    validations:
+      required: true
+  - type: checkboxes
+    id: help
+    attributes:
+      label: Would you like to help?
+      options:
+        - label: I can test a pre-release.
+        - label: I would like to work on this myself.

@@ -1,0 +1,94 @@
+name: Bug report
+description: Something does not work, or a message or screen is confusing.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for taking the time to report this. **Please do not include access keys, tokens, passwords, key file contents, account numbers or company names.** For a security problem, do not use this form: use the private report link on the previous screen.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I looked at the Troubleshooting and FAQ wiki pages.
+          required: true
+        - label: I searched existing issues for the same problem.
+          required: true
+        - label: I removed secrets and private names from everything I am posting.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: SSMConnect version
+      description: Shown under Help > About.
+      placeholder: "1.0.42"
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 23H2, 64-bit"
+    validations:
+      required: true
+  - type: dropdown
+    id: signin
+    attributes:
+      label: How do you sign in to AWS?
+      options:
+        - Company sign-in page (IAM Identity Center)
+        - Access keys
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Where does the problem happen?
+      options:
+        - Installing or updating
+        - Setup wizard
+        - Dashboard
+        - Adding or switching AWS accounts
+        - Starting or stopping connections
+        - Opening PuTTY, WinSCP, MobaXterm or Remote Desktop
+        - Server scan
+        - Something else
+    validations:
+      required: true
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: Describe what you saw, including any message on screen.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open the dashboard
+        2. Switch to ...
+        3. Click ...
+    validations:
+      required: true
+  - type: textarea
+    id: log
+    attributes:
+      label: Log lines (optional)
+      description: Help > Open log file. Paste only the relevant lines, after removing anything private.
+      render: text
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Screenshots are welcome, with sample or blurred data only.
