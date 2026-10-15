@@ -212,7 +212,9 @@ public sealed class HeaderBand : Panel
     }
 }
 
-/// <summary>A button that stays hoverable (so its tooltip always shows) while it has nothing to do, and can carry a small drawn icon.</summary>
+public enum ButtonTone { Auto, Neutral, Primary, Success, Danger, Warning }
+
+/// <summary>A button that stays hoverable (so its tooltip always shows) while it has nothing to do, and can carry a small drawn icon and a colour.</summary>
 public sealed class ActionButton : Button
 {
     /// <summary>False dims the button and ignores clicks, but unlike Enabled=false it still shows its tooltip.</summary>
@@ -226,14 +228,26 @@ public sealed class ActionButton : Button
     /// <summary>"play", "stop", "restart" or "plus"; drawn to the left of the text.</summary>
     public string Glyph { get; set; } = "";
 
+    /// <summary>Colour family of the button: green (go), red (stop), amber (restart), teal (main action) or a soft teal for everything else.</summary>
+    public ButtonTone Tone { get; set; } = ButtonTone.Auto;
+
     protected override void OnClick(EventArgs e) { if (_available) base.OnClick(e); }
 }
 
-/// <summary>Rounded, softly shaded buttons with hover and pressed states, drawn on top of the standard Button so every existing click handler keeps working.</summary>
+/// <summary>Coloured, embossed buttons with a glossy top edge, a soft shadow and a short hover / press animation, drawn on top of the standard Button so every existing click handler keeps working.</summary>
 static class ButtonLook
 {
-    sealed class State { public bool Hover, Down, Attached, Primary, Kbd; }
+    sealed class State { public bool Hover, Down, Attached, Primary, Kbd; public float T, Target; public System.Windows.Forms.Timer? Tick; }
     static readonly System.Runtime.CompilerServices.ConditionalWeakTable<Button, State> States = new();
+
+    public static Color ToneColor(ButtonTone t) => t switch
+    {
+        ButtonTone.Primary => AppTheme.Accent,
+        ButtonTone.Success => Color.FromArgb(30, 160, 92),
+        ButtonTone.Danger => Color.FromArgb(212, 64, 60),
+        ButtonTone.Warning => Color.FromArgb(226, 132, 14),
+        _ => Color.FromArgb(206, 234, 231),
+    };
 
     public static void Attach(Button b, bool primary)
     {
@@ -242,14 +256,88 @@ static class ButtonLook
         if (st.Attached) { b.Invalidate(); return; }
         st.Attached = true;
         try { typeof(Control).GetProperty("DoubleBuffered", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.SetValue(b, true); } catch { }
-        b.MouseEnter += (_, _) => { st.Hover = true; b.Invalidate(); };
-        b.MouseLeave += (_, _) => { st.Hover = false; st.Down = false; b.Invalidate(); };
+        b.MouseEnter += (_, _) => { st.Hover = true; Fade(b, st, 1f); };
+        b.MouseLeave += (_, _) => { st.Hover = false; st.Down = false; Fade(b, st, 0f); };
         b.MouseDown += (_, e) => { if (e.Button == MouseButtons.Left) { st.Down = true; b.Invalidate(); } };
         b.MouseUp += (_, _) => { st.Down = false; b.Invalidate(); };
         b.EnabledChanged += (_, _) => b.Invalidate();
         b.GotFocus += (_, _) => { st.Kbd = Control.MouseButtons == MouseButtons.None; b.Invalidate(); };
         b.LostFocus += (_, _) => b.Invalidate();
         b.Paint += (_, e) => Draw(b, e.Graphics, st);
+        b.Disposed += (_, _) => { st.Tick?.Stop(); st.Tick?.Dispose(); };
+    }
+
+    /// <summary>Eases the hover glow in and out (about a tenth of a second).</summary>
+    static void Fade(Button b, State st, float target)
+    {
+        st.Target = target;
+        if (st.Tick == null)
+        {
+            st.Tick = new System.Windows.Forms.Timer { Interval = 15 };
+            st.Tick.Tick += (_, _) =>
+            {
+                var d = st.Target - st.T;
+                if (Math.Abs(d) < 0.04f) { st.T = st.Target; st.Tick?.Stop(); } else st.T += d * 0.35f;
+                b.Invalidate();
+            };
+        }
+        st.Tick.Start();
+    }
+
+    /// <summary>Paints one embossed button surface and says where its text goes and what colours the text takes. Shared with the server cards.</summary>
+    internal static (RectangleF Content, Color Text, Color TextShadow) PaintSurface(Graphics g, RectangleF r, float rad, Color baseC, float hot, bool down, bool off, float s)
+    {
+        var grey = Color.FromArgb(226, 232, 232);
+        var b0 = off ? AppTheme.Mix(baseC, grey, 0.62f) : baseC;
+        var light = (0.299 * baseC.R + 0.587 * baseC.G + 0.114 * baseC.B) > 190;
+        Color top, bottom;
+        if (down) { top = AppTheme.Mix(b0, Color.Black, 0.06f); bottom = AppTheme.Mix(b0, Color.Black, 0.16f); }
+        else { top = AppTheme.Mix(b0, Color.White, 0.22f + 0.16f * hot); bottom = AppTheme.Mix(b0, Color.Black, Math.Max(0f, 0.08f - 0.05f * hot)); }
+        var border = AppTheme.Mix(b0, Color.Black, off ? 0.10f : 0.30f);
+
+        var rr = r;
+        if (down) rr.Offset(0, 1f * s); else if (hot > 0) rr.Offset(0, -hot * 1f * s);
+
+        // soft shadow under raised buttons (it grows as the button lifts on hover)
+        if (!off && !down)
+        {
+            var shade = AppTheme.Mix(baseC, Color.Black, 0.6f);
+            for (var k = 2; k >= 0; k--)
+            {
+                var sh = new RectangleF(r.X - k * 0.5f * s, r.Y + (1.4f + hot * 1.4f) * s + k * 0.6f * s, r.Width + k * s, r.Height);
+                using var sp = AppTheme.RoundRect(sh, rad);
+                using var sb = new SolidBrush(Color.FromArgb(16 + (2 - k) * 9, shade));
+                g.FillPath(sb, sp);
+            }
+        }
+
+        using var gp = AppTheme.RoundRect(rr, rad);
+        using (var br = new LinearGradientBrush(new RectangleF(rr.X, rr.Y - 1, rr.Width, rr.Height + 2), top, bottom, 90f)) g.FillPath(br, gp);
+
+        // glossy upper half
+        var save = g.Save();
+        g.SetClip(gp, CombineMode.Intersect);
+        var gloss = new RectangleF(rr.X, rr.Y, rr.Width, rr.Height * 0.5f);
+        using (var gb = new LinearGradientBrush(new RectangleF(gloss.X, gloss.Y - 1, gloss.Width, gloss.Height + 2), Color.FromArgb(off ? 28 : 76, 255, 255, 255), Color.FromArgb(off ? 6 : 10, 255, 255, 255), 90f))
+            g.FillRectangle(gb, gloss);
+        g.Restore(save);
+        using (var pen = new Pen(border, 1f)) g.DrawPath(pen, gp);
+
+        // emboss: a light inner edge along the top, a dark one along the bottom
+        using var ip = AppTheme.RoundRect(RectangleF.Inflate(rr, -1f, -1f), Math.Max(1f, rad - 1f));
+        save = g.Save();
+        g.SetClip(new RectangleF(rr.X, rr.Y, rr.Width, rr.Height * 0.45f));
+        using (var hp = new Pen(Color.FromArgb(down ? 20 : 150, 255, 255, 255), 1f)) g.DrawPath(hp, ip);
+        g.Restore(save);
+        save = g.Save();
+        g.SetClip(new RectangleF(rr.X, rr.Y + rr.Height * 0.6f, rr.Width, rr.Height * 0.4f + 1f));
+        using (var dp = new Pen(Color.FromArgb(down ? 60 : 38, 0, 0, 0), 1f)) g.DrawPath(dp, ip);
+        g.Restore(save);
+
+        Color text, shadow;
+        if (light) { text = off ? Color.FromArgb(150, 163, 165) : AppTheme.Teal900; shadow = Color.White; }
+        else { text = off ? Color.FromArgb(246, 250, 250) : Color.White; shadow = AppTheme.Mix(bottom, Color.Black, 0.35f); }
+        return (rr, text, shadow);
     }
 
     static void Draw(Button b, Graphics g, State st)
@@ -259,61 +347,42 @@ static class ButtonLook
         g.Clear(b.Parent?.BackColor ?? AppTheme.Page);
         var s = b.DeviceDpi / 96f;
         var off = !b.Enabled || (b is ActionButton { Available: false });
-        var hot = !off && st.Hover;
         var down = !off && st.Down;
-        var r = new RectangleF(0.5f, 0.5f, b.Width - 2f, b.Height - 3.5f);
+        var hot = off ? 0f : st.T;
+        var tone = (b as ActionButton)?.Tone ?? ButtonTone.Auto;
+        if (tone == ButtonTone.Auto) tone = st.Primary ? ButtonTone.Primary : ButtonTone.Neutral;
+
+        var r = new RectangleF(1.5f, 2f, b.Width - 3.5f, b.Height - 6.5f);
         float rad = Math.Min(10 * s, r.Height / 2);
+        var (cell, text, shadow) = PaintSurface(g, r, rad, ToneColor(tone), hot, down, off, s);
 
-        Color top, bottom, border, text;
-        if (st.Primary)
-        {
-            if (off) { top = bottom = border = Color.FromArgb(184, 210, 207); text = Color.FromArgb(244, 250, 249); }
-            else if (down) { top = AppTheme.AccentHover; bottom = AppTheme.Mix(AppTheme.AccentHover, Color.Black, 0.12f); border = bottom; text = Color.White; }
-            else if (hot) { top = AppTheme.Mix(AppTheme.Accent, Color.White, 0.26f); bottom = AppTheme.Mix(AppTheme.Accent, Color.White, 0.06f); border = AppTheme.Accent; text = Color.White; }
-            else { top = AppTheme.Mix(AppTheme.Accent, Color.White, 0.14f); bottom = AppTheme.Accent; border = AppTheme.AccentHover; text = Color.White; }
-        }
-        else
-        {
-            if (off) { top = bottom = Color.FromArgb(246, 249, 249); border = Color.FromArgb(226, 234, 235); text = Color.FromArgb(150, 163, 165); }
-            else if (down) { top = Color.FromArgb(214, 234, 232); bottom = Color.FromArgb(224, 240, 238); border = AppTheme.Accent; text = AppTheme.Teal900; }
-            else if (hot) { top = Color.FromArgb(240, 249, 248); bottom = Color.FromArgb(222, 241, 239); border = Color.FromArgb(110, 190, 183); text = AppTheme.Teal900; }
-            else { top = Color.White; bottom = Color.FromArgb(243, 248, 248); border = Color.FromArgb(205, 220, 221); text = AppTheme.Ink; }
-        }
-
-        // a soft shadow under raised buttons
-        if (!off && !down)
-        {
-            var sh = new RectangleF(r.X, r.Y + 1.5f * s, r.Width, r.Height);
-            using var sp = AppTheme.RoundRect(sh, rad);
-            using var sb = new SolidBrush(Color.FromArgb(st.Primary ? 46 : 22, 5, 60, 56));
-            g.FillPath(sb, sp);
-        }
-        using (var path = AppTheme.RoundRect(r, rad))
-        {
-            using (var br = new LinearGradientBrush(new RectangleF(r.X, r.Y - 1, r.Width, r.Height + 2), top, bottom, 90f)) g.FillPath(br, path);
-            using var pen = new Pen(border, 1f);
-            g.DrawPath(pen, path);
-        }
-
-        // optional icon + text, centred together
+        // optional icon + text, centred together (text has a one-pixel letterpress shadow)
         var glyph = (b as ActionButton)?.Glyph ?? "";
-        var cell = new Rectangle(0, 0, b.Width, b.Height - 3);
         var flags = TextFormatFlags.VerticalCenter | TextFormatFlags.NoPrefix | TextFormatFlags.NoPadding | TextFormatFlags.SingleLine | TextFormatFlags.EndEllipsis;
+        var tr = Rectangle.Round(cell);
         if (glyph.Length > 0)
         {
             float icon = 12 * s, gap = 8 * s;
             var tw = TextRenderer.MeasureText(g, b.Text, b.Font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding | TextFormatFlags.NoPrefix).Width;
-            var x0 = (b.Width - (icon + gap + tw)) / 2f;
-            DrawGlyph(g, glyph, new RectangleF(x0, (b.Height - 3 - icon) / 2f, icon, icon), text, s);
-            TextRenderer.DrawText(g, b.Text, b.Font, new Rectangle((int)(x0 + icon + gap), 0, tw + 4, cell.Height), text, flags);
+            var x0 = cell.X + (cell.Width - (icon + gap + tw)) / 2f;
+            var ir = new RectangleF(x0, cell.Y + (cell.Height - icon) / 2f, icon, icon);
+            DrawGlyph(g, glyph, new RectangleF(ir.X, ir.Y + 1, ir.Width, ir.Height), shadow, s);
+            DrawGlyph(g, glyph, ir, text, s);
+            var tb = new Rectangle((int)(x0 + icon + gap), tr.Y, tw + 4, tr.Height);
+            TextRenderer.DrawText(g, b.Text, b.Font, new Rectangle(tb.X, tb.Y + 1, tb.Width, tb.Height), shadow, flags);
+            TextRenderer.DrawText(g, b.Text, b.Font, tb, text, flags);
         }
-        else TextRenderer.DrawText(g, b.Text, b.Font, cell, text, flags | TextFormatFlags.HorizontalCenter);
+        else
+        {
+            TextRenderer.DrawText(g, b.Text, b.Font, new Rectangle(tr.X, tr.Y + 1, tr.Width, tr.Height), shadow, flags | TextFormatFlags.HorizontalCenter);
+            TextRenderer.DrawText(g, b.Text, b.Font, tr, text, flags | TextFormatFlags.HorizontalCenter);
+        }
 
         if (b.Focused && st.Kbd && !off)
         {
-            var fr = new RectangleF(r.X + 3 * s, r.Y + 3 * s, r.Width - 6 * s, r.Height - 6 * s);
+            var fr = new RectangleF(cell.X + 3 * s, cell.Y + 3 * s, cell.Width - 6 * s, cell.Height - 6 * s);
             using var fp = AppTheme.RoundRect(fr, Math.Max(2f, rad - 3 * s));
-            using var pen = new Pen(Color.FromArgb(st.Primary ? 150 : 110, st.Primary ? Color.White : AppTheme.Accent)) { DashStyle = DashStyle.Dot };
+            using var pen = new Pen(Color.FromArgb(150, text)) { DashStyle = DashStyle.Dot };
             g.DrawPath(pen, fp);
         }
     }

@@ -42,6 +42,9 @@ public sealed class ServerCard : Control
     readonly ToolTip _tip = new() { AutoPopDelay = 20000 };
     readonly List<(RectangleF Rect, string Id, bool Enabled)> _hits = new();
     int _hover = -1;
+    float _t, _target;          // hover glow of the button under the pointer, eased in and out
+    int _fadeIdx = -1;
+    System.Windows.Forms.Timer? _anim;
     bool _selected;
 
     public event Action<ServerCard, string>? ActionClicked;
@@ -79,7 +82,7 @@ public sealed class ServerCard : Control
 
     public static int HeightFor(float scale) => (int)(104 * scale);
 
-    protected override void Dispose(bool disposing) { if (disposing) _tip.Dispose(); base.Dispose(disposing); }
+    protected override void Dispose(bool disposing) { if (disposing) { _tip.Dispose(); _anim?.Dispose(); } base.Dispose(disposing); }
 
     static (Color Bg, Color Fg, Color Bar) Palette(CardLevel l) => l switch
     {
@@ -176,11 +179,14 @@ public sealed class ServerCard : Control
         {
             var (r, id, en) = _hits[i];
             var a = _d.Actions[i];
-            var hot = en && i == _hover;
-            using (var p = Round(r, 7 * s))
-            using (var b = new SolidBrush(!en ? Color.FromArgb(240, 244, 244) : hot ? AppTheme.AccentHover : AppTheme.Accent)) g.FillPath(b, p);
-            TextRenderer.DrawText(g, a.Text, small, Rectangle.Round(r), en ? Color.White : Color.FromArgb(150, 162, 164),
-                TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+            var hot = en && i == _fadeIdx ? _t : 0f;
+            var baseC = id == "signin" ? ButtonLook.ToneColor(ButtonTone.Warning) : AppTheme.Accent;
+            var surf = new RectangleF(r.X, r.Y - 1 * s, r.Width, r.Height);
+            var (cell, text, shadow) = ButtonLook.PaintSurface(g, surf, 7 * s, baseC, hot, en && i == _down, !en, s);
+            var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding;
+            var tr = Rectangle.Round(cell);
+            TextRenderer.DrawText(g, a.Text, small, new Rectangle(tr.X, tr.Y + 1, tr.Width, tr.Height), shadow, flags);
+            TextRenderer.DrawText(g, a.Text, small, tr, text, flags);
         }
     }
 
@@ -200,6 +206,24 @@ public sealed class ServerCard : Control
         g.DrawLine(pen, cx + 1 * s, cy + 6.5f * s, cx + 8 * s, cy + 6.5f * s);
     }
 
+    int _down = -1;
+
+    void FadeTo(float target)
+    {
+        _target = target;
+        if (_anim == null)
+        {
+            _anim = new System.Windows.Forms.Timer { Interval = 15 };
+            _anim.Tick += (_, _) =>
+            {
+                var d = _target - _t;
+                if (Math.Abs(d) < 0.04f) { _t = _target; _anim?.Stop(); if (_t == 0f) _fadeIdx = -1; } else _t += d * 0.35f;
+                Invalidate();
+            };
+        }
+        _anim.Start();
+    }
+
     int HitIndex(Point p)
     {
         for (int i = 0; i < _hits.Count; i++) if (_hits[i].Rect.Contains(p)) return i;
@@ -210,14 +234,15 @@ public sealed class ServerCard : Control
     {
         base.OnMouseMove(e);
         var i = HitIndex(e.Location);
-        if (i != _hover) { _hover = i; Invalidate(); }
+        if (i != _hover) { _hover = i; if (i >= 0) _fadeIdx = i; FadeTo(i >= 0 && _hits[i].Enabled ? 1f : 0f); Invalidate(); }
         Cursor = i >= 0 && _hits[i].Enabled ? Cursors.Hand : Cursors.Default;
     }
 
     protected override void OnMouseLeave(EventArgs e)
     {
         base.OnMouseLeave(e);
-        if (_hover != -1) { _hover = -1; Invalidate(); }
+        if (_hover != -1) { _hover = -1; FadeTo(0f); Invalidate(); }
+        if (_down != -1) { _down = -1; Invalidate(); }
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
@@ -226,7 +251,13 @@ public sealed class ServerCard : Control
         Focus();
         var i = HitIndex(e.Location);
         Picked?.Invoke(this);
-        if (i >= 0 && _hits[i].Enabled && e.Button == MouseButtons.Left) ActionClicked?.Invoke(this, _hits[i].Id);
+        if (i >= 0 && _hits[i].Enabled && e.Button == MouseButtons.Left) { _down = i; Invalidate(); ActionClicked?.Invoke(this, _hits[i].Id); }
+    }
+
+    protected override void OnMouseUp(MouseEventArgs e)
+    {
+        base.OnMouseUp(e);
+        if (_down != -1) { _down = -1; Invalidate(); }
     }
 
     protected override void OnDoubleClick(EventArgs e)

@@ -73,7 +73,7 @@ If your PC cannot reach GitHub the check is skipped silently and tried again lat
 
 ## Uninstall
 
-Use **File > Uninstall SSMConnect** in the dashboard, the **Uninstall SSMConnect** Start-menu shortcut, or **Settings > Apps > SSMConnect > Uninstall**. The AWS CLI and Session Manager plugin are left installed because other tools may use them. This closes the tray icon, deletes the program files and `%LOCALAPPDATA%\SSMConnect` (saved connections, status, log), and removes the `SSC - ...` sessions from PuTTY, WinSCP and MobaXterm for the account that runs the uninstall. Your `~/.aws` files and your own sessions are left alone.
+Use **Help > Uninstall SSMConnect** in the dashboard, the **Uninstall SSMConnect** Start-menu shortcut, or **Settings > Apps > SSMConnect > Uninstall**. The AWS CLI and Session Manager plugin are left installed because other tools may use them. This closes the tray icon, deletes the program files and `%LOCALAPPDATA%\SSMConnect` (saved connections, status, log), and removes the `SSC - ...` sessions from PuTTY, WinSCP and MobaXterm for the account that runs the uninstall. Your `~/.aws` files and your own sessions are left alone.
 
 To remove only the saved sessions and settings, run `SSMConnect.Wizard.exe --cleanup`.
 

@@ -73,7 +73,7 @@ public sealed class DashboardForm : Form
     DateTime _profStamp = DateTime.MinValue;
     List<string> _rowGroups = new();   // account (profile) of each row, same order as _rows
     int _selected = -1;
-    readonly ActionButton _btnStart = new() { Text = "Start", Glyph = "play" }, _btnStop = new() { Text = "Stop", Glyph = "stop" }, _btnRestart = new() { Text = "Restart", Glyph = "restart" }, _btnAdd = new() { Text = "Add / change servers...", Glyph = "plus" };
+    readonly ActionButton _btnStart = new() { Text = "Start", Glyph = "play", Tone = ButtonTone.Success }, _btnStop = new() { Text = "Stop", Glyph = "stop", Tone = ButtonTone.Danger }, _btnRestart = new() { Text = "Restart", Glyph = "restart", Tone = ButtonTone.Warning }, _btnAdd = new() { Text = "Add / change servers...", Glyph = "plus", Tone = ButtonTone.Primary };
     // update banner
     readonly Panel _updateBar = new() { Dock = DockStyle.Top, Height = 46, Visible = false, BackColor = Color.FromArgb(224, 242, 241), Padding = new Padding(14, 0, 14, 0) };
     readonly Label _updateText = new() { AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(4, 70, 66) };
@@ -100,11 +100,9 @@ public sealed class DashboardForm : Form
     List<Row> _rows = new();
     Level _overall = Level.Grey;
     Level? _prevOverall;
-    string _authText = "AWS sign-in: checking...";
-    string _authTip = "";
-    Level _authLevel = Level.Grey;
-    bool _authBusy, _busy;
-    List<string> _authFailed = new();
+    sealed record AuthState(string Text, Level Level, string Tip, List<string> Failed);
+    readonly Dictionary<string, AuthState> _auth = new();   // sign-in check per primary account, so each view shows its own result
+    bool _authBusy, _busy, _signingIn;
     DateTime _nextAuthCheck = DateTime.MinValue;
 
     public DashboardForm(bool startHidden)
@@ -218,6 +216,7 @@ public sealed class DashboardForm : Form
         _reqPill.Margin = Padding.Empty;
         pills.Controls.Add(_svcPill, 0, 0);
         pills.Controls.Add(_authPill, 1, 0);
+        _authPill.Click += async (_, _) => { if (CurrentAuth is { Failed.Count: > 0 }) await SignInAsync(_view); };
         pills.Controls.Add(_reqPill, 2, 0);
 
         var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 4, 0, 0) };
@@ -304,9 +303,19 @@ public sealed class DashboardForm : Form
         _winscpPath = ToolDetector.WinScpPath;
     }
 
-    List<CardAction> ActionsFor(TunnelConfig? t, bool up)
+    /// <summary>True when this server's tunnel fails because its AWS sign-in has expired.</summary>
+    bool NeedsSignIn(TunnelConfig t, string message)
+    {
+        if (string.IsNullOrWhiteSpace(t.Profile)) return false;
+        if (_auth.TryGetValue(PKey(t.Profile), out var a) && a.Failed.Contains(t.Profile)) return true;
+        return message.Contains("expired", StringComparison.OrdinalIgnoreCase) || message.Contains("sign in again", StringComparison.OrdinalIgnoreCase);
+    }
+
+    List<CardAction> ActionsFor(TunnelConfig? t, bool up, string message = "")
     {
         if (t == null) return new();
+        // an expired sign-in is the only thing to fix here, so that is the one button shown
+        if (!up && NeedsSignIn(t, message)) return new() { new("signin", "Sign in", true) };
         if (t.IsRdp) return new() { new("rdp", "Remote Desktop", up), new("pwd", "Get password", true) };
         var list = new List<CardAction>();
         if (_puttyPath != null) list.Add(new("putty", "PuTTY", up));
@@ -334,6 +343,7 @@ public sealed class DashboardForm : Form
         {
             switch (id)
             {
+                case "signin": _ = SignInAsync(PKey(t.Profile)); break;
                 case "rdp": OpenRdp(); break;
                 case "pwd": _ = CopyWindowsPasswordAsync(); break;
                 case "putty" when _puttyPath != null: Process.Start(new ProcessStartInfo(_puttyPath, $"-load \"{session}\"") { UseShellExecute = false }); break;
@@ -543,10 +553,6 @@ public sealed class DashboardForm : Form
         var stale = !running || status == null || DateTime.UtcNow - status.UpdatedUtc > TimeSpan.FromSeconds(20);
         var listeners = ActiveListeners();
 
-        // connections pill
-        if (running) SetPill(_svcPill, "Connections: running", Level.Green, "SSMConnect is keeping your tunnels open.");
-        else SetPill(_svcPill, "Connections: stopped", Level.Red, "Connections are down. Use Connections > Start connections.");
-
         // requirements pill
         var haveAws = AwsCli.FindAws() != null;
         var havePlugin = AwsCli.FindPlugin() != null;
@@ -554,8 +560,8 @@ public sealed class DashboardForm : Form
         else SetPill(_reqPill, "AWS tools: missing " + (haveAws ? "plugin" : havePlugin ? "CLI" : "CLI + plugin"), Level.Red, "Click Add / change servers to install them automatically.");
 
         // auth pill (updated by background check)
-        SetPill(_authPill, _authText, _authLevel, _authTip);
-        if (!_authBusy && DateTime.UtcNow >= _nextAuthCheck) _ = CheckAuthAsync();
+        UpdateAuthPill();
+        if (!_authBusy && !_signingIn && DateTime.UtcNow >= _nextAuthCheck) _ = CheckAuthAsync();
 
         // rows: servers of one primary account sit together, with their member accounts (organizations) under quiet headings
         var rows = new List<Row>();
@@ -592,6 +598,21 @@ public sealed class DashboardForm : Form
         UpdateGrid(viewIdx.Select(i => rows[i]).ToList());
         UpdateOrgStrip();
 
+        // the status row and the summary follow the sign-in being shown; the tray icon keeps covering every connection
+        var viewRows = viewIdx.Select(i => rows[i]).ToList();
+        var vUp = viewRows.Count(r => r.Level == Level.Green);
+        var vTotal = viewRows.Count(r => r.StatusText != "Off");
+        Level vOverall;
+        if (!running) vOverall = Level.Grey;
+        else if (vTotal == 0) vOverall = Level.Amber;
+        else if (viewRows.Any(r => r.Level == Level.Red)) vOverall = Level.Red;
+        else if (vUp == vTotal) vOverall = Level.Green;
+        else vOverall = Level.Amber;
+        if (!running) SetPill(_svcPill, "Connections: stopped", Level.Red, "Connections are down. Click Start to open them.");
+        else if (vTotal == 0) SetPill(_svcPill, "Connections: none here yet", Level.Grey, "No servers are added for this sign-in yet. Click Add / change servers.");
+        else if (vOverall == Level.Green) SetPill(_svcPill, $"Connections: all {vTotal} up", Level.Green, "SSMConnect is keeping every tunnel of this sign-in open.");
+        else SetPill(_svcPill, $"Connections: {vUp} of {vTotal} up", vOverall == Level.Red ? Level.Red : Level.Amber, vOverall == Level.Red ? "Some connections have a problem. The red cards show why." : "Some connections are still starting.");
+
         // overall
         var enabled = rows.Where(r => r.Level != Level.Grey || r.StatusText != "Off").ToList();
         var up = rows.Count(r => r.Level == Level.Green);
@@ -611,8 +632,16 @@ public sealed class DashboardForm : Form
             case Level.Grey: tip = "SSMConnect: connections stopped"; summary = "Connections are stopped, so nothing is connected."; break;
             default: tip = total == 0 ? "SSMConnect: no connections set up" : $"SSMConnect: {up} of {total} up, connecting..."; summary = total == 0 ? "No connections are set up yet. Click \"Add / change servers...\"." : $"{up} of {total} connection(s) up. The rest are connecting..."; break;
         }
-        _summary.Text = summary;
-        _summary.ForeColor = overall switch { Level.Green => GoodFg, Level.Red => BadFg, Level.Amber => WarnFg, _ => GreyFg };
+        string vs;
+        if (!running) vs = "Connections are stopped, so nothing is connected.";
+        else if (vTotal == 0) vs = "No servers are added for this sign-in yet. Click \"Add / change servers...\".";
+        else if (vOverall == Level.Green) vs = $"All {vTotal} connection(s) are up.";
+        else if (vOverall == Level.Red) vs = $"{vUp} of {vTotal} connection(s) up. Red cards show the reason.";
+        else vs = $"{vUp} of {vTotal} connection(s) up. The rest are connecting...";
+        if (total != vTotal) vs += $"     All accounts together: {up} of {total} up.";
+        _summary.Text = vs;
+        _ = summary;
+        _summary.ForeColor = vOverall switch { Level.Green => GoodFg, Level.Red => BadFg, Level.Amber => WarnFg, _ => GreyFg };
         _tray.Icon = _icons[overall];
         _tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip;
         _trayHeader.Text = tip;
@@ -701,7 +730,7 @@ public sealed class DashboardForm : Form
                     Since = r.Since.HasValue ? Ago(r.Since.Value) : "", KnownType = tun != null, IsWindows = tun?.IsRdp ?? false,
                     Environment = EnvOf(tun), IsProd = EnvironmentClassifier.IsProd(EnvOf(tun)),
                     Level = r.Level switch { Level.Green => CardLevel.Green, Level.Amber => CardLevel.Amber, Level.Red => CardLevel.Red, _ => CardLevel.Grey },
-                    Actions = ActionsFor(tun, up),
+                    Actions = ActionsFor(tun, up, r.Message),
                 };
             }
             ArrangeGroups(f);
@@ -881,6 +910,7 @@ public sealed class DashboardForm : Form
             try { var c = ConfigStore.Load() ?? _cfg; c.Profile = mine; ConfigStore.Save(c); _cfg.Profile = mine; _cfgStamp = DateTime.MinValue; } catch { }
         }
         _selected = -1;
+        _nextAuthCheck = DateTime.MinValue;
         RefreshAll();
     }
 
@@ -940,38 +970,60 @@ public sealed class DashboardForm : Form
         _detail.Text = $"{r.Name}: {r.Message}";
     }
 
+    AuthState? CurrentAuth => _view != null && _auth.TryGetValue(_view, out var a) ? a : null;
+
+    void UpdateAuthPill()
+    {
+        if (_signingIn)
+        {
+            SetPill(_authPill, "AWS sign-in: finish in your browser", Level.Amber, "A browser window opened. Sign in there and this turns green by itself.");
+            _authPill.Cursor = Cursors.Default;
+            return;
+        }
+        var a = CurrentAuth;
+        if (a == null) SetPill(_authPill, "AWS sign-in: checking...", Level.Grey, "Checking this AWS sign-in...");
+        else SetPill(_authPill, a.Text, a.Level, a.Tip);
+        _authPill.Cursor = a is { Failed.Count: > 0 } ? Cursors.Hand : Cursors.Default;
+    }
+
+    /// <summary>Checks the sign-in of the account being shown (every AWS account saved under it) and keeps the result for that account only.</summary>
     async Task CheckAuthAsync()
     {
         _authBusy = true;
+        var view = _view;
         try
         {
-            if (AwsCli.FindAws() == null) { _authText = "AWS sign-in: install AWS CLI first"; _authLevel = Level.Red; _authTip = "The AWS CLI is not installed."; return; }
-            if (_cfg.Tunnels.Count == 0) { _authText = "AWS sign-in: not set up yet"; _authLevel = Level.Grey; _authTip = "Set up your connections to choose an AWS profile."; return; }
-            var accounts = _cfg.Tunnels.Where(t => t.Enabled && !string.IsNullOrWhiteSpace(t.Profile))
-                                       .Select(t => t.Profile).Distinct().ToList();
-            if (accounts.Count == 0) { _authText = "AWS sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Click Add / change servers to choose an AWS account."; return; }
-            var failed = new List<string>();
-            string firstProblem = "";
-            foreach (var acct in accounts)
-            {
-                var r = await AwsCli.WhoAmIAsync(new AppConfig { Profile = acct, Region = _cfg.Tunnels.First(t => t.Profile == acct).Region });
-                if (!r.Ok) { failed.Add(acct); if (firstProblem.Length == 0) firstProblem = AwsCli.FriendlyError(r.Error); }
-            }
-            _authFailed = failed;
-            if (failed.Count == 0)
-            {
-                _authText = accounts.Count == 1 ? "AWS sign-in: OK" : $"AWS sign-in: OK ({accounts.Count} accounts)";
-                _authLevel = Level.Green;
-                _authTip = "Signed in: " + string.Join(", ", accounts);
-            }
+            if (view == null) return;
+            AuthState result;
+            if (AwsCli.FindAws() == null) result = new("AWS sign-in: install AWS CLI first", Level.Red, "The AWS CLI is not installed.", new());
+            else if (_cfg.Tunnels.Count == 0) result = new("AWS sign-in: not set up yet", Level.Grey, "Set up your connections to choose an AWS profile.", new());
             else
             {
-                _authText = "AWS sign-in needed: " + string.Join(", ", failed);
-                _authLevel = Level.Red;
-                _authTip = firstProblem + " Use AWS > Sign in again.";
+                var accounts = _cfg.Tunnels.Where(t => t.Enabled && !string.IsNullOrWhiteSpace(t.Profile) && PKey(t.Profile) == view)
+                                           .Select(t => t.Profile).Distinct().ToList();
+                if (accounts.Count == 0) result = new("AWS sign-in: no servers here yet", Level.Grey, "Click Add / change servers to add servers for this sign-in.", new());
+                else
+                {
+                    using var gate = new SemaphoreSlim(3);
+                    var checks = await Task.WhenAll(accounts.Select(async acct =>
+                    {
+                        await gate.WaitAsync();
+                        try { return (Acct: acct, R: await AwsCli.WhoAmIAsync(new AppConfig { Profile = acct, Region = _cfg.Tunnels.First(t => t.Profile == acct).Region })); }
+                        finally { gate.Release(); }
+                    }));
+                    var failed = checks.Where(c => !c.R.Ok).Select(c => c.Acct).ToList();
+                    if (failed.Count == 0)
+                        result = new(accounts.Count == 1 ? "AWS sign-in: OK" : $"AWS sign-in: OK ({accounts.Count} accounts)", Level.Green, "Signed in: " + string.Join(", ", accounts), new());
+                    else
+                    {
+                        var first = AwsCli.FriendlyError(checks.First(c => !c.R.Ok).R.Error);
+                        result = new("AWS sign-in needed: click here", Level.Red, first + " Click here to open your browser and sign in.\nAffected: " + string.Join(", ", failed), failed);
+                    }
+                }
             }
+            _auth[view] = result;
         }
-        catch (Exception ex) { _authText = "AWS sign-in: unknown"; _authLevel = Level.Amber; _authTip = ex.Message; }
+        catch (Exception ex) { if (view != null) _auth[view] = new("AWS sign-in: unknown", Level.Amber, ex.Message, new()); }
         finally { _authBusy = false; _nextAuthCheck = DateTime.UtcNow.AddSeconds(45); }
     }
 
@@ -1079,26 +1131,42 @@ public sealed class DashboardForm : Form
         RefreshAll();
     }
 
-    async Task SignInAsync()
+    /// <summary>Opens the browser sign-in. Accounts that share one company sign-in need only one browser visit.</summary>
+    async Task SignInAsync(string? viewKey = null)
     {
+        if (_signingIn) return;
         if (AwsCli.FindAws() == null) { MessageBox.Show(this, "The AWS CLI is not installed yet. Click Add / change servers.", "SSMConnect"); return; }
         var used = _cfg.Tunnels.Select(t => t.Profile).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-        var targets = (_authFailed.Count > 0 ? _authFailed : used).ToList();
+        List<string> targets;
+        if (viewKey != null) targets = _auth.TryGetValue(viewKey, out var av) && av.Failed.Count > 0 ? av.Failed.ToList() : used.Where(x => PKey(x) == viewKey).ToList();
+        else
+        {
+            var failedAll = _auth.Values.SelectMany(x => x.Failed).Distinct().ToList();
+            targets = failedAll.Count > 0 ? failedAll : used;
+        }
+        targets = targets.GroupBy(PKey).Select(g => g.OrderBy(x => AwsProfiles.Find(x)?.Kind == ProfileKind.Sso ? 0 : 1).First()).ToList();
         if (targets.Count == 0) { MessageBox.Show(this, "No AWS account is set up yet. Click Add / change servers.", "SSMConnect"); return; }
 
-        foreach (var name in targets)
+        _signingIn = true;
+        RefreshAll();
+        try
         {
-            var info = AwsProfiles.Find(name);
-            if (info == null) { MessageBox.Show(this, $"The AWS profile \"{name}\" no longer exists on this PC. Use AWS > Add AWS account to add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning); continue; }
-            if (info.Kind != ProfileKind.Sso)
+            foreach (var name in targets)
             {
-                MessageBox.Show(this, $"\"{name}\" uses access keys, so there is nothing to sign in to. If it fails, remove the account in AWS > Manage accounts and add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                continue;
+                var info = AwsProfiles.Find(name);
+                if (info == null) { MessageBox.Show(this, $"The AWS profile \"{name}\" no longer exists on this PC. Use AWS > Add AWS account to add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning); continue; }
+                if (info.Kind != ProfileKind.Sso)
+                {
+                    MessageBox.Show(this, $"\"{name}\" uses access keys, so there is nothing to sign in to. If it fails, remove the account in AWS > Manage accounts and add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    continue;
+                }
+                Balloon(4000, "SSMConnect", "A browser window will open. Sign in to AWS there.", ToolTipIcon.Info);
+                var r = await AwsCli.SsoLoginAsync(new AppConfig { Profile = name });
+                if (!r.Ok) MessageBox.Show(this, $"{name}: {AwsCli.FriendlyError(r.Error)}", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                else _auth.Remove(PKey(name));
             }
-            Balloon(4000, "SSMConnect", $"A browser window will open. Sign in to AWS account \"{name}\" there.", ToolTipIcon.Info);
-            var r = await AwsCli.SsoLoginAsync(new AppConfig { Profile = name });
-            if (!r.Ok) MessageBox.Show(this, $"{name}: {AwsCli.FriendlyError(r.Error)}", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
+        finally { _signingIn = false; }
         _nextAuthCheck = DateTime.MinValue;
         _mgr.Poke();
         RefreshAll();
