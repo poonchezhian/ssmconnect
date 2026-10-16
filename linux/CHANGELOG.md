@@ -4,6 +4,19 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.0.2] - 2026-10-16
+The window.
+### Added
+- Native GTK 4 + libadwaita dashboard: account switcher, three status pills, summary line, organization chips,
+  Start / Stop / Restart, and one card per server grouped by AWS account (red PROD tag, live status dot, plain-language problems).
+- Per-server actions: Terminal (ssh), Files (sftp:// in the file manager), Remote Desktop, Get password
+  (clipboard cleared after 60 s), Copy ssh command. Unavailable buttons are dimmed and explain why when clicked.
+- Closing the window hides it and keeps connections open; Quit closes them. Desktop notifications for scan results and updates.
+- Menus: start when I sign in, add to application menu, sign in again, scan, what changed, check for updates, open log, clean up, about.
+- Single instance through the desktop's own application activation; app icon.
+### Known limits
+- The setup wizard and the accounts dialog are not in this release (they show a note). Add accounts with `aws configure sso`.
+
 ## [0.0.1] - 2026-10-16
 First iteration: the engine, without a window yet.
 ### Added

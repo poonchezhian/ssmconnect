@@ -84,6 +84,14 @@ class TunnelManager:
         """Wakes the loop now, for example after the config changed or the person signed in."""
         self._wake.set()
 
+    def restart_all(self) -> None:
+        """Closes every session and opens fresh ones right away (also clears any back-off wait)."""
+        with self._lock:
+            for slot in self._slots.values():
+                self._stop_slot(slot)
+            self._slots.clear()
+        self.poke()
+
     def snapshot(self) -> list[TunnelStatus]:
         with self._lock:
             return self._statuses()
