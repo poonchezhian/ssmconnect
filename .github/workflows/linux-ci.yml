@@ -84,7 +84,9 @@ jobs:
     runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
-      - run: dnf install -y git cargo rust gcc gtk4-devel libadwaita-devel rpm-build openssh-clients
+      - name: Install the build tools (before checkout, so not in the linux/ folder yet)
+        working-directory: .
+        run: dnf install -y git cargo rust gcc gtk4-devel libadwaita-devel rpm-build openssh-clients
       - uses: actions/checkout@v4
       - run: packaging/build-rpm.sh
       - name: Smoke-test the rpm
