@@ -8,6 +8,8 @@ SSMConnect is a small Windows app. A short wizard finds your servers, opens secu
 PuTTY / WinSCP / MobaXterm  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  your server
 ```
 
+> **New: SSMConnect for Linux.** A native Linux edition with a signed installer is available. See [Linux Edition](Linux-Edition) and [Install and Update](Linux-Install-and-Update).
+
 ## Start here
 
 | I want to... | Go to |
@@ -21,6 +23,7 @@ PuTTY / WinSCP / MobaXterm  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  y
 | Roll it out to a team | [For IT Teams](For-IT-Teams) |
 | Quick answers | [FAQ](FAQ) |
 | See what changed | [What's New](Whats-New) |
+| Use it on Linux | [Linux Edition](Linux-Edition) |
 
 ## In one minute
 

@@ -1,6 +1,6 @@
 [package]
 name = "ssmconnect"
-version = "0.3.1"
+version = "0.3.2"
 edition = "2021"
 rust-version = "1.80"
 description = "SSH and Remote Desktop to AWS servers over Session Manager, with port 22 closed (Linux edition)"
@@ -32,3 +32,8 @@ codegen-units = 4
 
 [dev-dependencies]
 tempfile = "3"
+
+# keep development builds small (the GTK crates make debug builds very large)
+[profile.dev]
+debug = 0
+incremental = false

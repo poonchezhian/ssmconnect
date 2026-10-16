@@ -39,7 +39,7 @@ target/release/ssmconnect --install-files --prefix %{_prefix} --destdir %{buildr
 %{_bindir}/ssmconnect
 %{_datadir}/applications/io.github.poonchezhian.SSMConnect.desktop
 %{_datadir}/metainfo/io.github.poonchezhian.SSMConnect.metainfo.xml
-%{_datadir}/icons/hicolor/scalable/apps/io.github.poonchezhian.SSMConnect.svg
+%{_datadir}/icons/hicolor/*/apps/io.github.poonchezhian.SSMConnect.png
 
 %changelog
 * Fri Oct 16 2026 Poonchezhian Periasamy <poonchezhian@gmail.com> - %{version}-1

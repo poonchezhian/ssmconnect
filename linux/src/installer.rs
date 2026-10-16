@@ -16,7 +16,16 @@ use std::process::Command;
 
 const DESKTOP: &str = include_str!("../data/io.github.poonchezhian.SSMConnect.desktop");
 const METAINFO: &str = include_str!("../data/io.github.poonchezhian.SSMConnect.metainfo.xml");
-const ICON: &[u8] = include_bytes!("../data/icons/hicolor/scalable/apps/io.github.poonchezhian.SSMConnect.svg");
+/// The application icon (the same artwork as the Windows edition), one PNG per size, as the icon theme wants them.
+pub const ICONS: [(u32, &[u8]); 7] = [
+    (16, include_bytes!("../data/icons/hicolor/16x16/apps/io.github.poonchezhian.SSMConnect.png")),
+    (24, include_bytes!("../data/icons/hicolor/24x24/apps/io.github.poonchezhian.SSMConnect.png")),
+    (32, include_bytes!("../data/icons/hicolor/32x32/apps/io.github.poonchezhian.SSMConnect.png")),
+    (48, include_bytes!("../data/icons/hicolor/48x48/apps/io.github.poonchezhian.SSMConnect.png")),
+    (64, include_bytes!("../data/icons/hicolor/64x64/apps/io.github.poonchezhian.SSMConnect.png")),
+    (128, include_bytes!("../data/icons/hicolor/128x128/apps/io.github.poonchezhian.SSMConnect.png")),
+    (256, include_bytes!("../data/icons/hicolor/256x256/apps/io.github.poonchezhian.SSMConnect.png")),
+];
 pub const LICENSE: &str = include_str!("../LICENSE");
 const NOTICE: &str = include_str!("../NOTICE");
 const README: &str = include_str!("../README.md");
@@ -186,7 +195,7 @@ pub fn install_files(prefix: &Path, destdir: &Path, source_exe: &Path, progress:
     progress("Adding it to the application menu...".into());
     put(&root, &format!("share/applications/{APP_ID}.desktop"), desktop.as_bytes(), 0o644, &mut w)?;
     put(&root, &format!("share/metainfo/{APP_ID}.metainfo.xml"), METAINFO.as_bytes(), 0o644, &mut w)?;
-    put(&root, &format!("share/icons/hicolor/scalable/apps/{APP_ID}.svg"), ICON, 0o644, &mut w)?;
+    for (size, png) in ICONS { put(&root, &format!("share/icons/hicolor/{size}x{size}/apps/{APP_ID}.png"), png, 0o644, &mut w)?; }
     put(&root, "share/doc/ssmconnect/README.md", README.as_bytes(), 0o644, &mut w)?;
     put(&root, "share/doc/ssmconnect/CHANGELOG.md", CHANGELOG.as_bytes(), 0o644, &mut w)?;
     put(&root, "share/licenses/ssmconnect/LICENSE", LICENSE.as_bytes(), 0o644, &mut w)?;

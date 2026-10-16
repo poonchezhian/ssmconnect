@@ -4,6 +4,13 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.3.2] - 2026-10-16
+Same icon as the Windows edition.
+### Changed
+- The application icon is now the Windows edition's artwork (taken from `src/SSMConnect.Wizard/Assets/ssmconnect.ico`), installed as PNGs in the sizes the
+  desktop expects (16, 24, 32, 48, 64, 128, 256) in place of the earlier placeholder. It shows in the application menu, the dock and window switcher, the
+  About box, and on the installer's first page. Updating from an older version removes the old icon file and installs the new ones.
+
 ## [0.3.1] - 2026-10-16
 No more leftover connections.
 ### Fixed

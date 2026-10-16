@@ -16,7 +16,7 @@ fn installs_and_uninstalls_from_the_manifest() {
     let written = installer::install_files(&prefix, Path::new(""), &fake_program(&h), &|_| {}).unwrap();
     assert!(written.contains(&"bin/ssmconnect".to_string()));
     for f in ["bin/ssmconnect", "share/applications/io.github.poonchezhian.SSMConnect.desktop", "share/metainfo/io.github.poonchezhian.SSMConnect.metainfo.xml",
-              "share/icons/hicolor/scalable/apps/io.github.poonchezhian.SSMConnect.svg", "share/licenses/ssmconnect/LICENSE", "share/licenses/ssmconnect/NOTICE",
+              "share/icons/hicolor/48x48/apps/io.github.poonchezhian.SSMConnect.png", "share/icons/hicolor/256x256/apps/io.github.poonchezhian.SSMConnect.png", "share/licenses/ssmconnect/LICENSE", "share/licenses/ssmconnect/NOTICE",
               "share/doc/ssmconnect/README.md", "share/ssmconnect/install-manifest.txt"] {
         assert!(prefix.join(f).exists(), "{f} missing");
     }
@@ -25,7 +25,7 @@ fn installs_and_uninstalls_from_the_manifest() {
     use std::os::unix::fs::PermissionsExt;
     assert_eq!(std::fs::metadata(prefix.join("bin/ssmconnect")).unwrap().permissions().mode() & 0o777, 0o755);
     let removed = installer::uninstall(&prefix).unwrap();
-    assert!(removed >= 8);
+    assert!(removed >= 14);
     assert!(!prefix.join("bin/ssmconnect").exists() && !prefix.join("share/applications/io.github.poonchezhian.SSMConnect.desktop").exists());
     assert!(installer::uninstall(&prefix).is_err());   // nothing left to remove
 }

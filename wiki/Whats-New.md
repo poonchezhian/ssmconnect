@@ -2,6 +2,10 @@
 
 The full list with downloads and checksums is on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases).
 
+## SSMConnect for Linux
+
+There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
+
 ## 1.0.42
 - **One-click sign-in:** click the red AWS sign-in pill, or the new **Sign in** button on an affected server card, and your browser opens. Accounts under one company sign-in need just one visit.
 - **Status row follows the account you view:** the Connections pill, the AWS sign-in pill and the summary now describe the selected sign-in. The summary also shows the total across all accounts when you have several.

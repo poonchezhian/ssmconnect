@@ -58,6 +58,33 @@ Then open **SSMConnect** from the application menu; the first run starts the set
 - OpenSSH client; optionally FreeRDP or Remmina for Windows servers
 - AWS CLI v2 and the Session Manager plugin, fetched for you from Amazon (`ssmconnect install-tools` does it from a terminal)
 
+## Verifying the download (signed releases)
+
+Every file on a Linux release page (`.bin`, `.deb`, `.rpm`, `SHA256SUMS.txt`) comes with a detached OpenPGP signature (`<file>.asc`) made with the
+**SSMConnect Linux Releases** key:
+
+```
+Fingerprint  FF9F 45E6 4711 7103 89B3  F1FC 7483 B1F8 DBE4 A803
+Key ID       7483B1F8DBE4A803      (ed25519, created 2026-10-16, expires 2028-10-15)
+```
+
+The public key is [`SIGNING-KEY.asc`](SIGNING-KEY.asc) in this folder. Check a download before you run it:
+
+```
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.3.2/ssmconnect-0.3.2-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.3.2/ssmconnect-0.3.2-linux-x86_64.bin.asc
+curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
+
+gpg --import SIGNING-KEY.asc
+gpg --fingerprint 7483B1F8DBE4A803        # must show exactly the fingerprint above
+gpg --verify ssmconnect-0.3.2-linux-x86_64.bin.asc ssmconnect-0.3.2-linux-x86_64.bin
+```
+
+`gpg` should say **Good signature from "SSMConnect Linux Releases"**. (It also prints a warning that the key is not certified by you; that is expected, the fingerprint check above is what ties the key to this project.) If it says **BAD signature**, do not run the file. The release also lists `SHA256SUMS.txt` and `SHA256SUMS.txt.asc`: `sha256sum -c SHA256SUMS.txt` checks the checksums, and the `.asc` file is their signature.
+
+For maintainers: `scripts/sign-release.sh` signs everything in `dist-linux/` and verifies it in a clean keyring, exactly as above. In GitHub Actions the release job
+signs with the key stored in the repository secret `LINUX_SIGNING_KEY` (the exported private key), when that secret exists.
+
 ## Settings and server identities, all in windows
 
 **File > Preferences** holds every setting in plain language (start-up, terminal and Remote Desktop programs, what *Files* opens, ports, ssh names, updates, the AWS tools,

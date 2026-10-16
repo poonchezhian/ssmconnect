@@ -104,11 +104,14 @@ impl Inner {
         win.set_content(Some(&view));
 
         // 1. welcome
+        let logo = gtk::gdk::Texture::from_bytes(&gtk::glib::Bytes::from_static(installer::ICONS[5].1)).ok()
+            .map(|t| { let i = gtk::Image::from_paintable(Some(&t)); i.set_pixel_size(96); i.set_halign(gtk::Align::Start); i });
         let p1 = page(&format!("Welcome to SSMConnect {VERSION}"), "SSH and Remote Desktop to your AWS servers, with port 22 closed.\n\n\
             SSMConnect is free, open-source software (Apache License 2.0). It does not carry any third-party tools inside it. This installer first fetches \
             what SSMConnect needs from each tool's own source, and only then installs SSMConnect:\n\
             •  AWS CLI and Session Manager plugin: from Amazon, with Amazon's signature checked\n\
             •  OpenSSH and a Remote Desktop client: from your distribution's own package repositories");
+        if let Some(l) = &logo { p1.prepend(l); }
         // an installation that is already here: update it in place and keep everything the person has set up
         let existing = installer::existing_install(prefix.as_deref());
         let downgrade = gtk::CheckButton::with_label("Yes, install this older version over the newer one");
