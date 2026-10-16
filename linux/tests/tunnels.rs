@@ -89,7 +89,8 @@ fn a_leftover_session_from_an_earlier_run_is_cleared_away() {
     // stands in for a Session Manager plugin that outlived the SSMConnect that started it: right name, right arguments, holding the port, other process group
     let code = format!("import socket,time\ns=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('127.0.0.1',{port}));s.listen(1);time.sleep(120)");
     let params = format!("{{\"Target\": \"i-0123456789abcdef0\", \"DocumentName\": \"AWS-StartPortForwardingSession\", \"Parameters\": {{\"portNumber\": [\"22\"], \"localPortNumber\": [\"{port}\"]}}}}");
-    let mut orphan = std::process::Command::new("sh").arg("-c").arg("exec -a session-manager-plugin python3 -c \"$0\" x \"$1\"").arg(code).arg(params).process_group(0).spawn().unwrap();
+    // started directly (no shell: `exec -a` does not exist in dash, the sh of Debian and Ubuntu) with the program name set to the plugin's
+    let mut orphan = std::process::Command::new("python3").arg0("session-manager-plugin").arg("-c").arg(code).arg("x").arg(params).process_group(0).spawn().unwrap();
     assert!(wait_for(10, || netcheck::is_listening(port)));
     save(vec![tunnel("i-0123456789abcdef0", port)]);
     m.start();
