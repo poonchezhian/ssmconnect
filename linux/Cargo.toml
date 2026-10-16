@@ -1,0 +1,39 @@
+[package]
+name = "ssmconnect"
+version = "0.3.2"
+edition = "2021"
+rust-version = "1.80"
+description = "SSH and Remote Desktop to AWS servers over Session Manager, with port 22 closed (Linux edition)"
+license = "Apache-2.0"
+repository = "https://github.com/poonchezhian/ssmconnect"
+authors = ["Poonchezhian Periasamy <poonchezhian@gmail.com>"]
+
+[dependencies]
+gtk = { package = "gtk4", version = "0.11", features = ["v4_12"] }
+adw = { package = "libadwaita", version = "0.9", features = ["v1_5"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+regex = "1"
+sha1 = "0.10"
+sha2 = "0.10"
+md-5 = "0.10"
+pgp = { version = "0.21", default-features = false }
+base64 = "0.22"
+libc = "0.2"
+async-channel = "2"
+zip = { version = "9", default-features = false, features = ["deflate"] }
+ureq = { version = "2", default-features = false, features = ["tls", "json"] }
+
+[profile.release]
+lto = "thin"
+strip = true
+opt-level = 2
+codegen-units = 4
+
+[dev-dependencies]
+tempfile = "3"
+
+# keep development builds small (the GTK crates make debug builds very large)
+[profile.dev]
+debug = 0
+incremental = false

@@ -1,0 +1,19 @@
+SSMConnect
+Copyright 2026 Poonchezhian Periasamy <poonchezhian@gmail.com>
+Blog: https://medium.com/@poonchezhian
+Source: https://github.com/poonchezhian/ssmconnect
+
+This product includes software developed by Poonchezhian Periasamy.
+
+SSMConnect is an independent project. It is not affiliated with, endorsed by,
+or sponsored by Amazon Web Services, Inc. "AWS" and "Amazon Web Services" are
+trademarks of Amazon.com, Inc. or its affiliates.
+
+The SSMConnect-Setup bundle redistributes, unmodified and under their own
+Apache License 2.0 terms, the AWS CLI v2 installer and the AWS Session Manager
+plugin installer (c) Amazon.com, Inc. or its affiliates. They are installed
+separately and are not removed when SSMConnect is uninstalled.
+
+SSMConnect does not bundle or redistribute PuTTY, WinSCP or MobaXterm. It only
+configures copies that the user has installed separately, under each product's
+own licence.
