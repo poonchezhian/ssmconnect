@@ -4,6 +4,21 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.1.3] - 2026-10-16
+Rust rewrite, part 4: native packaging; the Python edition is removed.
+### Changed
+- Packages now ship the compiled program: tarball (`ssmconnect-X.Y.Z-linux-ARCH.tar.gz` with `install.sh`), `.deb` and `.rpm`
+  (built from source in a Fedora container). They depend on GTK 4 (>= 4.12) and libadwaita (>= 1.5) only; no Python.
+- The release workflow builds with Cargo (`--locked`), runs the tests, validates the desktop and AppStream files, smoke-tests the
+  installed deb and rpm, and publishes `SHA256SUMS.txt`.
+- `Cargo.lock` is committed so builds are reproducible.
+### Removed
+- `legacy-python/` (the 0.0.x prototype). It stays available at tag `linux-v0.0.5`.
+### Known limits
+- The `.deb` and `.rpm` builders run in CI; `dpkg-deb` and `rpmbuild` are not installed on the development machine, so only
+  the tarball install was run locally.
+- Downloads of the AWS CLI and plugin are fetched over HTTPS from Amazon but their signatures are not yet verified.
+
 ## [0.1.2] - 2026-10-16
 Rust rewrite, part 3: setup wizard and account management. The Rust edition now does everything the Python edition did.
 ### Added

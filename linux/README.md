@@ -1,7 +1,7 @@
 # SSMConnect for Linux
 
 SSH and Remote Desktop to AWS servers **with port 22 closed**, through AWS Systems Manager (SSM) Session Manager.
-This is the native Linux edition (GTK 4 + libadwaita). The Windows edition lives on the `main` branch; this branch
+This is the native Linux edition (Rust, GTK 4 + libadwaita). The Windows edition lives on the `main` branch; this branch
 only ever adds files under `linux/` and `.github/workflows/linux-*.yml`, so merging or pushing never overwrites it.
 
 > **Status:** early iteration (0.0.x). Try it against a non-production server first.
@@ -22,16 +22,16 @@ Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/rel
 
 | Distribution | Install |
 |---|---|
-| Fedora, RHEL, openSUSE | `sudo dnf install ./ssmconnect-X.Y.Z-1.noarch.rpm` |
-| Debian, Ubuntu, Mint | `sudo apt install ./ssmconnect_X.Y.Z_all.deb` |
-| Anything else | unpack `ssmconnect-X.Y.Z-linux.tar.gz`, run `./install.sh` (to `~/.local`, no root) |
+| Fedora, RHEL, openSUSE | `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm` |
+| Debian 13+, Ubuntu 24.04+, Mint 22+ | `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb` |
+| Anything else with GTK 4.12+ and libadwaita 1.5+ | unpack `ssmconnect-X.Y.Z-linux-x86_64.tar.gz`, run `./install.sh` (to `~/.local`, no root) |
+| From source | `cargo build --release --locked`, then `packaging/stage.sh "" ~/.local` |
 
 Then open **SSMConnect** from the application menu. The first run starts the setup wizard.
 
 ## Requirements
 
-- Linux with Python 3.10+, GTK 4, libadwaita 1 and PyGObject (Fedora: `python3-gobject gtk4 libadwaita`;
-  Debian/Ubuntu: `python3-gi gir1.2-gtk-4.0 gir1.2-adw-1`)
+- A compiled, native program: no Python, Electron or Wine. It links GTK 4 (4.12+) and libadwaita (1.5+), which every current desktop distribution ships
 - OpenSSH client; optionally FreeRDP or Remmina for Windows servers
 - AWS CLI v2 and the Session Manager plugin: `ssmconnect install-tools` installs both for your user, no root needed
 
@@ -80,21 +80,25 @@ ssmconnect cleanup         remove SSMConnect's traces for this user
 
 ## Develop
 
+Needs Rust (stable) plus `gtk4-devel` and `libadwaita-devel` (Debian: `libgtk-4-dev libadwaita-1-dev`).
+
 ```
 cd linux
-python3 -m unittest discover -s tests
-python3 scripts/e2e_wizard.py        # drives the real wizard against a fake AWS CLI (needs a display)
+cargo test                           # unit + integration tests, with a fake AWS CLI
+cargo run                            # the app
+cargo run --example e2e_wizard       # drives the real wizard end to end (needs a display)
+cargo run --example screenshot -- out.png dark   # renders the window to a PNG
 packaging/build-tarball.sh           # also build-deb.sh and build-rpm.sh
-PYTHONPATH=src python3 -m ssmconnect doctor
 ```
 
 ## Versioning
 
 Semantic Versioning, tags `linux-vX.Y.Z` (never `vX.Y.Z`, which belongs to Windows), see [CHANGELOG.md](CHANGELOG.md).
+The 0.0.x releases were a Python prototype; 0.1.0 onward is the native Rust edition.
 
 ```
 scripts/bump-version.sh patch        # or minor / major; edit CHANGELOG.md; commit
-git tag -a linux-v0.0.6 -m "SSMConnect for Linux 0.0.6"
+git tag -a linux-v0.1.4 -m "SSMConnect for Linux 0.1.4"
 git push origin linux --follow-tags  # the workflow builds and publishes the release
 ```
 

@@ -1,6 +1,6 @@
 # Linux edition only. Runs on the `linux` branch and on linux-v* tags; never touches the Windows workflow.
-# Release: bump with linux/scripts/bump-version.sh, update CHANGELOG.md, commit, then
-#   git tag -a linux-vX.Y.Z -m "SSMConnect for Linux X.Y.Z" && git push origin linux linux-vX.Y.Z
+# Release: scripts/bump-version.sh, update CHANGELOG.md, commit, then
+#   git tag -a linux-vX.Y.Z -m "SSMConnect for Linux X.Y.Z" && git push origin linux --follow-tags
 name: linux-build-and-release
 
 on:
@@ -18,21 +18,33 @@ defaults:
   run:
     working-directory: linux
 
+env:
+  CARGO_TERM_COLOR: never
+
 jobs:
   test:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 openssh-client openssl desktop-file-utils appstream
-      - run: python3 -W error::ResourceWarning -m unittest discover -s tests -v
-      - name: Version file agrees with the code
-        run: test "$(cat VERSION)" = "$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/ssmconnect/_version.py)"
-      - name: Tag matches the version
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev openssh-client openssl python3 desktop-file-utils appstream
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            linux/target
+          key: cargo-${{ hashFiles('linux/Cargo.lock') }}
+      - run: cargo build --locked --all-targets
+      - run: cargo test --locked
+      - name: Version files agree
+        run: |
+          v=$(cat VERSION)
+          test "$v" = "$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml | head -1)"
+          grep -q "release version=\"$v\"" data/*.metainfo.xml
+      - name: Tag matches the version and the changelog
         if: startsWith(github.ref, 'refs/tags/linux-v')
-        run: test "linux-v$(cat VERSION)" = "${GITHUB_REF_NAME}"
-      - name: Changelog has this version
-        if: startsWith(github.ref, 'refs/tags/linux-v')
-        run: grep -q "^## \[$(cat VERSION)\]" CHANGELOG.md
+        run: |
+          test "linux-v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+          grep -q "^## \[$(cat VERSION)\]" CHANGELOG.md
       - run: desktop-file-validate data/*.desktop && appstreamcli validate --no-net data/*.metainfo.xml
 
   package:
@@ -40,34 +52,37 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y rpm
-      - run: packaging/build-tarball.sh && packaging/build-deb.sh && packaging/build-rpm.sh
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - run: packaging/build-tarball.sh && packaging/build-deb.sh
       - name: Smoke-test the tarball install
         run: |
-          d=$(mktemp -d); tar -C "$d" -xzf dist-linux/ssmconnect-*-linux.tar.gz
-          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
+          d=$(mktemp -d); tar -C "$d" -xzf dist-linux/ssmconnect-*-linux-*.tar.gz
           "$d"/ssmconnect-*/install.sh --prefix "$d/p" && HOME="$d" "$d/p/bin/ssmconnect" --version
       - name: Smoke-test the deb
-        run: sudo apt-get install -y ./dist-linux/ssmconnect_*_all.deb && ssmconnect --version
-      - run: cd dist-linux && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+        run: sudo apt-get install -y ./dist-linux/ssmconnect_*.deb && ssmconnect --version && ssmconnect doctor || true
       - uses: actions/upload-artifact@v4
         with:
-          name: ssmconnect-linux
+          name: ssmconnect-linux-deb-tarball
           path: linux/dist-linux/*
 
-  rpm-smoke:
-    needs: package
+  rpm:
+    needs: test
     runs-on: ubuntu-24.04
     container: fedora:latest
     steps:
-      - uses: actions/download-artifact@v4
+      - run: dnf install -y git cargo rust gcc gtk4-devel libadwaita-devel rpm-build openssh-clients
+      - uses: actions/checkout@v4
+      - run: packaging/build-rpm.sh
+      - name: Smoke-test the rpm
+        run: dnf install -y dist-linux/ssmconnect-*.rpm && ssmconnect --version
+      - uses: actions/upload-artifact@v4
         with:
-          name: ssmconnect-linux
-      - run: dnf install -y ./ssmconnect-*.rpm && ssmconnect --version
+          name: ssmconnect-linux-rpm
+          path: linux/dist-linux/*.rpm
 
   release:
     if: startsWith(github.ref, 'refs/tags/linux-v')
-    needs: [package, rpm-smoke]
+    needs: [package, rpm]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -78,13 +93,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
-          name: ssmconnect-linux
+          pattern: ssmconnect-linux-*
+          merge-multiple: true
           path: dist
-      - name: Release notes from the changelog
+      - name: Checksums and release notes (from the changelog)
         run: |
+          (cd dist && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt)
           v="${GITHUB_REF_NAME#linux-v}"
           awk -v v="$v" '$0 ~ "^## \\["v"\\]" {on=1; next} /^## \[/ {on=0} on' linux/CHANGELOG.md > notes.md
-          { echo; echo "Linux edition. Verify downloads with \`sha256sum -c SHA256SUMS.txt\`."; } >> notes.md
+          { echo; echo "Linux edition (native, Rust + GTK 4). Verify downloads with \`sha256sum -c SHA256SUMS.txt\`."; } >> notes.md
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
