@@ -4,6 +4,20 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.0.3] - 2026-10-16
+The setup wizard and account management.
+### Added
+- Five-step setup: Requirements (one click installs the AWS CLI and plugin for the user), AWS account (company sign-in address
+  pre-filled from IT policy files, `~/.aws` or cached sign-ins; browser sign-in; every organization account is added), Servers
+  (searched in parallel, SSM-reachable ones tickable, skipped accounts explained), SSH keys (matched by fingerprint, then name),
+  Save (ports from 2201, ssh entries written, tunnels opened).
+- Re-opening the wizard for an existing sign-in picks up AWS accounts added to the organization since last time.
+- Access keys as a secondary path; keys stay in `~/.aws/credentials` (mode 0600).
+- Manage accounts: one collapsed line per sign-in, rename (friendly names) and remove (deletes only SSMConnect's data and the local login).
+- Developer tools: `scripts/e2e_wizard.py` drives the real wizard against a fake AWS CLI; `scripts/screenshot.py`.
+### Changed
+- Same-case tidy-ups: `uat2`/`prod01` style tag values are normalised (UAT, Production).
+
 ## [0.0.2] - 2026-10-16
 The window.
 ### Added

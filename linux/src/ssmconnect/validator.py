@@ -17,6 +17,10 @@ def is_valid_region(region: str) -> bool:
     return bool(_REGION.match(region or ""))
 
 
+def is_valid_login(user: str) -> bool:
+    return bool(_LOGIN.match(user or ""))
+
+
 def validate_global(cfg: AppConfig) -> str | None:
     if cfg.profile.strip() and not _PROFILE.match(cfg.profile):
         return "The AWS profile name contains characters that are not allowed."

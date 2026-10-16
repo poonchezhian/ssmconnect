@@ -115,13 +115,14 @@ class SSMConnectApp(Adw.Application):
             self.window.toast(text)
 
     def open_wizard(self, add_account: bool) -> None:
+        from .wizard import Wizard
         win = self.show_window()
-        message(win, "Setup arrives in the next release",
-                "The guided setup is not part of version 0.0.2 yet. Meanwhile you can add accounts with `aws configure sso` and servers by "
-                "editing ~/.config/ssmconnect/config.json. See the README.")
+        self.wizard = Wizard(self, win, add_account)
+        self.wizard.present()
 
     def open_accounts(self) -> None:
-        message(self.show_window(), "Coming soon", "Account management arrives in the next release.")
+        from .accounts import AccountsDialog
+        AccountsDialog(self).present(self.show_window())
 
     def sign_in_again(self) -> None:
         win = self.show_window()

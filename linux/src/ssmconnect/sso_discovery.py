@@ -11,6 +11,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass, replace
 from pathlib import Path
+from urllib.parse import urlparse
 
 from . import paths
 
@@ -33,6 +34,17 @@ def _clean(raw: str | None) -> str:
 def _admin_files() -> list[Path]:
     """Files an IT team can push with its configuration tooling (system-wide, then per user)."""
     return [Path("/etc/ssmconnect/sso.json"), paths.config_dir() / "sso.json"]
+
+
+def is_valid_url(url: str) -> bool:
+    u = _clean(url)
+    return u.lower().startswith("https://") and bool(_URL.match(u))
+
+
+def session_name_for(url: str) -> str:
+    """A short, valid name for the sso-session made from the sign-in address (acme.awsapps.com -> acme)."""
+    host = urlparse(_clean(url)).hostname or "sso"
+    return re.sub(r"[^A-Za-z0-9_.\-]+", "-", host.split(".")[0]).strip("-") or "sso"
 
 
 def find() -> list[SsoCandidate]:
