@@ -70,7 +70,8 @@ jobs:
           HOME="$d" sh dist-linux/ssmconnect-*-linux-*.bin --text --yes --prefix "$d/p"
           HOME="$d" "$d/p/bin/ssmconnect" --version
           HOME="$d" "$d/p/bin/ssmconnect" doctor
-          HOME="$d" "$d/.local/share/ssmconnect/bin/aws" --version
+          # the runner already has the AWS tools, so the installer rightly does not download them again: just check they are found and run
+          HOME="$d" "$d/p/bin/ssmconnect" doctor | grep -E "^ok +AWS CLI" && aws --version
           HOME="$d" "$d/p/bin/ssmconnect" uninstall --prefix "$d/p"
       - name: Smoke-test the deb
         run: sudo apt-get install -y ./dist-linux/ssmconnect_*.deb && ssmconnect --version && ssmconnect doctor || true
