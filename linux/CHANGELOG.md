@@ -4,6 +4,22 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.2.1] - 2026-10-16
+Files button fixed.
+### Fixed
+- **Files did nothing** for Linux servers. The button ran `gio open sftp://...`, which only prints "location is not mounted" (and the error was
+  thrown away). It now logs in first (`gio mount`), then opens the mounted folders in the file manager; where GVFS is not available it uses the file
+  manager's own SFTP (Dolphin on KDE, Thunar, Nemo, Caja, Nautilus, PCManFM), and as a last resort the plain `sftp` client in a terminal.
+- A failure is now shown instead of being swallowed: *the server refused the login (check the user and key file)*, *the connection is not open yet*,
+  or *the server's host key changed*.
+### Added
+- **More > Open sftp in a terminal** on every Linux server, and `ssmconnect files NAME` / `ssmconnect sftp NAME` on the command line
+  (NAME is the server's name, its `ssc-` alias or its instance id).
+- Opening the files runs in the background (it logs in first, which takes a moment) and the dashboard says so.
+### Verified
+- Against a real local SSH/SFTP server through the same `~/.ssh/config` alias mechanism: mounts and opens Nautilus (about 2 s), a wrong user
+  gives the login message, a stopped server gives the connection message.
+
 ## [0.2.0] - 2026-10-16
 One installer file, and nothing third-party inside it.
 ### Added

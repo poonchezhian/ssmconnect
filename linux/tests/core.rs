@@ -166,3 +166,13 @@ fn iso_time_and_token_expiry() {
     assert!(parse_iso_utc("2099-01-01T00:00:00UTC").unwrap() > ssmconnect::util::now());
     assert!(parse_iso_utc("garbage").is_none());
 }
+
+#[test]
+fn sftp_problems_are_explained_in_plain_words() {
+    use ssmconnect::launchers::sftp_problem;
+    assert!(sftp_problem("Failed to mount: Permission denied (publickey).").unwrap().contains("refused the login"));
+    assert!(sftp_problem("ssh: connect to host 127.0.0.1 port 2201: Connection refused").unwrap().contains("not open"));
+    assert!(sftp_problem("Host key verification failed.").unwrap().contains("host key"));
+    // "this desktop cannot mount SFTP" is not a problem with the server: the caller falls back to a file manager or the sftp client
+    assert!(sftp_problem("Operation not supported / no handler for sftp").is_none());
+}

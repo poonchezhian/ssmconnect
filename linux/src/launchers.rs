@@ -43,19 +43,74 @@ fn spawn(cmd: &mut Command) -> Result<(), String> {
 fn sh_quote(s: &str) -> String { format!("'{}'", s.replace('\'', "'\"'\"'")) }
 
 /// Runs `ssh <alias>` in the person's terminal. The terminal stays open if the connection fails, so errors can be read.
-pub fn open_terminal(alias: &str) -> Result<(), String> {
+pub fn open_terminal(alias: &str) -> Result<(), String> { open_in_terminal("ssh", alias) }
+
+/// Runs the plain `sftp <alias>` client in a terminal: works everywhere OpenSSH does, whatever file manager is installed.
+pub fn open_sftp_terminal(alias: &str) -> Result<(), String> { open_in_terminal("sftp", alias) }
+
+fn open_in_terminal(program: &str, alias: &str) -> Result<(), String> {
     let (exe, args) = find_terminal().ok_or("No terminal program was found. Install one (for example GNOME Terminal), or use 'Copy ssh command'.")?;
-    let script = format!("ssh {}; status=$?; if [ $status -ne 0 ]; then echo; read -r -p 'ssh ended with an error. Press Enter to close.' _; fi", sh_quote(alias));
-    applog::info(&format!("Opening terminal: {exe} {} bash -c ...", args.join(" ")));
+    let script = format!("{program} {}; status=$?; if [ $status -ne 0 ]; then echo; read -r -p '{program} ended with an error. Press Enter to close.' _; fi", sh_quote(alias));
+    applog::info(&format!("Opening terminal: {exe} {} bash -c ({program} {alias})", args.join(" ")));
     spawn(Command::new(&exe).args(&args).arg("bash").arg("-c").arg(script))
 }
 
-/// Browse the server in the desktop file manager (sftp://). ssh_config supplies the port and key.
+/// Runs a command to the end (at most `secs`), returning (success, stderr text).
+fn run_limited(cmd: &mut Command, secs: u64) -> (bool, String) {
+    use std::io::Read;
+    let Ok(mut child) = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn() else { return (false, "could not start".into()) };
+    let mut err = child.stderr.take().unwrap();
+    let reader = std::thread::spawn(move || { let mut s = String::new(); let _ = err.read_to_string(&mut s); s });
+    let start = std::time::Instant::now();
+    let ok = loop {
+        match child.try_wait() {
+            Ok(Some(st)) => break st.success(),
+            Ok(None) if start.elapsed().as_secs() >= secs => { let _ = child.kill(); let _ = child.wait(); break false; }
+            Ok(None) => std::thread::sleep(std::time::Duration::from_millis(50)),
+            Err(_) => break false,
+        }
+    };
+    (ok, reader.join().unwrap_or_default())
+}
+
+/// A plain-language reason from what `gio mount` printed, or None when the problem is "this computer cannot do SFTP in the file manager".
+pub fn sftp_problem(stderr: &str) -> Option<String> {
+    let low = stderr.to_lowercase();
+    if low.contains("permission denied") || low.contains("authentication") {
+        return Some("The server refused the login. Check the login user and the key file (Add / change servers).".into());
+    }
+    if low.contains("connection refused") || low.contains("connection closed") || low.contains("timed out") || low.contains("connection reset") {
+        return Some("The connection to the server is not open. Wait for the green status, or press Restart.".into());
+    }
+    if low.contains("host key") && low.contains("verification failed") || low.contains("remote host identification has changed") {
+        return Some("The server's identity changed since last time (its host key). If you rebuilt the server, remove its old entry from ~/.ssh/known_hosts.".into());
+    }
+    None
+}
+
+/// Opens the server's files for exchange over SFTP. Takes a few seconds (it logs in first), so call it off the main thread.
+/// Order: mount it in the desktop (GNOME / Cinnamon / MATE / Xfce through GVFS) and open it in the file manager; otherwise the file manager's
+/// own SFTP (Dolphin, Thunar, Nemo, Caja, Nautilus); otherwise the `sftp` client in a terminal.
 pub fn open_files(user: &str, alias: &str) -> Result<(), String> {
     let url = format!("sftp://{user}@{alias}/");
-    if which("gio").is_some() { return spawn(Command::new("gio").args(["open", &url])); }
-    if which("xdg-open").is_some() { return spawn(Command::new("xdg-open").arg(&url)); }
-    Err("No file manager was found to open the server's files.".into())
+    let kde = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_uppercase().contains("KDE"));
+    if kde && which("dolphin").is_some() { return spawn(Command::new("dolphin").arg(&url)); }   // KIO speaks SFTP itself
+    if which("gio").is_some() {
+        // `gio open sftp://...` alone does nothing ("not mounted"), so log in first, then open the mounted folder
+        let (ok, err) = run_limited(Command::new("gio").args(["mount", &url]), 60);
+        if !ok && !err.to_lowercase().contains("already mounted") {
+            applog::warn(&format!("gio mount {url}: {err}"));
+            if let Some(p) = sftp_problem(&err) { return Err(p); }
+        } else {
+            let (opened, err2) = run_limited(Command::new("gio").args(["open", &url]), 20);
+            if opened { return Ok(()); }
+            applog::warn(&format!("gio open {url}: {err2}"));
+        }
+    }
+    for fm in ["dolphin", "thunar", "nemo", "caja", "nautilus", "pcmanfm"] {
+        if which(fm).is_some() { return spawn(Command::new(fm).arg(&url)); }
+    }
+    open_sftp_terminal(alias)
 }
 
 /// Opens Remote Desktop to a Windows server through its tunnel (127.0.0.1:<local port>).

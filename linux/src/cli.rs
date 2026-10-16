@@ -16,6 +16,8 @@ Commands:
   list           list saved servers
   status         show live connection status
   run            open all connections in this terminal until Ctrl+C
+  files NAME     open a saved server's files over SFTP (NAME: its name, ssh alias or instance id)
+  sftp NAME      the same in a terminal with the plain sftp client
   scan           scan every account for new or changed servers
   uninstall [--prefix DIR]
                  remove the program installed by the installer (default prefix: ~/.local)
@@ -164,6 +166,17 @@ pub fn main(args: Vec<String>) -> ExitCode {
         ["doctor"] => doctor(),
         ["install-tools"] => install_tools(),
         ["list"] => list(),
+        ["files", name] | ["sftp", name] => {
+            let (cfg, _) = config_store::load_or_recover();
+            let Some(t) = cfg.tunnels.iter().find(|t| !t.is_rdp() && (t.name == *name || t.instance_id == *name || crate::ssh_config::alias_of(t, &cfg.tunnels) == *name)) else {
+                eprintln!("No saved Linux server called '{name}'. See: ssmconnect list"); return ExitCode::from(1);
+            };
+            let alias = crate::ssh_config::alias_of(t, &cfg.tunnels);
+            match if rest[0] == "files" { launchers::open_files(&t.user_name, &alias) } else { launchers::open_sftp_terminal(&alias) } {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => { eprintln!("{e}"); ExitCode::from(1) }
+            }
+        }
         ["status"] => status(),
         ["run"] => run(),
         ["scan"] => scan(),

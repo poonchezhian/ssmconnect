@@ -281,7 +281,7 @@ impl Dashboard {
             action("dialog-password-symbolic", "Get password", Box::new(|d, t, _| d.get_password(t)));
         } else {
             action("utilities-terminal-symbolic", "Terminal", Box::new(|d, _, a| if let Err(e) = launchers::open_terminal(a) { d.toast(&e); }));
-            action("folder-remote-symbolic", "Files", Box::new(|d, t, a| if let Err(e) = launchers::open_files(&t.user_name, a) { d.toast(&e); }));
+            action("folder-remote-symbolic", "Files", Box::new(|d, t, a| d.open_files(t, a)));
         }
         // the "more" menu
         let more = gtk::MenuButton::builder().icon_name("view-more-symbolic").valign(gtk::Align::Center).tooltip_text("More").build();
@@ -289,6 +289,7 @@ impl Dashboard {
         let menu = gio::Menu::new();
         menu.append(Some(if t.is_rdp() { "Copy local address" } else { "Copy ssh command" }), Some("row.copy"));
         menu.append(Some(if t.is_rdp() { "Open Remote Desktop address" } else { "Copy sftp address" }), Some("row.copy-alt"));
+        if !t.is_rdp() { menu.append(Some("Open sftp in a terminal"), Some("row.sftp")); }
         more.set_menu_model(Some(&menu));
         row.add_suffix(&more);
         let group = gio::SimpleActionGroup::new();
@@ -302,6 +303,8 @@ impl Dashboard {
         mk("copy", Box::new(move |d| { d.copy(&if t1.is_rdp() { format!("127.0.0.1:{}", t1.local_port) } else { ssh_config::ssh_command_text(&a1) }); d.toast("Copied."); }));
         let (t2, a2) = (t.clone(), alias.to_string());
         mk("copy-alt", Box::new(move |d| if t2.is_rdp() { if let Err(e) = launchers::open_rdp(&t2) { d.toast(&e); } } else { d.copy(&ssh_config::sftp_url(&t2.user_name, &a2)); d.toast("Copied."); }));
+        let a3 = alias.to_string();
+        mk("sftp", Box::new(move |d| if let Err(e) = launchers::open_sftp_terminal(&a3) { d.toast(&e); }));
         row.insert_action_group("row", Some(&group));
         ServerRow { row, dot, buttons, tunnel: t.clone() }
     }
@@ -310,6 +313,13 @@ impl Dashboard {
     fn guarded(self: &Rc<Self>, b: &gtk::Button, t: &TunnelConfig, alias: &str, f: &dyn Fn(&Rc<Dashboard>, &TunnelConfig, &str)) {
         if b.has_css_class("unavailable") { self.toast(&b.tooltip_text().map(|s| s.to_string()).unwrap_or_else(|| "Not available yet.".into())); return; }
         f(self, t, alias);
+    }
+
+    /// The "Files" button: logs in over SFTP and opens the server's folders (a few seconds, so off the main thread), telling the person what happens.
+    fn open_files(self: &Rc<Self>, t: &TunnelConfig, alias: &str) {
+        self.toast("Opening the server's files over SFTP...");
+        let (user, alias, d) = (t.user_name.clone(), alias.to_string(), self.clone());
+        in_background(move || launchers::open_files(&user, &alias), move |r| if let Err(e) = r { d.toast(&e); });
     }
 
     fn get_password(self: &Rc<Self>, t: &TunnelConfig) {
