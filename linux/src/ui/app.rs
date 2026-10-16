@@ -10,6 +10,8 @@ use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 use std::sync::Arc;
 
+static SIGNALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
 pub struct App {
     pub gtk: adw::Application,
     pub manager: Arc<TunnelManager>,
@@ -52,6 +54,13 @@ impl App {
         }
         self.actions();
         if config_store::load().is_some_and(|c| !c.tunnels.is_empty() && c.autostart_connections) { self.manager.start(); }
+        // logging out, shutting down or `kill` must close the connections cleanly, like Quit does
+        extern "C" fn on_signal(_: libc::c_int) { SIGNALLED.store(true, std::sync::atomic::Ordering::SeqCst); }
+        for sig in [libc::SIGTERM, libc::SIGHUP, libc::SIGINT] { unsafe { libc::signal(sig, on_signal as *const () as usize); } }
+        let app = self.gtk.clone();
+        glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
+            if SIGNALLED.load(std::sync::atomic::Ordering::SeqCst) { app.quit(); glib::ControlFlow::Break } else { glib::ControlFlow::Continue }
+        });
         std::mem::forget(self.gtk.hold());   // the app lives until Quit, even with the window hidden
         let a = self.clone();
         glib::timeout_add_seconds_local_once(8, move || a.background_jobs());

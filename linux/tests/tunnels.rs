@@ -80,3 +80,35 @@ fn invalid_config_reported_not_started() {
     assert!(m.snapshot()[0].message.contains("not a valid EC2 instance"));
     m.stop();
 }
+
+#[test]
+fn a_leftover_session_from_an_earlier_run_is_cleared_away() {
+    use std::os::unix::process::CommandExt;
+    let (_h, m) = setup();
+    let port = free_port();
+    // stands in for a Session Manager plugin that outlived the SSMConnect that started it: right name, right arguments, holding the port, other process group
+    let code = format!("import socket,time\ns=socket.socket();s.setsockopt(socket.SOL_SOCKET,socket.SO_REUSEADDR,1);s.bind(('127.0.0.1',{port}));s.listen(1);time.sleep(120)");
+    let params = format!("{{\"Target\": \"i-0123456789abcdef0\", \"DocumentName\": \"AWS-StartPortForwardingSession\", \"Parameters\": {{\"portNumber\": [\"22\"], \"localPortNumber\": [\"{port}\"]}}}}");
+    let mut orphan = std::process::Command::new("sh").arg("-c").arg("exec -a session-manager-plugin python3 -c \"$0\" x \"$1\"").arg(code).arg(params).process_group(0).spawn().unwrap();
+    assert!(wait_for(10, || netcheck::is_listening(port)));
+    save(vec![tunnel("i-0123456789abcdef0", port)]);
+    m.start();
+    assert!(wait_for(20, || state(&m) == Some(State::Connected)), "{:?}", m.snapshot());   // the orphan was ended and a fresh session took the port
+    assert!(orphan.try_wait().map(|s| s.is_some()).unwrap_or(false) || wait_for(5, || orphan.try_wait().map(|s| s.is_some()).unwrap_or(false)));
+    m.stop();
+    let _ = orphan.kill();
+}
+
+#[test]
+fn another_programs_port_is_never_touched() {
+    // only Session Manager sessions for that exact port are ended; anything else holding it is respected
+    let (_h, m) = setup();
+    let l = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let port = l.local_addr().unwrap().port();
+    save(vec![tunnel("i-0123456789abcdef0", port)]);
+    m.start();
+    assert!(wait_for(15, || state(&m) == Some(State::Error)));
+    assert!(m.snapshot()[0].message.contains("already used"));
+    assert!(std::net::TcpStream::connect(("127.0.0.1", port)).is_ok());
+    m.stop();
+}

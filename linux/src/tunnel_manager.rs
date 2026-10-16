@@ -176,16 +176,17 @@ impl Inner {
             if let Some(mut slot) = s.slots.remove(&k) { applog::info(&format!("Stopping tunnel {}", slot.tunnel.name)); stop_slot(&mut slot); }
         }
         let mut changed = false;
+        let live: Vec<i32> = s.slots.values().filter_map(|sl| sl.child.as_ref().map(|c| c.id() as i32)).collect();   // each session is its own process group
         for (key, t) in desired {
             let slot = s.slots.entry(key).or_insert_with(|| Slot::new(t.clone()));
             slot.tunnel = t.clone();   // picks up renames and environment changes without a restart
-            changed |= self.step(slot);
+            changed |= self.step(slot, &live);
         }
         if changed { /* publish happens right after reconcile */ }
     }
 
     /// One look at one tunnel. Returns true when its state changed.
-    fn step(self: &Arc<Self>, slot: &mut Slot) -> bool {
+    fn step(self: &Arc<Self>, slot: &mut Slot, live: &[i32]) -> bool {
         let t = slot.tunnel.clone();
         let n = now();
         let mut changed = false;
@@ -244,11 +245,11 @@ impl Inner {
                 }
             }
         }
-        if now() >= slot.next_start { changed |= self.start_slot(slot); }
+        if now() >= slot.next_start { changed |= self.start_slot(slot, live); }
         changed
     }
 
-    fn start_slot(self: &Arc<Self>, slot: &mut Slot) -> bool {
+    fn start_slot(self: &Arc<Self>, slot: &mut Slot, live: &[i32]) -> bool {
         let t = slot.tunnel.clone();
         slot.last_error.clear();
         if aws_cli::find_aws().is_none() {
@@ -262,6 +263,8 @@ impl Inner {
         // Never start on a port another program already owns: it could answer in place of the server and the dashboard would
         // wrongly show "connected" (and SSH would send the login to it).
         if netcheck::is_listening(t.local_port) {
+            // a session left behind by an earlier SSMConnect that was closed without cleaning up (logout, crash) is ours to clear away
+            if reap_orphan_session(t.local_port, live) { slot.next_start = now() + 1.0; return false; }
             if slot.refreshing && slot.failures < 3 { slot.failures += 1; slot.next_start = now() + 2.0; return false; }   // the old session is still letting go
             slot.backoff = (slot.backoff * 2).min(60);
             slot.next_start = now() + slot.backoff as f64;
@@ -341,4 +344,27 @@ fn stop_slot(slot: &mut Slot) {
         }
         let _ = child.wait();
     }
+}
+
+/// Looks for a Session Manager plugin process that holds `port` and belongs to no session of this run (its process group is not one of `live`),
+/// for example one left behind when an earlier SSMConnect was stopped without time to clean up, and ends it. True when one was found.
+fn reap_orphan_session(port: u16, live: &[i32]) -> bool {
+    let want = format!("\"localPortNumber\": [\"{port}\"]");
+    let me = unsafe { libc::geteuid() };
+    let Ok(rd) = std::fs::read_dir("/proc") else { return false };
+    let mut found = false;
+    for e in rd.flatten() {
+        let Ok(pid) = e.file_name().to_string_lossy().parse::<i32>() else { continue };
+        let Ok(meta) = std::fs::metadata(e.path()) else { continue };
+        if std::os::unix::fs::MetadataExt::uid(&meta) != me { continue; }   // only our own processes
+        let Ok(raw) = std::fs::read(e.path().join("cmdline")) else { continue };
+        let args: Vec<String> = raw.split(|b| *b == 0).map(|a| String::from_utf8_lossy(a).into_owned()).collect();
+        let is_plugin = args.first().is_some_and(|a| a.rsplit('/').next() == Some("session-manager-plugin")) && args.iter().any(|a| a.contains("AWS-StartPortForwardingSession") && a.contains(&want));
+        if !is_plugin { continue; }
+        if live.contains(&unsafe { libc::getpgid(pid) }) { continue; }   // one of the sessions this run opened
+        applog::warn(&format!("Ending a leftover session (process {pid}) that was still holding local port {port}."));
+        unsafe { libc::kill(pid, libc::SIGTERM); }
+        found = true;
+    }
+    found
 }

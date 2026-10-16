@@ -4,6 +4,18 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.3.1] - 2026-10-16
+No more leftover connections.
+### Fixed
+- **Stopping SSMConnect with a signal left its Session Manager sessions running.** Logging out, shutting down or `kill` (SIGTERM/SIGHUP/SIGINT) ended the app
+  without closing its connections, and the next start then reported every local port as "already used by another program". The app now closes everything
+  cleanly on those signals, the same as Quit.
+- **Leftover sessions are cleared away.** If a previous run was stopped abruptly (crash, power loss) and its Session Manager plugin is still holding a port,
+  the new run recognises it (same plugin, same port, not one of its own sessions), ends it and connects. Anything else holding a port is still left alone and
+  reported, as before.
+### Tests
+- A leftover plugin holding the port is ended and replaced; another program's port is never touched; the running app exits on SIGTERM with all of its ports freed.
+
 ## [0.3.0] - 2026-10-16
 Updates that keep your data, and every setting in a window.
 ### Installer
