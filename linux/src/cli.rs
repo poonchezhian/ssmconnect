@@ -2,7 +2,7 @@
 
 use crate::models::State;
 use crate::tunnel_manager::TunnelManager;
-use crate::{aws_cli, aws_profiles, config_store, desktop, discovery, launchers, netcheck, prereq_installer, status_store, VERSION};
+use crate::{aws_cli, aws_profiles, config_store, desktop, discovery, installer, launchers, netcheck, prereq_installer, status_store, VERSION};
 use std::process::ExitCode;
 
 const HELP: &str = "SSMConnect for Linux: SSH and Remote Desktop to AWS servers over Session Manager (port 22 closed).
@@ -17,10 +17,14 @@ Commands:
   status         show live connection status
   run            open all connections in this terminal until Ctrl+C
   scan           scan every account for new or changed servers
+  uninstall [--prefix DIR]
+                 remove the program installed by the installer (default prefix: ~/.local)
   cleanup [--keep-settings]
                  remove SSMConnect's traces for this user (ssh include, autostart, settings)
 
 Options:
+  --installer    the installer: first fetches what SSMConnect needs from its own sources, then installs SSMConnect
+                 (--text for questions in the terminal, --yes to accept the defaults, --system for all users, --prefix DIR)
   --background   start hidden and keep connections open (used by 'start when I sign in')
   --version      show the version
   -h, --help     show this help";
@@ -115,17 +119,48 @@ pub fn main(args: Vec<String>) -> ExitCode {
     // `ssmconnect list | head` should end quietly, like other command-line tools
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }
     let mut background = false;
+    let (mut installer, mut text, mut yes, mut system, mut files_only) = (false, false, false, false, false);
+    let (mut prefix, mut source, mut destdir): (Option<std::path::PathBuf>, Option<std::path::PathBuf>, Option<std::path::PathBuf>) = (None, None, None);
     let mut rest: Vec<&str> = vec![];
-    for a in &args {
+    let mut it = args.iter();
+    while let Some(a) = it.next() {
         match a.as_str() {
+            "--installer" => installer = true,
+            "--text" => text = true,
+            "--yes" | "-y" => yes = true,
+            "--system" => system = true,
+            "--install-files" => files_only = true,
+            "--prefix" | "--source" | "--destdir" => {
+                let Some(v) = it.next() else { eprintln!("{a} needs a value"); return ExitCode::from(2) };
+                match a.as_str() { "--prefix" => prefix = Some(v.into()), "--source" => source = Some(v.into()), _ => destdir = Some(v.into()) }
+            }
             "--version" | "-V" => { println!("SSMConnect for Linux {VERSION}"); return ExitCode::SUCCESS; }
             "-h" | "--help" | "help" => { println!("{HELP}"); return ExitCode::SUCCESS; }
             "--background" => background = true,
             other => rest.push(other),
         }
     }
+    if files_only {
+        // files-only mode: used by the installer for "all users" (run as root), and by the package builders
+        let src = source.or_else(|| std::env::current_exe().ok()).unwrap_or_default();
+        return match installer::install_files(&prefix.unwrap_or_else(installer::user_prefix), &destdir.unwrap_or_default(), &src, &|_| {}) {
+            Ok(_) => ExitCode::SUCCESS,
+            Err(e) => { eprintln!("{e}"); ExitCode::from(1) }
+        };
+    }
+    if installer {
+        let have_display = std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some();
+        if text || yes || !have_display {
+            return crate::installer_text::run(crate::installer_text::Options { yes, system, prefix, source });
+        }
+        return ExitCode::from(crate::ui::run_installer(prefix, source) as u8);
+    }
     match rest.as_slice() {
         [] => ExitCode::from(crate::ui::run(background) as u8),
+        ["uninstall"] => match installer::uninstall(&prefix.unwrap_or_else(installer::user_prefix)) {
+            Ok(n) => { println!("Removed {n} file(s). Your settings stay; remove them with: ssmconnect cleanup"); ExitCode::SUCCESS }
+            Err(e) => { eprintln!("{e}"); ExitCode::from(1) }
+        },
         ["doctor"] => doctor(),
         ["install-tools"] => install_tools(),
         ["list"] => list(),

@@ -10,6 +10,8 @@ pub mod cli;
 pub mod config_store;
 pub mod desktop;
 pub mod discovery;
+pub mod installer;
+pub mod installer_text;
 pub mod key_finder;
 pub mod launchers;
 pub mod models;

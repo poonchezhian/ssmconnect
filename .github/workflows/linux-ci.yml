@@ -63,16 +63,20 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
-      - run: packaging/build-tarball.sh && packaging/build-deb.sh
-      - name: Smoke-test the tarball install
+      - run: packaging/build-bin.sh && packaging/build-deb.sh
+      - name: Smoke-test the .bin installer end to end (real downloads from Amazon, signature checked)
         run: |
-          d=$(mktemp -d); tar -C "$d" -xzf dist-linux/ssmconnect-*-linux-*.tar.gz
-          "$d"/ssmconnect-*/install.sh --prefix "$d/p" && HOME="$d" "$d/p/bin/ssmconnect" --version
+          d=$(mktemp -d)
+          HOME="$d" sh dist-linux/ssmconnect-*-linux-*.bin --text --yes --prefix "$d/p"
+          HOME="$d" "$d/p/bin/ssmconnect" --version
+          HOME="$d" "$d/p/bin/ssmconnect" doctor
+          HOME="$d" "$d/.local/share/ssmconnect/bin/aws" --version
+          HOME="$d" "$d/p/bin/ssmconnect" uninstall --prefix "$d/p"
       - name: Smoke-test the deb
         run: sudo apt-get install -y ./dist-linux/ssmconnect_*.deb && ssmconnect --version && ssmconnect doctor || true
       - uses: actions/upload-artifact@v4
         with:
-          name: ssmconnect-linux-deb-tarball
+          name: ssmconnect-linux-bin-deb
           path: linux/dist-linux/*
 
   rpm:

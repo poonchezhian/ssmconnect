@@ -6,7 +6,7 @@ cd "$here"
 ver=$(cat VERSION); arch=$(dpkg --print-architecture); out=$here/dist-linux; root=$(mktemp -d); trap 'rm -rf "$root"' EXIT
 mkdir -p "$out"
 cargo build --release --locked >&2
-packaging/stage.sh "$root" /usr
+target/release/ssmconnect --install-files --prefix /usr --destdir "$root"
 mv "$root/usr/share/licenses/ssmconnect" "$root/usr/share/doc/ssmconnect/license" && rmdir "$root/usr/share/licenses"
 install -d "$root/DEBIAN"
 cat > "$root/DEBIAN/control" <<CTL

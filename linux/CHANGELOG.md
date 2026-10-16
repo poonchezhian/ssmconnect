@@ -4,6 +4,26 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.2.0] - 2026-10-16
+One installer file, and nothing third-party inside it.
+### Added
+- `ssmconnect-X.Y.Z-linux-ARCH.bin`: a single self-extracting file. Running it opens an installation wizard (Welcome, Requirements,
+  Where to install, Done), or asks the same questions in the terminal without a display (`--text`; `--yes` accepts the defaults;
+  `--system` installs for all users; `--prefix DIR`; `--extract DIR` only unpacks).
+- Requirements are fetched from their own sources before SSMConnect is installed: GTK 4 / libadwaita (offered by the file itself if missing),
+  OpenSSH and Remmina from the distribution's repositories through dnf, apt, zypper or pacman (asks for the password, via pkexec or sudo),
+  and the AWS CLI and Session Manager plugin from Amazon with their signatures checked. The installer never bundles any of them.
+- The file checks its own integrity (SHA-256) before running anything, and refuses a damaged or truncated download.
+- `ssmconnect uninstall [--prefix DIR]` removes what the installer installed, using the list it wrote. Settings and the user's tools stay.
+- The desktop entry written by the installer points at the installed program by absolute path, so it works even when `~/.local/bin` is not on PATH.
+### Changed
+- The program carries its own desktop entry, icon, AppStream data and documents, so the `.bin` is the only file to download. The `.deb` and `.rpm`
+  are staged by the program itself (`--install-files --destdir`), which replaces `stage.sh`; the old tarball is replaced by the `.bin`.
+- `LICENSE` and `NOTICE` are also kept in `linux/` so the source builds on its own.
+### Tests
+- Installer file layout, uninstall from the list (including a hostile list), package staging, package-manager detection and commands,
+  and a CI smoke test that runs the `.bin` end to end with real signed downloads.
+
 ## [0.1.4] - 2026-10-16
 Signed downloads.
 ### Added

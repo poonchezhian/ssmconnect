@@ -18,22 +18,41 @@ and the file manager via `sftp://`.
 
 ## Install
 
-Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/releases) (tags named `linux-vX.Y.Z`; check `SHA256SUMS.txt`):
+Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/releases) (tags named `linux-vX.Y.Z`; check `SHA256SUMS.txt`).
+
+**The installer (any distribution): `ssmconnect-X.Y.Z-linux-x86_64.bin`**
+
+```
+sh ./ssmconnect-X.Y.Z-linux-x86_64.bin      # or chmod +x it and double-click
+```
+
+It opens an installation wizard (or asks questions in the terminal when there is no display: `--text`, `--yes` accepts the
+defaults, `--system` installs for all users). The wizard works in this order, so SSMConnect is only installed once everything it needs is there:
+
+1. **Requirements, fetched from their own sources** (nothing third-party is bundled in the installer):
+   - GTK 4 and libadwaita from your distribution's repositories, if they are missing (the file itself offers this before the window opens)
+   - OpenSSH client (and optionally Remmina for Windows servers) from your distribution's repositories, with its package manager (dnf, apt, zypper or pacman), after asking for your password
+   - AWS CLI v2 and the Session Manager plugin straight from Amazon, with Amazon's OpenPGP signature checked
+2. **SSMConnect itself**, for you (`~/.local`, no password) or for all users (`/usr/local`).
+
+Remove it with `ssmconnect uninstall` (add `--prefix /usr/local` if you installed for all users).
+
+**Native packages** (the package manager pulls OpenSSH and GTK for you):
 
 | Distribution | Install |
 |---|---|
 | Fedora, RHEL, openSUSE | `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm` |
 | Debian 13+, Ubuntu 24.04+, Mint 22+ | `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb` |
-| Anything else with GTK 4.12+ and libadwaita 1.5+ | unpack `ssmconnect-X.Y.Z-linux-x86_64.tar.gz`, run `./install.sh` (to `~/.local`, no root) |
-| From source | `cargo build --release --locked`, then `packaging/stage.sh "" ~/.local` |
+| From source | `cargo build --release --locked`, then `target/release/ssmconnect --installer` |
 
-Then open **SSMConnect** from the application menu. The first run starts the setup wizard.
+After a package install, the first run of SSMConnect offers to fetch the AWS CLI and the Session Manager plugin (the same signed downloads).
+Then open **SSMConnect** from the application menu; the first run starts the setup wizard.
 
 ## Requirements
 
 - A compiled, native program: no Python, Electron or Wine. It links GTK 4 (4.12+) and libadwaita (1.5+), which every current desktop distribution ships
 - OpenSSH client; optionally FreeRDP or Remmina for Windows servers
-- AWS CLI v2 and the Session Manager plugin: `ssmconnect install-tools` installs both for your user, no root needed
+- AWS CLI v2 and the Session Manager plugin, fetched for you from Amazon (`ssmconnect install-tools` does it from a terminal)
 
 ## Security of the tools it installs
 
@@ -94,7 +113,7 @@ cargo test                           # unit + integration tests, with a fake AWS
 cargo run                            # the app
 cargo run --example e2e_wizard       # drives the real wizard end to end (needs a display)
 cargo run --example screenshot -- out.png dark   # renders the window to a PNG
-packaging/build-tarball.sh           # also build-deb.sh and build-rpm.sh
+packaging/build-bin.sh               # the .bin installer; also build-deb.sh and build-rpm.sh
 ```
 
 ## Versioning

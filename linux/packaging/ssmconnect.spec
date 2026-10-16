@@ -30,7 +30,7 @@ A native GTK 4 application written in Rust.
 cargo build --release --locked
 
 %install
-packaging/stage.sh %{buildroot} %{_prefix}
+target/release/ssmconnect --install-files --prefix %{_prefix} --destdir %{buildroot}
 
 %files
 %license %{_licensedir}/%{name}/LICENSE
