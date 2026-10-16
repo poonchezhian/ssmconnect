@@ -104,13 +104,16 @@ fn scan() -> ExitCode {
 }
 
 fn install_tools() -> ExitCode {
-    match prereq_installer::install_missing(&|m| println!("{m}")) {
+    let last = std::cell::RefCell::new(String::new());
+    match prereq_installer::install_missing(&|m| { if *last.borrow() != m { println!("{m}"); *last.borrow_mut() = m; } }) {
         Ok(done) => { println!("{}", if done.is_empty() { "Everything is already installed.".to_string() } else { format!("Installed: {}", done.join(", ")) }); ExitCode::SUCCESS }
         Err(e) => { eprintln!("{e}"); ExitCode::from(1) }
     }
 }
 
 pub fn main(args: Vec<String>) -> ExitCode {
+    // `ssmconnect list | head` should end quietly, like other command-line tools
+    unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }
     let mut background = false;
     let mut rest: Vec<&str> = vec![];
     for a in &args {

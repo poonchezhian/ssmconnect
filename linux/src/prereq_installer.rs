@@ -4,8 +4,11 @@
 //! ~/.local/share/ssmconnect, with links in ~/.local/share/ssmconnect/bin. If your distribution packages them, prefer your
 //! package manager; SSMConnect uses whichever it finds first.
 //!
-//! KNOWN LIMIT: downloads are not yet checked against Amazon's detached signature (tracked in CHANGELOG.md).
+//! Every download is checked against the OpenPGP signature Amazon publishes next to it (`<file>.sig`), with public keys built
+//! into the program and pinned by fingerprint (see `signature.rs`). A download whose signature is missing or does not match
+//! is refused and nothing is installed.
 
+use crate::signature::{self, TrustedKey};
 use crate::{applog, aws_cli, paths};
 use std::io::{Cursor, Read, Write};
 use std::os::unix::fs::PermissionsExt;
@@ -47,6 +50,16 @@ fn download(url: &str, progress: &dyn Fn(String), what: &str) -> Result<Vec<u8>,
     Ok(buf)
 }
 
+/// Downloads `url` and its `.sig`, and returns the data only if the signature checks out against `key`.
+pub fn download_verified(url: &str, key: &TrustedKey, progress: &dyn Fn(String), what: &str) -> Result<Vec<u8>, String> {
+    let data = download(url, progress, what)?;
+    progress(format!("Checking Amazon's signature on {what}..."));
+    let sig = download(&format!("{url}.sig"), &|_| {}, "the signature").map_err(|e| format!("Could not get Amazon's signature for {what} ({e}), so it was not installed."))?;
+    signature::verify_detached(&data, &sig, key).inspect_err(|e| applog::error(&format!("Signature check failed for {url}: {e}")))?;
+    applog::info(&format!("Signature of {url} verified ({}).", key.fingerprint));
+    Ok(data)
+}
+
 fn extract_zip(data: &[u8], dest: &Path) -> Result<(), String> {
     let mut z = zip::ZipArchive::new(Cursor::new(data)).map_err(|e| e.to_string())?;
     for i in 0..z.len() {
@@ -74,7 +87,7 @@ pub fn install_aws_cli(progress: &dyn Fn(String)) -> Result<(), String> {
     let data_dir = paths::data_dir();
     let bin = data_dir.join("bin");
     std::fs::create_dir_all(&bin).map_err(|e| e.to_string())?;
-    let data = download(&aws_cli_url()?, progress, "the AWS CLI")?;
+    let data = download_verified(&aws_cli_url()?, &signature::AWS_CLI, progress, "the AWS CLI")?;
     progress("Installing the AWS CLI...".into());
     let tmp = temp_dir("awscli")?;
     let res = (|| {
@@ -117,7 +130,7 @@ fn find_file(dir: &Path, name: &str) -> Option<PathBuf> {
 
 pub fn install_plugin(progress: &dyn Fn(String)) -> Result<(), String> {
     let data_dir = paths::data_dir();
-    let deb = download(&plugin_url()?, progress, "the Session Manager plugin")?;
+    let deb = download_verified(&plugin_url()?, &signature::SESSION_MANAGER_PLUGIN, progress, "the Session Manager plugin")?;
     progress("Installing the Session Manager plugin...".into());
     let (name, body) = deb_data(&deb)?;
     let tmp = temp_dir("plugin")?;

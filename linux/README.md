@@ -35,6 +35,12 @@ Then open **SSMConnect** from the application menu. The first run starts the set
 - OpenSSH client; optionally FreeRDP or Remmina for Windows servers
 - AWS CLI v2 and the Session Manager plugin: `ssmconnect install-tools` installs both for your user, no root needed
 
+## Security of the tools it installs
+
+`ssmconnect install-tools` (and the setup wizard) download the AWS CLI and the Session Manager plugin straight from Amazon over HTTPS and
+verify Amazon's OpenPGP signature on each file against public keys built into SSMConnect, pinned by fingerprint, before anything is
+unpacked. A file that is damaged, tampered with or unsigned is refused. See `src/signature.rs`.
+
 ## Command line
 
 ```

@@ -47,6 +47,16 @@ jobs:
           grep -q "^## \[$(cat VERSION)\]" CHANGELOG.md
       - run: desktop-file-validate data/*.desktop && appstreamcli validate --no-net data/*.metainfo.xml
 
+  # Downloads Amazon's real packages and signatures and checks them against the built-in keys. If AWS ever rotates a key this turns red
+  # (it does not block releases): that is the signal to ship the new key.
+  signature-live:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - run: SSMCONNECT_NET_TESTS=1 cargo test --locked --test signature
+
   package:
     needs: test
     runs-on: ubuntu-24.04

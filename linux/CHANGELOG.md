@@ -4,6 +4,24 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.1.4] - 2026-10-16
+Signed downloads.
+### Added
+- `install-tools` and the wizard's *Install what is missing* now check every download against the OpenPGP signature Amazon
+  publishes next to it (`<file>.sig`) before anything is unpacked or run. A missing or non-matching signature stops the
+  install with a plain message.
+- Amazon's two public keys are built in (AWS CLI Team key `FB5D B77F D5C1 18B8 0511 ADA8 A631 0ACC 4672 475C`; Session Manager plugin
+  signer key `7959 6371 24CE 093A D501 D47A 2C4D 4AFF 6F67 57EE`), copied from AWS's documentation and pinned by full fingerprint,
+  which is checked each time a key is loaded. Verification is pure Rust (no `gpg` needed) and handles both RSA and ECDSA keys.
+- Tests: pinned fingerprints, wrong-key and garbage-signature refusal, and (with `SSMCONNECT_NET_TESTS=1`) real Amazon packages
+  verify, a flipped byte or the wrong key is refused. A non-blocking CI job runs these against the live downloads, so a key
+  rotation by AWS is noticed.
+### Fixed
+- `ssmconnect install-tools` printed every percent repeatedly; it now prints each message once.
+- Piping output (`ssmconnect list | head`) no longer ends with a panic message.
+### Known limits
+- If AWS rotates a signing key, installs are refused until a new SSMConnect release ships the new key (the AWS CLI key is valid until 2027-07-01).
+
 ## [0.1.3] - 2026-10-16
 Rust rewrite, part 4: native packaging; the Python edition is removed.
 ### Changed
@@ -17,7 +35,6 @@ Rust rewrite, part 4: native packaging; the Python edition is removed.
 ### Known limits
 - The `.deb` and `.rpm` builders run in CI; `dpkg-deb` and `rpmbuild` are not installed on the development machine, so only
   the tarball install was run locally.
-- Downloads of the AWS CLI and plugin are fetched over HTTPS from Amazon but their signatures are not yet verified.
 
 ## [0.1.2] - 2026-10-16
 Rust rewrite, part 3: setup wizard and account management. The Rust edition now does everything the Python edition did.
@@ -110,4 +127,3 @@ First iteration: the engine, without a window yet.
 - User-space installer for the AWS CLI and Session Manager plugin (no root needed).
 - Command line: `doctor`, `install-tools`, `list`, `status`, `run`, `scan`, `cleanup`.
 ### Known limits
-- Downloads of the AWS CLI and plugin are fetched over HTTPS from Amazon but their signatures are not yet verified.
