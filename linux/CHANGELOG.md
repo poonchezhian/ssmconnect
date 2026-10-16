@@ -4,6 +4,13 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.1.2] - 2026-10-16
+Rust rewrite, part 3: setup wizard and account management. The Rust edition now does everything the Python edition did.
+### Added
+- Five-step setup wizard in Rust (requirements with one-click user-space install, AWS account / company sign-in / access keys,
+  parallel server search, key matching, save), and the Manage accounts dialog (rename, remove).
+- `cargo run --example e2e_wizard` drives the real wizard end to end against a fake AWS CLI (needs a display).
+
 ## [0.1.1] - 2026-10-16
 Rust rewrite, part 2: the dashboard.
 ### Added

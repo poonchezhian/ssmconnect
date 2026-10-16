@@ -37,6 +37,7 @@ fn main() {
     let hook: Box<dyn Fn(&std::rc::Rc<ssmconnect::ui::app::App>)> = Box::new(move |app| {
         adw::StyleManager::default().set_color_scheme(if dark { adw::ColorScheme::ForceDark } else { adw::ColorScheme::ForceLight });
         if what == "wizard" { app.open_wizard(false); }
+        if what == "accounts" { app.open_accounts(); }
         let (app, out, what) = (app.clone(), out.clone(), what.clone());
         glib::timeout_add_local_once(std::time::Duration::from_millis(delay), move || {
             let w: gtk::Widget = if what == "wizard" { app.wizard.borrow().as_ref().unwrap().window().clone().upcast() } else { app.window.borrow().as_ref().unwrap().win.clone().upcast() };
