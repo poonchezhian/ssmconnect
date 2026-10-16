@@ -4,6 +4,38 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.3.0] - 2026-10-16
+Updates that keep your data, and every setting in a window.
+### Installer
+- **An existing installation is updated in place.** The installer recognises it (also what was installed by an older installer) and says so:
+  "SSMConnect 0.2.1 is installed in ~/.local. This installer will update it to 0.3.0. Your servers, accounts and settings are kept."
+  It reuses the same location, removes only files the new version no longer ships, and first copies your saved servers to
+  `config.json.before-update-from-<old version>`.
+- **Your data is never removed unless you ask.** Settings, saved servers, the log, the AWS tools SSMConnect downloaded, `~/.aws` and your ssh hosts all
+  stay when updating and when removing. *Remove SSMConnect…* (on the installer's first page, or `ssmconnect uninstall`) has two separate, unticked-by-default
+  choices: delete my saved servers/settings/log, and remove the AWS tools SSMConnect downloaded (`--remove-settings`, `--remove-tools` on the command line).
+- `--update-only`: do nothing (exit code 3) unless SSMConnect is already installed.
+- Going back to an older version needs an explicit tick (window) or answer (terminal); `--yes` never downgrades.
+- Installs made by a package manager (dnf, apt) are left to that package manager, with the exact command to use.
+- Tells you when SSMConnect is running (it keeps the old version until restarted).
+### Preferences (new window, File > Preferences)
+- Open my connections automatically; start SSMConnect when I sign in; make me confirm each server's identity first; let `ssh ssc-…` work (adds/removes
+  the one line in `~/.ssh/config`); terminal program; Remote Desktop program; what the Files button opens; first local port for new servers;
+  look for new versions daily (+ check now); install or repair the AWS tools; open the settings folder / log; delete all my SSMConnect settings.
+  Each has a plain sentence saying what it does. No setting needs a file or a command line any more.
+### Server identities (new, Servers > Server identities…, and More > Server identity… on each server)
+- See, confirm and forget each server's SSH identity (host key) without touching `known_hosts`. *Check and confirm…* asks the server through its open tunnel,
+  shows the fingerprints, optionally checks one your administrator gave you, and saves it under the server's own name. A changed identity is flagged with an
+  explanation and needs a deliberate *Review…*. A copy of `known_hosts` is kept as `known_hosts.ssmconnect.bak`; your own entries are never changed.
+- A banner offers to review servers not yet confirmed. With "make me confirm each server's identity first" on, the Terminal and Files buttons wait for it,
+  and ssh itself uses `StrictHostKeyChecking yes`.
+### Also
+- **More > Change login user or key file…** on each server (no need to run the wizard again).
+- The example programs (`screenshot`, `e2e_wizard`) no longer hand over to a running SSMConnect.
+### Tests
+- Identities against a real local sshd (scan, fingerprint equals ssh-keygen's, trust, repeated trust adds nothing, change detection, forget, user entries kept),
+  update keeps settings and drops obsolete files, removal keeps data unless asked, version order.
+
 ## [0.2.1] - 2026-10-16
 Files button fixed.
 ### Fixed

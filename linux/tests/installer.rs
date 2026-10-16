@@ -60,3 +60,60 @@ fn nothing_third_party_is_embedded() {
     assert!(deps.iter().filter(|d| d.id == "aws" || d.id == "plugin").all(|d| d.source == installer::Source::Amazon));
     assert!(deps.iter().filter(|d| d.id == "ssh" || d.id == "rdp").all(|d| d.source == installer::Source::Distribution));
 }
+
+#[test]
+fn updating_keeps_settings_and_removes_files_the_new_version_dropped() {
+    let h = Home::new();
+    let prefix = h.join("prefix");
+    // an older installation, with an extra file the new version no longer ships, and the person's settings
+    installer::install_files(&prefix, Path::new(""), &fake_program(&h), &|_| {}).unwrap();
+    std::fs::write(prefix.join("share/obsolete.txt"), "x").unwrap();
+    let mut m = std::fs::read_to_string(prefix.join("share/ssmconnect/install-manifest.txt")).unwrap();
+    m = m.replace(&format!("# version {}", ssmconnect::VERSION), "# version 0.0.1") + "share/obsolete.txt\n";
+    std::fs::write(prefix.join("share/ssmconnect/install-manifest.txt"), m).unwrap();
+    std::fs::create_dir_all(h.join(".config/ssmconnect")).unwrap();
+    std::fs::write(h.join(".config/ssmconnect/config.json"), "{\"profile\":\"mine\"}").unwrap();
+    std::fs::create_dir_all(h.join(".aws")).unwrap();
+    std::fs::write(h.join(".aws/config"), "[default]\n").unwrap();
+
+    assert_eq!(installer::existing_install(Some(&prefix)).unwrap().version.as_deref(), Some("0.0.1"));
+    installer::install_files(&prefix, Path::new(""), &fake_program(&h), &|_| {}).unwrap();
+
+    assert!(!prefix.join("share/obsolete.txt").exists());
+    assert_eq!(installer::existing_install(Some(&prefix)).unwrap().version.as_deref(), Some(ssmconnect::VERSION));
+    assert_eq!(std::fs::read_to_string(h.join(".config/ssmconnect/config.json")).unwrap(), "{\"profile\":\"mine\"}");   // settings untouched
+    assert!(h.join(".config/ssmconnect/config.json.before-update-from-0.0.1").exists());                              // and a copy made first
+    assert!(h.join(".aws/config").exists());
+}
+
+#[test]
+fn removing_keeps_the_persons_data_unless_asked() {
+    let h = Home::new();
+    let prefix = h.join("prefix");
+    let setup = || {
+        installer::install_files(&prefix, Path::new(""), &fake_program(&h), &|_| {}).unwrap();
+        std::fs::create_dir_all(h.join(".config/ssmconnect")).unwrap();
+        std::fs::write(h.join(".config/ssmconnect/config.json"), "{}").unwrap();
+        std::fs::create_dir_all(h.join(".local/share/ssmconnect/bin")).unwrap();
+        std::fs::write(h.join(".local/share/ssmconnect/bin/aws"), "x").unwrap();
+    };
+    setup();
+    installer::remove_everything(&prefix, false, false, installer::Elevation::Terminal).unwrap();
+    assert!(!prefix.join("bin/ssmconnect").exists());
+    assert!(h.join(".config/ssmconnect/config.json").exists() && h.join(".local/share/ssmconnect/bin/aws").exists());
+
+    setup();
+    installer::remove_everything(&prefix, false, true, installer::Elevation::Terminal).unwrap();      // tools only
+    assert!(h.join(".config/ssmconnect/config.json").exists() && !h.join(".local/share/ssmconnect").exists());
+
+    setup();
+    installer::remove_everything(&prefix, true, false, installer::Elevation::Terminal).unwrap();      // settings only
+    assert!(!h.join(".config/ssmconnect").exists() && h.join(".local/share/ssmconnect/bin/aws").exists());
+}
+
+#[test]
+fn version_order() {
+    assert_eq!(installer::compare_versions("0.2.1", "0.3.0"), -1);
+    assert_eq!(installer::compare_versions("0.10.0", "0.9.9"), 1);
+    assert_eq!(installer::compare_versions("1.0.0", "v1.0.0"), 0);
+}

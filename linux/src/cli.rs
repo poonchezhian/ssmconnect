@@ -19,14 +19,17 @@ Commands:
   files NAME     open a saved server's files over SFTP (NAME: its name, ssh alias or instance id)
   sftp NAME      the same in a terminal with the plain sftp client
   scan           scan every account for new or changed servers
-  uninstall [--prefix DIR]
-                 remove the program installed by the installer (default prefix: ~/.local)
+  uninstall [--prefix DIR] [--remove-settings] [--remove-tools]
+                 remove the program installed by the installer. Your saved servers and settings are KEPT unless you add
+                 --remove-settings; the AWS tools SSMConnect downloaded are kept unless you add --remove-tools
   cleanup [--keep-settings]
                  remove SSMConnect's traces for this user (ssh include, autostart, settings)
 
 Options:
   --installer    the installer: first fetches what SSMConnect needs from its own sources, then installs SSMConnect
-                 (--text for questions in the terminal, --yes to accept the defaults, --system for all users, --prefix DIR)
+                 (--text for questions in the terminal, --yes to accept the defaults, --system for all users, --prefix DIR,
+                 --update-only to do nothing unless SSMConnect is already installed). An existing installation is updated in place and
+                 your servers and settings are kept.
   --background   start hidden and keep connections open (used by 'start when I sign in')
   --version      show the version
   -h, --help     show this help";
@@ -122,6 +125,7 @@ pub fn main(args: Vec<String>) -> ExitCode {
     unsafe { libc::signal(libc::SIGPIPE, libc::SIG_DFL); }
     let mut background = false;
     let (mut installer, mut text, mut yes, mut system, mut files_only) = (false, false, false, false, false);
+    let (mut update_only, mut remove_settings, mut remove_tools, mut uninstall_files) = (false, false, false, false);
     let (mut prefix, mut source, mut destdir): (Option<std::path::PathBuf>, Option<std::path::PathBuf>, Option<std::path::PathBuf>) = (None, None, None);
     let mut rest: Vec<&str> = vec![];
     let mut it = args.iter();
@@ -132,6 +136,10 @@ pub fn main(args: Vec<String>) -> ExitCode {
             "--yes" | "-y" => yes = true,
             "--system" => system = true,
             "--install-files" => files_only = true,
+            "--uninstall-files" => uninstall_files = true,
+            "--update-only" => update_only = true,
+            "--remove-settings" => remove_settings = true,
+            "--remove-tools" => remove_tools = true,
             "--prefix" | "--source" | "--destdir" => {
                 let Some(v) = it.next() else { eprintln!("{a} needs a value"); return ExitCode::from(2) };
                 match a.as_str() { "--prefix" => prefix = Some(v.into()), "--source" => source = Some(v.into()), _ => destdir = Some(v.into()) }
@@ -142,6 +150,10 @@ pub fn main(args: Vec<String>) -> ExitCode {
             other => rest.push(other),
         }
     }
+    if uninstall_files {
+        // run as root by the installer's "remove" for an all-users install: only the program's files, nothing in anyone's home
+        return match installer::uninstall(&prefix.unwrap_or_else(installer::system_prefix)) { Ok(_) => ExitCode::SUCCESS, Err(e) => { eprintln!("{e}"); ExitCode::from(1) } };
+    }
     if files_only {
         // files-only mode: used by the installer for "all users" (run as root), and by the package builders
         let src = source.or_else(|| std::env::current_exe().ok()).unwrap_or_default();
@@ -151,6 +163,11 @@ pub fn main(args: Vec<String>) -> ExitCode {
         };
     }
     if installer {
+        let existing = installer::existing_install(prefix.as_deref());
+        if update_only && existing.is_none() {
+            eprintln!("SSMConnect is not installed on this computer, so there is nothing to update. Run the installer without --update-only to install it.");
+            return ExitCode::from(3);
+        }
         let have_display = std::env::var_os("WAYLAND_DISPLAY").is_some() || std::env::var_os("DISPLAY").is_some();
         if text || yes || !have_display {
             return crate::installer_text::run(crate::installer_text::Options { yes, system, prefix, source });
@@ -159,9 +176,12 @@ pub fn main(args: Vec<String>) -> ExitCode {
     }
     match rest.as_slice() {
         [] => ExitCode::from(crate::ui::run(background) as u8),
-        ["uninstall"] => match installer::uninstall(&prefix.unwrap_or_else(installer::user_prefix)) {
-            Ok(n) => { println!("Removed {n} file(s). Your settings stay; remove them with: ssmconnect cleanup"); ExitCode::SUCCESS }
-            Err(e) => { eprintln!("{e}"); ExitCode::from(1) }
+        ["uninstall"] => {
+            let prefix = prefix.or_else(|| installer::existing_install(None).filter(|e| !e.package_managed).map(|e| e.prefix)).unwrap_or_else(installer::user_prefix);
+            match installer::remove_everything(&prefix, remove_settings, remove_tools, installer::Elevation::Terminal) {
+                Ok(done) => { println!("{}", done.join("\n")); ExitCode::SUCCESS }
+                Err(e) => { eprintln!("{e}"); ExitCode::from(1) }
+            }
         },
         ["doctor"] => doctor(),
         ["install-tools"] => install_tools(),

@@ -3,7 +3,7 @@
 use super::app::App;
 use super::common::{clear_box, esc, in_background, pill, set_pill};
 use crate::models::{AppConfig, State, TunnelConfig, TunnelStatus};
-use crate::{aws_cli, aws_profiles as ap, config_store, launchers, sso, ssh_config};
+use crate::{aws_cli, aws_profiles as ap, config_store, known_hosts, launchers, sso, ssh_config};
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
@@ -36,6 +36,8 @@ pub struct Dashboard {
     chips: gtk::FlowBox,
     groups: gtk::Box,
     clip_token: Cell<u32>,
+    /// alias -> has its identity been confirmed (filled in the background)
+    trusted: RefCell<BTreeMap<String, bool>>,
 }
 
 impl Dashboard {
@@ -93,7 +95,7 @@ impl Dashboard {
         win.set_content(Some(&toasts));
 
         let d = Rc::new(Dashboard { win: win.clone(), app: Rc::downgrade(app), cfg: RefCell::new(AppConfig::default()), rows: RefCell::new(vec![]), toasts, stack, switcher,
-            switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0) });
+            switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0), trusted: RefCell::new(BTreeMap::new()) });
 
         for (label, icon, css, f) in [("Start", "media-playback-start-symbolic", "suggested-action", Dashboard::start as fn(&Rc<Dashboard>)),
                                       ("Stop", "media-playback-stop-symbolic", "", Dashboard::stop), ("Restart", "view-refresh-symbolic", "", Dashboard::restart)] {
@@ -127,6 +129,26 @@ impl Dashboard {
         d
     }
 
+    /// Looks up (off the main thread) which Linux servers have a confirmed identity, and offers to review the ones that do not.
+    pub fn reload_trust(self: &Rc<Self>) {
+        let cfg = self.cfg.borrow().clone();
+        let d = self.clone();
+        in_background(move || cfg.tunnels.iter().filter(|t| !t.is_rdp() && t.enabled).map(|t| {
+            let a = ssh_config::host_key_alias(t, &cfg.tunnels);
+            let ok = !known_hosts::stored(&a).is_empty();
+            (a, ok)
+        }).collect::<Vec<_>>(), move |list| {
+            let pending = list.iter().filter(|(_, ok)| !ok).count();
+            *d.trusted.borrow_mut() = list.into_iter().collect();
+            d.refresh_status();
+            if pending > 0 {
+                let (me, strict) = (d.clone(), d.cfg.borrow().strict_host_keys);
+                d.show_banner(&format!("{pending} server(s) have not been confirmed yet. {}", if strict { "You asked to confirm each server first, so they cannot be used until then." } else { "Confirming lets SSH be sure it talks to the right server." }), "Review",
+                    Some(Box::new(move || if let Some(a) = me.app() { a.gtk.activate_action("identities", None); })));
+            }
+        });
+    }
+
     fn menu() -> gio::Menu {
         let menu = gio::Menu::new();
         let section = |title: Option<&str>, items: &[(&str, &str)]| {
@@ -134,9 +156,9 @@ impl Dashboard {
             for (l, a) in items { s.append(Some(l), Some(a)); }
             menu.append_section(title, &s);
         };
-        section(Some("File"), &[("Add to application menu", "app.create-launcher"), ("Start when I sign in", "app.autostart"), ("Hide window", "win.hide")]);
+        section(Some("File"), &[("Preferences", "app.preferences"), ("Add to application menu", "app.create-launcher"), ("Hide window", "win.hide")]);
         section(Some("AWS"), &[("Add AWS account…", "app.add-account"), ("Manage accounts…", "app.manage-accounts"), ("Sign in again", "app.sign-in-again")]);
-        section(Some("Servers"), &[("Scan for new or changed servers", "app.scan"), ("What changed since the last scan", "app.changes")]);
+        section(Some("Servers"), &[("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("What changed since the last scan", "app.changes")]);
         section(Some("Help"), &[("Check for updates", "app.check-updates"), ("Open log file", "app.open-log"), ("Clean up this user's settings…", "app.cleanup"), ("About SSMConnect", "app.about")]);
         section(None, &[("Quit and close all connections", "app.quit")]);
         menu
@@ -152,6 +174,7 @@ impl Dashboard {
         self.build_switcher();
         self.build_groups();
         self.refresh_status();
+        self.reload_trust();
     }
 
     /// (key, label) for each primary account that has saved servers, plus every other one known.
@@ -289,7 +312,8 @@ impl Dashboard {
         let menu = gio::Menu::new();
         menu.append(Some(if t.is_rdp() { "Copy local address" } else { "Copy ssh command" }), Some("row.copy"));
         menu.append(Some(if t.is_rdp() { "Open Remote Desktop address" } else { "Copy sftp address" }), Some("row.copy-alt"));
-        if !t.is_rdp() { menu.append(Some("Open sftp in a terminal"), Some("row.sftp")); }
+        if !t.is_rdp() { menu.append(Some("Open sftp in a terminal"), Some("row.sftp")); menu.append(Some("Server identity…"), Some("row.identity")); }
+        menu.append(Some("Change login user or key file…"), Some("row.settings"));
         more.set_menu_model(Some(&menu));
         row.add_suffix(&more);
         let group = gio::SimpleActionGroup::new();
@@ -303,6 +327,9 @@ impl Dashboard {
         mk("copy", Box::new(move |d| { d.copy(&if t1.is_rdp() { format!("127.0.0.1:{}", t1.local_port) } else { ssh_config::ssh_command_text(&a1) }); d.toast("Copied."); }));
         let (t2, a2) = (t.clone(), alias.to_string());
         mk("copy-alt", Box::new(move |d| if t2.is_rdp() { if let Err(e) = launchers::open_rdp(&t2) { d.toast(&e); } } else { d.copy(&ssh_config::sftp_url(&t2.user_name, &a2)); d.toast("Copied."); }));
+        mk("identity", Box::new(|d| if let Some(a) = d.app() { a.gtk.activate_action("identities", None); }));
+        let t4 = t.clone();
+        mk("settings", Box::new(move |d| if let Some(a) = d.app() { super::server_settings::show(&a, &d.win, &t4); }));
         let a3 = alias.to_string();
         mk("sftp", Box::new(move |d| if let Err(e) = launchers::open_sftp_terminal(&a3) { d.toast(&e); }));
         row.insert_action_group("row", Some(&group));
@@ -312,6 +339,13 @@ impl Dashboard {
     // Unavailable buttons are dimmed, not disabled, so their hover note still shows and a click explains why.
     fn guarded(self: &Rc<Self>, b: &gtk::Button, t: &TunnelConfig, alias: &str, f: &dyn Fn(&Rc<Dashboard>, &TunnelConfig, &str)) {
         if b.has_css_class("unavailable") { self.toast(&b.tooltip_text().map(|s| s.to_string()).unwrap_or_else(|| "Not available yet.".into())); return; }
+        if self.cfg.borrow().strict_host_keys && !t.is_rdp() {
+            let key = ssh_config::host_key_alias(t, &self.cfg.borrow().tunnels);
+            if !self.trusted.borrow().get(&key).copied().unwrap_or(false) {
+                self.toast("Confirm this server's identity first: More > Server identity…");
+                return;
+            }
+        }
         f(self, t, alias);
     }
 

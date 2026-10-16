@@ -1,6 +1,6 @@
 [package]
 name = "ssmconnect"
-version = "0.2.1"
+version = "0.3.0"
 edition = "2021"
 rust-version = "1.80"
 description = "SSH and Remote Desktop to AWS servers over Session Manager, with port 22 closed (Linux edition)"
@@ -15,6 +15,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 regex = "1"
 sha1 = "0.10"
+sha2 = "0.10"
 md-5 = "0.10"
 pgp = { version = "0.21", default-features = false }
 base64 = "0.22"

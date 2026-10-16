@@ -192,7 +192,12 @@ pub fn install_files(prefix: &Path, destdir: &Path, source_exe: &Path, progress:
     put(&root, "share/licenses/ssmconnect/LICENSE", LICENSE.as_bytes(), 0o644, &mut w)?;
     put(&root, "share/licenses/ssmconnect/NOTICE", NOTICE.as_bytes(), 0o644, &mut w)?;
     if destdir.as_os_str().is_empty() {
-        let list = w.join("\n") + "\n";
+        // an update: files the previous version had and this one does not are removed; the person's settings are never touched
+        if let Some(old) = read_manifest(&root) {
+            for rel in old.files.iter().filter(|f| !w.contains(f)) { let _ = fs::remove_file(root.join(rel)); }
+            if old.version.as_deref() != Some(crate::VERSION) { backup_settings(old.version.as_deref().unwrap_or("an-earlier-version")); }
+        }
+        let list = format!("# version {}\n{}\n", crate::VERSION, w.join("\n"));
         put(&root, MANIFEST, list.as_bytes(), 0o644, &mut vec![])?;
         for (cmd, dir) in [("update-desktop-database", "share/applications"), ("gtk-update-icon-cache", "share/icons/hicolor")] {
             if which(cmd).is_some() {
@@ -206,16 +211,95 @@ pub fn install_files(prefix: &Path, destdir: &Path, source_exe: &Path, progress:
     Ok(w)
 }
 
+/// What an earlier installation wrote down about itself.
+pub struct Manifest { pub version: Option<String>, pub files: Vec<String> }
+
+pub fn read_manifest(prefix: &Path) -> Option<Manifest> {
+    let text = fs::read_to_string(prefix.join(MANIFEST)).ok()?;
+    let version = text.lines().find_map(|l| l.strip_prefix("# version ")).map(|v| v.trim().to_string());
+    let files = text.lines().filter(|l| !l.is_empty() && !l.starts_with('#') && !l.contains("..") && !l.starts_with('/')).map(String::from).collect();
+    Some(Manifest { version, files })
+}
+
+/// Keeps a copy of the saved servers and settings next to them before a new version is installed over an old one.
+fn backup_settings(old_version: &str) {
+    let cfg = paths::config_path();
+    if cfg.exists() {
+        let copy = cfg.with_file_name(format!("config.json.before-update-from-{old_version}"));
+        if !copy.exists() { let _ = fs::copy(&cfg, &copy); }
+    }
+}
+
+/// An installation that is already on this computer.
+#[derive(Clone, Debug)]
+pub struct Existing {
+    pub prefix: PathBuf,
+    pub version: Option<String>,
+    /// Put there by a package manager (dnf, apt ...), which must be the one to update or remove it.
+    pub package_managed: bool,
+}
+
+/// Looks for an installation made by this installer (in the usual places, or in `prefix`), or by a package.
+pub fn existing_install(prefix: Option<&Path>) -> Option<Existing> {
+    let candidates: Vec<PathBuf> = prefix.map(|p| vec![p.to_path_buf()]).unwrap_or_else(|| vec![user_prefix(), system_prefix()]);
+    for p in candidates {
+        if let Some(m) = read_manifest(&p) { return Some(Existing { prefix: p, version: m.version, package_managed: false }); }
+    }
+    if prefix.is_none() {
+        let pkg = Path::new("/usr/bin/ssmconnect");
+        if pkg.exists() {
+            let version = Command::new(pkg).arg("--version").output().ok().and_then(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().last().map(String::from));
+            return Some(Existing { prefix: PathBuf::from("/usr"), version, package_managed: true });
+        }
+    }
+    None
+}
+
+/// -1, 0 or 1: is version `a` older than, the same as, or newer than `b` (both like 1.2.3).
+pub fn compare_versions(a: &str, b: &str) -> i32 {
+    let p = |v: &str| v.trim().trim_start_matches('v').split('.').map(|x| x.parse::<u64>().unwrap_or(0)).collect::<Vec<_>>();
+    match p(a).cmp(&p(b)) { std::cmp::Ordering::Less => -1, std::cmp::Ordering::Equal => 0, std::cmp::Ordering::Greater => 1 }
+}
+
+/// How many other copies of SSMConnect are running right now (they keep using the old version until restarted).
+pub fn running_instances() -> usize {
+    let me = std::process::id();
+    let Ok(rd) = fs::read_dir("/proc") else { return 0 };
+    rd.flatten().filter(|e| e.file_name().to_string_lossy().parse::<u32>().is_ok_and(|pid| pid != me))
+        .filter(|e| fs::read_to_string(e.path().join("comm")).is_ok_and(|c| c.trim() == "ssmconnect")).count()
+}
+
 /// Removes what `install_files` installed (from its list). The person's settings and the tools in ~/.local/share/ssmconnect stay.
 pub fn uninstall(prefix: &Path) -> Result<usize, String> {
     let list = fs::read_to_string(prefix.join(MANIFEST)).map_err(|_| format!("SSMConnect does not seem to be installed in {} (no install list found).", prefix.display()))?;
     let mut n = 0;
-    for rel in list.lines().filter(|l| !l.is_empty() && !l.contains("..") && !l.starts_with('/')) {
+    for rel in list.lines().filter(|l| !l.is_empty() && !l.starts_with('#') && !l.contains("..") && !l.starts_with('/')) {
         if fs::remove_file(prefix.join(rel)).is_ok() { n += 1; }
     }
     let _ = fs::remove_file(prefix.join(MANIFEST));
     for d in ["share/ssmconnect", "share/doc/ssmconnect", "share/licenses/ssmconnect"] { let _ = fs::remove_dir(prefix.join(d)); }
     Ok(n)
+}
+
+/// Removes the program, and (only when asked) the person's settings and the AWS tools SSMConnect downloaded for them.
+/// Settings are kept by default: `remove_settings` and `remove_tools` must be set explicitly.
+pub fn remove_everything(prefix: &Path, remove_settings: bool, remove_tools: bool, how: Elevation) -> Result<Vec<String>, String> {
+    let mut done = vec![];
+    let probe = prefix.join(MANIFEST);
+    let writable = fs::OpenOptions::new().append(true).open(&probe).is_ok();
+    if writable || is_root() {
+        done.push(format!("Removed {} file(s) of the program", uninstall(prefix)?));
+    } else {
+        let me = std::env::current_exe().map_err(|e| e.to_string())?.to_string_lossy().into_owned();
+        let cmd = elevated(vec![me, "--uninstall-files".into(), "--prefix".into(), prefix.to_string_lossy().into_owned()], how)?;
+        let out = Command::new(&cmd[0]).args(&cmd[1..]).output().map_err(|e| e.to_string())?;
+        if !out.status.success() { return Err(format!("Could not remove the program: {}", String::from_utf8_lossy(&out.stderr).trim())); }
+        done.push("Removed the program".into());
+    }
+    let _ = fs::remove_file(paths::autostart_file());   // it would point at a program that is gone
+    if remove_tools { let _ = fs::remove_dir_all(paths::data_dir()); done.push("Removed the AWS CLI and Session Manager plugin that SSMConnect downloaded".into()); }
+    if remove_settings { done.extend(crate::desktop::cleanup_user(false)); } else { done.push("Kept your saved servers, settings and log".into()); }
+    Ok(done)
 }
 
 pub fn user_prefix() -> PathBuf { paths::home().join(".local") }

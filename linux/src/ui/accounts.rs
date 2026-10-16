@@ -105,7 +105,7 @@ fn do_remove(app: &Rc<App>, dialog: &adw::Dialog, body: &gtk::Box, key: &str, gr
     for n in &names { let _ = ap::remove_profile(n); discovery::forget(n); }
     let remaining: HashSet<String> = ap::list_profiles().into_iter().filter_map(|p| p.sso_session).collect();
     for s in sessions.iter().filter(|s| !remaining.contains(**s)) { let _ = ap::remove_sso_session(s); }
-    let _ = ssh_config::apply(&cfg.tunnels);
+    let _ = ssh_config::sync(&cfg);
     app.manager.poke();
     build(app, dialog, body);
     if let Some(w) = app.window.borrow().as_ref() { w.reload(); }

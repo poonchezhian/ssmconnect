@@ -59,13 +59,36 @@ pub struct AppConfig {
     pub aliases: BTreeMap<String, String>,
     /// Primary-account key shown on the dashboard
     pub selected_account: String,
+    /// Open the saved connections when SSMConnect starts
     #[serde(default = "yes")]
     pub autostart_connections: bool,
+    /// Check for a newer SSMConnect once a day
+    #[serde(default = "yes")]
+    pub check_updates: bool,
+    /// Let plain `ssh ssc-<server>` work, by adding one line to ~/.ssh/config
+    #[serde(default = "yes")]
+    pub ssh_integration: bool,
+    /// Refuse to connect to a server until its identity has been confirmed under "Server identities"
+    pub strict_host_keys: bool,
+    /// Program to open for Terminal ("" = pick automatically)
+    pub terminal: String,
+    /// Program to open for Remote Desktop ("" = pick automatically)
+    pub rdp_client: String,
+    /// "auto", "file-manager" or "terminal": what the Files button opens
+    #[serde(default = "auto")]
+    pub files_mode: String,
+    /// First local port offered to new servers
+    #[serde(default = "first_port")]
+    pub first_port: u16,
 }
+
+fn auto() -> String { "auto".into() }
+fn first_port() -> u16 { 2201 }
 
 impl Default for AppConfig {
     fn default() -> Self {
-        Self { profile: String::new(), region: String::new(), tunnels: vec![], aliases: BTreeMap::new(), selected_account: String::new(), autostart_connections: true }
+        Self { profile: String::new(), region: String::new(), tunnels: vec![], aliases: BTreeMap::new(), selected_account: String::new(), autostart_connections: true, ssh_integration: true,
+               check_updates: true, strict_host_keys: false, terminal: String::new(), rdp_client: String::new(), files_mode: "auto".into(), first_port: 2201 }
     }
 }
 

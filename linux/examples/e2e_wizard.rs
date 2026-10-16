@@ -58,7 +58,8 @@ fn main() {
                 5 => {
                     let Some(cfg) = config_store::load().filter(|c| c.tunnels.len() == 2) else { return ControlFlow::Continue };
                     let ports: Vec<u16> = cfg.tunnels.iter().map(|t| t.local_port).collect();
-                    if ports != [2201, 2202] { fail(&format!("unexpected ports {ports:?}")); }
+                    // ports count up from 2201 but skip any another program (for example a running SSMConnect) already uses
+                    if ports.len() != 2 || ports[0] < 2201 || ports[0] == ports[1] { fail(&format!("unexpected ports {ports:?}")); }
                     let conf = std::fs::read_to_string(home.join(".ssh/ssmconnect.conf")).unwrap_or_default();
                     if !conf.contains("Host ssc-web-prod-1") || conf.contains("win-app") { fail(&format!("ssh config wrong:\n{conf}")); }
                     println!("saved: {:?}", cfg.tunnels.iter().map(|t| (&t.name, &t.protocol, t.local_port, &t.user_name, &t.environment)).collect::<Vec<_>>());

@@ -13,6 +13,7 @@ pub mod discovery;
 pub mod installer;
 pub mod installer_text;
 pub mod key_finder;
+pub mod known_hosts;
 pub mod launchers;
 pub mod models;
 pub mod netcheck;

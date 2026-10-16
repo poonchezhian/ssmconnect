@@ -3,6 +3,9 @@
 pub mod app;
 pub mod accounts;
 pub mod common;
+pub mod identities;
+pub mod preferences;
+pub mod server_settings;
 pub mod installer;
 pub mod window;
 pub mod wizard;

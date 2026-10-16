@@ -27,6 +27,8 @@ struct Inner {
     step: Cell<usize>,
     busy: Cell<bool>,
     prefix: RefCell<Option<PathBuf>>,
+    existing: Option<installer::Existing>,
+    downgrade: gtk::CheckButton,
     source: PathBuf,
     installed_to: RefCell<Option<PathBuf>>,
 }
@@ -107,6 +109,34 @@ impl Inner {
             what SSMConnect needs from each tool's own source, and only then installs SSMConnect:\n\
             •  AWS CLI and Session Manager plugin: from Amazon, with Amazon's signature checked\n\
             •  OpenSSH and a Remote Desktop client: from your distribution's own package repositories");
+        // an installation that is already here: update it in place and keep everything the person has set up
+        let existing = installer::existing_install(prefix.as_deref());
+        let downgrade = gtk::CheckButton::with_label("Yes, install this older version over the newer one");
+        downgrade.set_visible(false);
+        let remove_btn = gtk::Button::builder().label("Remove SSMConnect…").halign(gtk::Align::Start).visible(false).build();
+        if let Some(e) = &existing {
+            let installed = e.version.clone().unwrap_or_else(|| "an unknown version".into());
+            let order = e.version.as_deref().map(|v| installer::compare_versions(v, VERSION)).unwrap_or(-1);
+            let mut text = if e.package_managed {
+                format!("SSMConnect {installed} is installed by your package manager.\n\nUpdate or remove it with that (for example `sudo dnf upgrade ssmconnect` or `sudo apt install --only-upgrade ssmconnect`). This installer does not change package-managed installs.")
+            } else if order == 0 {
+                format!("SSMConnect {installed} is already installed in {}, the same version as this installer.\n\nInstalling again repairs it. Your servers, accounts and settings are kept.", e.prefix.display())
+            } else if order > 0 {
+                downgrade.set_visible(true);
+                format!("SSMConnect {installed} is installed in {}, which is NEWER than this installer ({VERSION}).\n\nInstalling this one would go back to an older version. Your servers, accounts and settings are kept either way.", e.prefix.display())
+            } else {
+                format!("SSMConnect {installed} is installed in {}. This installer will update it to {VERSION}.\n\nYour servers, accounts and settings are kept; a copy of your saved servers is made first.", e.prefix.display())
+            };
+            if !e.package_managed && installer::running_instances() > 0 {
+                text += "\n\nSSMConnect is running right now. It keeps using the old version until you close and open it again (its connections stay open until then).";
+            }
+            let note = gtk::Label::builder().label(text).xalign(0.0).wrap(true).build();
+            note.add_css_class("accent");
+            p1.append(&note);
+            p1.append(&downgrade);
+            remove_btn.set_visible(!e.package_managed);
+            p1.append(&remove_btn);
+        }
         let lic = gtk::TextView::builder().editable(false).cursor_visible(false).wrap_mode(gtk::WrapMode::Word).monospace(true).build();
         lic.buffer().set_text(installer::LICENSE);
         let exp = gtk::Expander::builder().label("Licence").child(&gtk::ScrolledWindow::builder().child(&lic).min_content_height(220).build()).build();
@@ -140,9 +170,11 @@ impl Inner {
 
         for (i, p) in [&p1, &p2, &p3, &p4].into_iter().enumerate() { stack.add_named(&scroller(p), Some(&i.to_string())); }
         let me = Rc::new(Inner { win, stack, title, back: back.clone(), next: next.clone(), status, spinner, dep_box, checks: RefCell::new(vec![]), user_radio, system_radio,
-            path_hint, done_text, step: Cell::new(0), busy: Cell::new(false), prefix: RefCell::new(prefix), source, installed_to: RefCell::new(None) });
+            path_hint, done_text, step: Cell::new(0), busy: Cell::new(false), prefix: RefCell::new(prefix.or_else(|| existing.as_ref().filter(|e| !e.package_managed).map(|e| e.prefix.clone()))), existing, downgrade: downgrade.clone(), source, installed_to: RefCell::new(None) });
         let m = me.clone(); back.connect_clicked(move |_| m.go(m.step.get().saturating_sub(1)));
         let m = me.clone(); next.connect_clicked(move |_| m.on_next());
+        let m = me.clone(); remove_btn.connect_clicked(move |_| m.remove_dialog());
+        let m = me.clone(); downgrade.connect_toggled(move |_| m.sync_next());
         let m = me.clone(); open_btn.connect_clicked(move |_| m.open_installed());
         me.go(0);
         me
@@ -164,11 +196,59 @@ impl Inner {
         self.title.set_text(&format!("Step {} of {}: {}", n + 1, STEPS.len(), STEPS[n]));
         self.back.set_visible(n > 0 && n < 3);
         self.next.set_visible(n < 3);
-        self.next.set_label(match n { 1 => "Install requirements", 2 => "Install SSMConnect", _ => "Next" });
+        let updating = self.existing.as_ref().is_some_and(|e| !e.package_managed);
+        self.next.set_label(match n { 0 if updating => "Update", 1 => "Install requirements", 2 if updating => "Update SSMConnect", 2 => "Install SSMConnect", _ => "Next" });
         self.next.set_sensitive(true);
+        if n == 0 { self.sync_next(); }
         self.say("");
         if n == 1 { self.show_deps(); }
         if n == 2 { self.show_location(); }
+    }
+
+    /// Welcome page: an installation made by a package manager is never touched, and going back to an older version needs a tick.
+    fn sync_next(&self) {
+        if self.step.get() != 0 { return; }
+        let blocked = self.existing.as_ref().is_some_and(|e| e.package_managed || (self.downgrade.is_visible() && !self.downgrade.is_active()));
+        self.next.set_sensitive(!blocked);
+    }
+
+    /// Remove the program. The person's data stays unless they tick the boxes.
+    fn remove_dialog(self: &Rc<Self>) {
+        let Some(e) = self.existing.clone() else { return };
+        let d = adw::AlertDialog::new(Some("Remove SSMConnect?"), Some(&format!("This removes the program and its menu entry from {}.\n\nBy default your saved servers, accounts' names and settings stay on this computer, so a later install picks up where you left off.", e.prefix.display())));
+        let b = gtk::Box::new(gtk::Orientation::Vertical, 6);
+        let settings = gtk::CheckButton::with_label("Also delete my saved servers, settings and log");
+        let tools = gtk::CheckButton::with_label("Also remove the AWS CLI and Session Manager plugin that SSMConnect downloaded");
+        b.append(&settings); b.append(&tools);
+        b.append(&dim_label("Your AWS logins (~/.aws) and your own ssh hosts are never touched."));
+        d.set_extra_child(Some(&b));
+        d.add_response("cancel", "Cancel");
+        d.add_response("remove", "Remove");
+        d.set_response_appearance("remove", adw::ResponseAppearance::Destructive);
+        d.set_default_response(Some("cancel"));
+        let me = self.clone();
+        d.connect_response(None, move |_, r| {
+            if r != "remove" { return; }
+            let (s, t, prefix) = (settings.is_active(), tools.is_active(), e.prefix.clone());
+            me.busy(true, "Removing...");
+            let me2 = me.clone();
+            in_background(move || installer::remove_everything(&prefix, s, t, Elevation::Graphical), move |res| {
+                me2.busy(false, "");
+                match res {
+                    Err(e) => message(&me2.win, "Could not remove SSMConnect", &e),
+                    Ok(done) => {
+                        me2.done_text.set_text(&format!("SSMConnect was removed.\n\n{}", done.iter().map(|l| format!("•  {l}")).collect::<Vec<_>>().join("\n")));
+                        *me2.installed_to.borrow_mut() = None;
+                        me2.stack.set_visible_child_name("3");
+                        me2.step.set(3);
+                        me2.title.set_text("Done");
+                        me2.back.set_visible(false);
+                        me2.next.set_visible(false);
+                    }
+                }
+            });
+        });
+        d.present(Some(&self.win));
     }
 
     fn on_next(self: &Rc<Self>) {
@@ -225,7 +305,8 @@ impl Inner {
             // a location given on the command line is used as is
             self.user_radio.set_sensitive(false);
             self.system_radio.set_sensitive(false);
-            self.path_hint.set_text(&format!("Installing to {} (set on the command line).", p.display()));
+            self.path_hint.set_text(&if self.existing.is_some() { format!("Updating the existing installation in {}. Your servers, accounts and settings are not touched.", p.display()) }
+                                    else { format!("Installing to {} (set on the command line).", p.display()) });
         } else {
             let bin = installer::user_prefix().join("bin");
             self.path_hint.set_text(&if installer::on_path(&bin) { String::new() } else { format!("{} is not on your PATH yet; the application menu entry works regardless.", bin.display()) });
@@ -251,9 +332,11 @@ impl Inner {
                 Err(e) => message(&me.win, "Could not install SSMConnect", &e),
                 Ok(()) => {
                     let bin = prefix.join("bin");
-                    me.done_text.set_text(&format!("SSMConnect {VERSION} is installed in {}.\n\nOpen it from your application menu{}. The first time, it guides you through adding your AWS account.\n\
+                    me.done_text.set_text(&format!("SSMConnect {VERSION} is {} in {}.{}\n\nOpen it from your application menu{}. The first time, it guides you through adding your AWS account.\n\
                         To remove it later: ssmconnect uninstall --prefix {}",
-                        prefix.display(), if installer::on_path(&bin) { " or by running `ssmconnect`".to_string() } else { format!(", or run {}", bin.join("ssmconnect").display()) }, prefix.display()));
+                        if me.existing.is_some() { "updated" } else { "installed" }, prefix.display(),
+                        if me.existing.is_some() { "\nYour servers, accounts and settings were kept." } else { "" },
+                        if installer::on_path(&bin) { " or by running `ssmconnect`".to_string() } else { format!(", or run {}", bin.join("ssmconnect").display()) }, prefix.display()));
                     *me.installed_to.borrow_mut() = Some(bin.join("ssmconnect"));
                     me.go(3);
                 }

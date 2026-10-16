@@ -15,7 +15,18 @@ const TERMINALS: [(&str, &[&str]); 15] = [
 ];
 const RDP_CLIENTS: [&str; 5] = ["xfreerdp3", "xfreerdp", "sdl-freerdp3", "sdl-freerdp", "remmina"];
 
+fn prefs() -> crate::models::AppConfig { crate::config_store::load().unwrap_or_default() }
+
+/// Terminals installed here, by the name the person sees (the list behind Preferences > Terminal).
+pub fn installed_terminals() -> Vec<String> { TERMINALS.iter().filter(|(n, _)| which(n).is_some()).map(|(n, _)| n.to_string()).collect() }
+pub fn installed_rdp_clients() -> Vec<String> { RDP_CLIENTS.iter().filter(|c| which(c).is_some()).map(|c| c.to_string()).collect() }
+
 pub fn find_terminal() -> Option<(String, Vec<String>)> {
+    let chosen = prefs().terminal;
+    if !chosen.is_empty() && which(&chosen).is_some() {
+        let args = TERMINALS.iter().find(|(n, _)| *n == chosen).map(|(_, a)| a.iter().map(|s| s.to_string()).collect()).unwrap_or_else(|| vec!["-e".to_string()]);
+        return Some((chosen, args));
+    }
     if let Ok(pref) = std::env::var("TERMINAL") {
         if let Some(exe) = pref.split_whitespace().next().filter(|e| which(e).is_some()) {
             let base = std::path::Path::new(exe).file_name().map(|b| b.to_string_lossy().into_owned()).unwrap_or_default();
@@ -26,7 +37,10 @@ pub fn find_terminal() -> Option<(String, Vec<String>)> {
     TERMINALS.iter().find(|(n, _)| which(n).is_some()).map(|(n, a)| (n.to_string(), a.iter().map(|s| s.to_string()).collect()))
 }
 
-pub fn find_rdp_client() -> Option<&'static str> { RDP_CLIENTS.iter().copied().find(|c| which(c).is_some()) }
+pub fn find_rdp_client() -> Option<&'static str> {
+    let chosen = prefs().rdp_client;
+    RDP_CLIENTS.iter().copied().find(|c| *c == chosen && which(c).is_some()).or_else(|| RDP_CLIENTS.iter().copied().find(|c| which(c).is_some()))
+}
 
 #[derive(Clone, Debug, Default)]
 pub struct Tools { pub ssh: Option<String>, pub terminal: Option<String>, pub rdp: Option<String>, pub files: Option<String> }
@@ -93,6 +107,7 @@ pub fn sftp_problem(stderr: &str) -> Option<String> {
 /// own SFTP (Dolphin, Thunar, Nemo, Caja, Nautilus); otherwise the `sftp` client in a terminal.
 pub fn open_files(user: &str, alias: &str) -> Result<(), String> {
     let url = format!("sftp://{user}@{alias}/");
+    if prefs().files_mode == "terminal" { return open_sftp_terminal(alias); }
     let kde = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_uppercase().contains("KDE"));
     if kde && which("dolphin").is_some() { return spawn(Command::new("dolphin").arg(&url)); }   // KIO speaks SFTP itself
     if which("gio").is_some() {

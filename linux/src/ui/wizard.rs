@@ -12,7 +12,6 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 const STEPS: [&str; 5] = ["Requirements", "AWS account", "Servers", "SSH keys", "Save"];
-const FIRST_PORT: u16 = 2201;
 
 struct KeyRow { profile: String, server: DiscoveredServer, user: adw::EntryRow, combo: adw::ComboRow }
 
@@ -158,7 +157,7 @@ impl Wizard {
         p4.append(&krow);
 
         // page 5: save
-        let p5 = page("Ready", "This is what will be saved. Connections open right away, and ssh gets a short name for each server.");
+        let p5 = page("Ready", "This is what will be saved. Connections open right away, and ssh gets a short name for each server. Afterwards SSMConnect offers to confirm each server's identity, once its connection is up (Servers > Server identities). You can change everything later under Preferences.");
         let sum_box = gtk::Box::new(gtk::Orientation::Vertical, 0);
         p5.append(&sum_box);
 
@@ -619,7 +618,7 @@ impl Inner {
         for (profile, s) in sel {
             let old = cfg.tunnels.iter().find(|t| t.profile == profile && t.instance_id == s.instance_id);
             let r = d.key_rows.iter().find(|r| r.profile == profile && r.server.instance_id == s.instance_id);
-            let port = match old { Some(o) if !taken.contains(&o.local_port) => o.local_port, _ => netcheck::free_port(FIRST_PORT, &taken) };
+            let port = match old { Some(o) if !taken.contains(&o.local_port) => o.local_port, _ => netcheck::free_port(cfg.first_port.max(1024), &taken) };
             let user = r.map(|r| r.user.text().trim().to_string()).filter(|u| !u.is_empty()).unwrap_or_else(|| s.suggested_user().to_string());
             if !is_valid_login(&user) { message(&self.win, "Check the login user", &format!("'{user}' is not a valid user name for {}.", s.name)); return; }
             new.push(TunnelConfig { name: s.name.clone(), instance_id: s.instance_id.clone(), profile: profile.clone(), region: d.region.clone(), local_port: port,
@@ -637,7 +636,7 @@ impl Inner {
         drop(d);
         let res = config_store::save(&cfg).map_err(|e| e.to_string()).and_then(|()| {
             for m in members.iter().filter(|m| m.region.is_none()) { ap::save_region(&m.name, &region)?; }
-            ssh_config::apply(&cfg.tunnels).map_err(|e| e.to_string())
+            ssh_config::sync(&cfg).map_err(|e| e.to_string())
         });
         if let Err(e) = res { message(&self.win, "Could not save", &e); return; }
         self.app.ensure_manager();

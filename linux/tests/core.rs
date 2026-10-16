@@ -92,8 +92,8 @@ fn ssh_config_apply_remove_keeps_user_hosts() {
     let t = |n: &str, id: &str, port, rdp: bool| TunnelConfig { name: n.into(), instance_id: id.into(), local_port: port, protocol: if rdp { "rdp".into() } else { "ssh".into() }, ..Default::default() };
     let ts = vec![TunnelConfig { user_name: "ubuntu".into(), key_file: Some("/k/my key.pem".into()), ..t("Web Server 1", "i-aaaaaaaa", 2201, false) },
                   t("web server 1", "i-bbbbbbbb", 2202, false), t("Win", "i-cccccccc", 2203, true)];
-    ssh_config::apply(&ts).unwrap();
-    ssh_config::apply(&ts).unwrap();   // idempotent
+    ssh_config::apply(&ts, false).unwrap();
+    ssh_config::apply(&ts, false).unwrap();   // idempotent
     let text = std::fs::read_to_string(ssh.join("config")).unwrap();
     assert_eq!(text.matches(ssh_config::INCLUDE_LINE).count(), 1);
     assert!(text.starts_with("# SSMConnect"));
@@ -106,7 +106,7 @@ fn ssh_config_apply_remove_keeps_user_hosts() {
     assert_eq!(std::fs::read_to_string(ssh.join("config")).unwrap(), "Host mine\n    HostName example.com\n");
     assert!(!ssh.join("ssmconnect.conf").exists());
     if Command::new("which").arg("ssh").output().map(|o| o.status.success()).unwrap_or(false) {
-        ssh_config::apply(&ts).unwrap();
+        ssh_config::apply(&ts, false).unwrap();
         let out = Command::new("ssh").args(["-F"]).arg(ssh.join("config")).args(["-G", "ssc-web-server-1"]).output().unwrap();
         let s = String::from_utf8_lossy(&out.stdout);
         assert!(s.contains("\nport 2201\n") && s.contains("\nuser ubuntu\n"), "{s}");

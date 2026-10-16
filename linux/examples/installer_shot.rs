@@ -9,6 +9,11 @@ fn main() {
     let home = std::env::temp_dir().join(format!("ssmconnect-inst-{}", std::process::id()));
     std::fs::create_dir_all(&home).unwrap();
     std::env::set_var("HOME", &home);
+    if let Ok(v) = std::env::var("INSTALLED_VERSION") {   // pretend an older SSMConnect is already installed (to see the update screen)
+        let m = home.join(".local/share/ssmconnect/install-manifest.txt");
+        std::fs::create_dir_all(m.parent().unwrap()).unwrap();
+        std::fs::write(m, format!("# version {v}\nbin/ssmconnect\n")).unwrap();
+    }
     let hook: Box<dyn Fn(&adw::ApplicationWindow, &dyn Fn(usize))> = Box::new(move |win, goto| {
         adw::StyleManager::default().set_color_scheme(if dark { adw::ColorScheme::ForceDark } else { adw::ColorScheme::ForceLight });
         for step in 0..3 {

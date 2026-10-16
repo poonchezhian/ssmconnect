@@ -35,7 +35,11 @@ defaults, `--system` installs for all users). The wizard works in this order, so
    - AWS CLI v2 and the Session Manager plugin straight from Amazon, with Amazon's OpenPGP signature checked
 2. **SSMConnect itself**, for you (`~/.local`, no password) or for all users (`/usr/local`).
 
-Remove it with `ssmconnect uninstall` (add `--prefix /usr/local` if you installed for all users).
+**Updating:** run the newer `.bin`. It finds the existing installation, updates it in place and keeps your servers, accounts and settings (it saves a copy
+of your saved servers first). `--update-only` makes it do nothing when SSMConnect is not installed.
+
+**Removing:** *Remove SSMConnect…* on the installer's first page, or `ssmconnect uninstall` (add `--prefix /usr/local` for an all-users install). Your saved
+servers and settings stay unless you ask for them to be deleted (`--remove-settings`); the AWS tools SSMConnect downloaded stay unless you add `--remove-tools`.
 
 **Native packages** (the package manager pulls OpenSSH and GTK for you):
 
@@ -53,6 +57,12 @@ Then open **SSMConnect** from the application menu; the first run starts the set
 - A compiled, native program: no Python, Electron or Wine. It links GTK 4 (4.12+) and libadwaita (1.5+), which every current desktop distribution ships
 - OpenSSH client; optionally FreeRDP or Remmina for Windows servers
 - AWS CLI v2 and the Session Manager plugin, fetched for you from Amazon (`ssmconnect install-tools` does it from a terminal)
+
+## Settings and server identities, all in windows
+
+**File > Preferences** holds every setting in plain language (start-up, terminal and Remote Desktop programs, what *Files* opens, ports, ssh names, updates, the AWS tools,
+your data). **Servers > Server identities** lets you confirm a server's identity the first time (and shows a clear warning if it ever changes), so nobody has to edit
+`~/.ssh/known_hosts` by hand.
 
 ## Security of the tools it installs
 

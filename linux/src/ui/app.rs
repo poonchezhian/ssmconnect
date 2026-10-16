@@ -25,7 +25,9 @@ pub fn run(background: bool) -> i32 { run_with(background, None) }
 
 /// Like `run`; `on_ready` is called once the window is up (used by the screenshot and end-to-end example programs).
 pub fn run_with(background: bool, on_ready: Option<Box<dyn Fn(&Rc<App>)>>) -> i32 {
-    let gtk_app = adw::Application::builder().application_id(APP_ID).build();
+    // the example programs run beside a real SSMConnect that may be open, so they must not hand over to it
+    let flags = if on_ready.is_some() { gio::ApplicationFlags::NON_UNIQUE } else { gio::ApplicationFlags::FLAGS_NONE };
+    let gtk_app = adw::Application::builder().application_id(APP_ID).flags(flags).build();
     let app = Rc::new(App { gtk: gtk_app.clone(), manager: Arc::new(TunnelManager::new()), window: RefCell::new(None), background,
                             shown_once: Cell::new(false), told_hidden: Cell::new(false), wizard: RefCell::new(None), on_ready: RefCell::new(on_ready) });
     let a = app.clone();
@@ -77,6 +79,9 @@ impl App {
         d
     }
 
+    /// Re-reads which servers have a confirmed identity (after the person confirmed or forgot one).
+    pub fn refresh_trust(&self) { if let Some(w) = self.window.borrow().as_ref() { w.reload_trust(); } }
+
     pub fn ensure_manager(&self) { self.manager.start(); self.manager.poke(); }
 
     pub fn toast(&self, text: &str) { if let Some(w) = self.window.borrow().as_ref() { w.toast(text); } }
@@ -101,6 +106,8 @@ impl App {
         self.add_action("add-account", |a| a.open_wizard(true));
         self.add_action("manage-accounts", |a| a.open_accounts());
         self.add_action("sign-in-again", |a| a.sign_in_again());
+        self.add_action("preferences", |a| { let w = a.show_window(); super::preferences::show(a, &w.win); });
+        self.add_action("identities", |a| { let w = a.show_window(); super::identities::show(a, &w.win); });
         self.add_action("scan", |a| a.scan_now());
         self.add_action("changes", |a| a.show_changes());
         self.add_action("check-updates", |a| a.check_updates(true));
@@ -108,16 +115,6 @@ impl App {
         self.add_action("cleanup", |a| a.cleanup());
         self.add_action("about", |a| a.about());
         self.add_action("create-launcher", |a| match desktop::create_launcher() { Ok(p) => a.toast(&format!("Added: {}", p.display())), Err(e) => a.toast(&e.to_string()) });
-        let auto = gio::SimpleAction::new_stateful("autostart", None, &desktop::autostart_enabled().to_variant());
-        let me = self.clone();
-        auto.connect_activate(move |act, _| {
-            let on = !act.state().and_then(|s| s.get::<bool>()).unwrap_or(false);
-            match desktop::set_autostart(on) {
-                Ok(()) => { act.set_state(&on.to_variant()); me.toast(if on { "SSMConnect will start when you sign in." } else { "SSMConnect will not start when you sign in." }); }
-                Err(e) => me.toast(&e.to_string()),
-            }
-        });
-        self.gtk.add_action(&auto);
         self.gtk.set_accels_for_action("app.quit", &["<Primary>q"]);
     }
 
@@ -163,6 +160,7 @@ impl App {
     }
 
     fn check_updates(self: &Rc<Self>, manual: bool) {
+        if !manual && !config_store::load().is_some_and(|c| c.check_updates) { return; }
         let me = self.clone();
         in_background(move || update_checker::check(manual), move |info| match info {
             Some(i) if manual => {

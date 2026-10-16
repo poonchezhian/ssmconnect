@@ -43,13 +43,16 @@ pub fn aliases_for(tunnels: &[TunnelConfig]) -> HashMap<String, String> {
     out
 }
 
+/// The name the server's identity is filed under in known_hosts (every tunnel is 127.0.0.1:<port>, so the address cannot tell servers apart).
+pub fn host_key_alias(t: &TunnelConfig, everyone: &[TunnelConfig]) -> String { format!("{}-{}", alias_of(t, everyone), t.instance_id) }
+
 pub fn alias_of(t: &TunnelConfig, everyone: &[TunnelConfig]) -> String {
     aliases_for(everyone).get(&t.instance_id).cloned().unwrap_or_else(|| host_alias(&t.name, &t.instance_id))
 }
 
 fn quote(p: &str) -> String { if p.chars().any(char::is_whitespace) { format!("\"{}\"", p.replace('"', "\\\"")) } else { p.to_string() } }
 
-pub fn render(tunnels: &[TunnelConfig]) -> String {
+pub fn render(tunnels: &[TunnelConfig], strict: bool) -> String {
     let aliases = aliases_for(tunnels);
     let mut out = vec![HEADER.to_string()];
     for t in tunnels.iter().filter(|t| !t.is_rdp() && t.enabled) {
@@ -65,19 +68,27 @@ pub fn render(tunnels: &[TunnelConfig]) -> String {
         }
         // every tunnel is 127.0.0.1:<port>, so each server needs its own identity in known_hosts
         out.push(format!("    HostKeyAlias {alias}-{}", t.instance_id));
-        out.push("    StrictHostKeyChecking accept-new".into());
+        out.push(format!("    StrictHostKeyChecking {}", if strict { "yes" } else { "accept-new" }));
         out.push("    ServerAliveInterval 30".into());
         out.push(String::new());
     }
     out.join("\n")
 }
 
+/// Brings the ssh settings in line with the person's choice: written when "let ssh use my servers by name" is on, taken out when it is off.
+pub fn sync(cfg: &crate::models::AppConfig) -> std::io::Result<()> {
+    if cfg.ssh_integration { apply(&cfg.tunnels, cfg.strict_host_keys) } else { remove() }
+}
+
+/// True when ~/.ssh/config loads SSMConnect's server list.
+pub fn is_enabled() -> bool { std::fs::read_to_string(user_config_path()).is_ok_and(|t| t.contains(INCLUDE_LINE)) }
+
 /// Rewrites ssmconnect.conf and makes sure ~/.ssh/config includes it (a .ssmconnect.bak copy is kept).
-pub fn apply(tunnels: &[TunnelConfig]) -> std::io::Result<()> {
+pub fn apply(tunnels: &[TunnelConfig], strict: bool) -> std::io::Result<()> {
     use std::os::unix::fs::DirBuilderExt;
     let d = paths::ssh_dir();
     if !d.exists() { fs::DirBuilder::new().mode(0o700).recursive(true).create(&d)?; }
-    paths::write_private(&conf_path(), &render(tunnels))?;
+    paths::write_private(&conf_path(), &render(tunnels, strict))?;
     let cfg = user_config_path();
     let text = fs::read(&cfg).map(|b| String::from_utf8_lossy(&b).into_owned()).unwrap_or_default();
     if text.contains(INCLUDE_LINE) { return Ok(()); }

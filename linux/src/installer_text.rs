@@ -19,6 +19,30 @@ fn ask(q: &str, default_yes: bool, yes: bool) -> bool {
 
 pub fn run(o: Options) -> ExitCode {
     println!("SSMConnect {VERSION} installer\n\nSSMConnect is open source (Apache License 2.0). It bundles no third-party tools: what it needs is fetched from its\nsource first, then SSMConnect itself is installed.\n");
+    // an installation that is already here is updated in place; settings are never touched
+    let existing = installer::existing_install(o.prefix.as_deref());
+    let mut update_prefix: Option<PathBuf> = None;
+    if let Some(e) = &existing {
+        let v = e.version.clone().unwrap_or_else(|| "an unknown version".into());
+        if e.package_managed {
+            println!("SSMConnect {v} is installed by your package manager. Update or remove it with that (for example `sudo dnf upgrade ssmconnect` or\n`sudo apt install --only-upgrade ssmconnect`). This installer does not change package-managed installs.");
+            return ExitCode::from(1);
+        }
+        let order = e.version.as_deref().map(|x| installer::compare_versions(x, VERSION)).unwrap_or(-1);
+        println!("SSMConnect {v} is installed in {}.", e.prefix.display());
+        match order {
+            0 => println!("That is the same version as this installer: installing again repairs it."),
+            1 => {
+                println!("That is NEWER than this installer ({VERSION}); continuing would go back to an older version.");
+                if !ask("Go back to the older version?", false, false) { println!("Nothing was changed."); return ExitCode::from(1); }
+            }
+            _ => println!("It will be updated to {VERSION}."),
+        }
+        println!("Your servers, accounts and settings are kept (a copy of your saved servers is made first).");
+        if installer::running_instances() > 0 { println!("Note: SSMConnect is running. It keeps using the old version until you close and open it again."); }
+        println!();
+        update_prefix = Some(e.prefix.clone());
+    }
     let deps = installer::dependencies();
     println!("What SSMConnect needs:");
     for d in &deps {
@@ -28,7 +52,7 @@ pub fn run(o: Options) -> ExitCode {
     let mut chosen: Vec<&str> = vec![];
     for d in deps.iter().filter(|d| d.found.is_none()) {
         // --yes accepts the defaults: required tools yes, optional extras no
-        if d.required || (!o.yes && ask(&format!("Also install the optional {}?", d.name), false, false)) { chosen.push(d.id); }
+        if d.required || (update_prefix.is_none() && !o.yes && ask(&format!("Also install the optional {}?", d.name), false, false)) { chosen.push(d.id); }
     }
     if !chosen.is_empty() {
         let names: Vec<&str> = deps.iter().filter(|d| chosen.contains(&d.id)).map(|d| d.name).collect();
@@ -41,7 +65,7 @@ pub fn run(o: Options) -> ExitCode {
         return ExitCode::from(1);
     }
 
-    let prefix = o.prefix.clone().unwrap_or_else(|| if o.system { installer::system_prefix() } else { installer::user_prefix() });
+    let prefix = o.prefix.clone().or(update_prefix).unwrap_or_else(|| if o.system { installer::system_prefix() } else { installer::user_prefix() });
     let source = o.source.clone().or_else(|| std::env::current_exe().ok()).unwrap_or_default();
     println!("\nInstalling SSMConnect to {} ...", prefix.display());
     let writable = std::fs::create_dir_all(&prefix).is_ok() && std::fs::metadata(&prefix).map(|m| !m.permissions().readonly()).unwrap_or(false);
@@ -51,6 +75,6 @@ pub fn run(o: Options) -> ExitCode {
     let bin = prefix.join("bin");
     println!("\nDone. Start SSMConnect from your application menu, or run: {}", bin.join("ssmconnect").display());
     if !installer::on_path(&bin) { println!("Note: {} is not on your PATH yet; add it to use the plain `ssmconnect` command.", bin.display()); }
-    println!("To remove it later: ssmconnect uninstall --prefix {}", prefix.display());
+    println!("To remove it later: ssmconnect uninstall --prefix {}   (your saved servers and settings are kept unless you add --remove-settings)", prefix.display());
     ExitCode::SUCCESS
 }
