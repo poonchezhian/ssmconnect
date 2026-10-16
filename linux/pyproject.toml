@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ssmconnect"
+dynamic = ["version"]
+description = "SSH and Remote Desktop to AWS servers over Session Manager, with port 22 closed (Linux edition)"
+readme = "README.md"
+license = { text = "Apache-2.0" }
+requires-python = ">=3.10"
+classifiers = [
+  "Operating System :: POSIX :: Linux",
+  "Environment :: X11 Applications :: GTK",
+  "License :: OSI Approved :: Apache Software License",
+]
+# PyGObject, GTK 4 and libadwaita come from the distribution (python3-gobject, gtk4, libadwaita), never from pip.
+dependencies = []
+
+[project.scripts]
+ssmconnect = "ssmconnect.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.dynamic]
+version = { attr = "ssmconnect._version.__version__" }

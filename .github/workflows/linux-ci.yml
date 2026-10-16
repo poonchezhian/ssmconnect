@@ -1,0 +1,30 @@
+# Linux edition only. Runs on the `linux` branch and on linux-v* tags; never touches the Windows workflow.
+name: linux-build-and-release
+
+on:
+  push:
+    branches: [linux]
+    tags: ['linux-v*']
+  pull_request:
+    branches: [linux]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    working-directory: linux
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 openssh-client openssl xvfb
+      - run: python3 -m unittest discover -s tests -v
+      - name: Version file agrees with the code
+        run: test "$(cat VERSION)" = "$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/ssmconnect/_version.py)"
+      - name: Tag matches the version
+        if: startsWith(github.ref, 'refs/tags/linux-v')
+        run: test "linux-v$(cat VERSION)" = "${GITHUB_REF_NAME}"
