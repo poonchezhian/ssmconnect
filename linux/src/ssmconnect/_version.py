@@ -1,3 +1,3 @@
 """Single source of truth for the Linux edition's version (Semantic Versioning)."""
 
-__version__ = "0.0.4"
+__version__ = "0.0.5"

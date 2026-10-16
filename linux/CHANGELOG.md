@@ -4,6 +4,13 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.0.5] - 2026-10-16
+Documentation and polish.
+### Added
+- README: install table per distribution, behaviour without a tray icon, troubleshooting, release procedure.
+### Fixed
+- Wizard step indicator icon for installed tools.
+
 ## [0.0.4] - 2026-10-16
 Native packaging and releases.
 ### Added
