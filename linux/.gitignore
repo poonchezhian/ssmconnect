@@ -1,8 +1,5 @@
-__pycache__/
-*.pyc
-*.egg-info/
-build/
-dist-linux/
+target/
 *.rpm
 *.deb
 *.tar.gz
+dist-linux/

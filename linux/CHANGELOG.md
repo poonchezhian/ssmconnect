@@ -4,6 +4,18 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.1.0] - 2026-10-16
+Rust rewrite, part 1: the engine and the command line. The Python edition (0.0.x) is kept under `legacy-python/` until the
+Rust edition has everything it had.
+### Changed
+- The whole engine is now compiled Rust (no Python at run time): tunnel manager, AWS profiles, SSO, discovery, ssh integration,
+  key matching by fingerprint (pure Rust DER reader), launchers, user-space tool installer, update check.
+- Settings written by 0.0.x are read as they are (same file names and field names).
+### Added
+- 20 automated tests (unit and integration, with a fake AWS CLI); every Python test was ported.
+### Not yet in the Rust edition
+- The window, setup wizard and accounts dialog (next releases). Packaging still ships the Python edition until then.
+
 ## [0.0.5] - 2026-10-16
 Documentation and polish.
 ### Added
