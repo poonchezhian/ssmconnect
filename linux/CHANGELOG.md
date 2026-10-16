@@ -4,6 +4,16 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.1.1] - 2026-10-16
+Rust rewrite, part 2: the dashboard.
+### Added
+- Native GTK 4 + libadwaita dashboard in Rust, same layout as 0.0.x: account switcher, status pills, summary, organization chips,
+  Start / Stop / Restart, server cards with Terminal / Files / Remote Desktop / Get password / Copy actions, hide-to-background,
+  notifications, daily scan, update check, About, clean-up.
+- `cargo run --example screenshot` renders the real window to a PNG against a fake AWS CLI.
+### Not yet
+- Setup wizard and accounts dialog.
+
 ## [0.1.0] - 2026-10-16
 Rust rewrite, part 1: the engine and the command line. The Python edition (0.0.x) is kept under `legacy-python/` until the
 Rust edition has everything it had.

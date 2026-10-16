@@ -1,0 +1,14 @@
+.pill { border-radius: 999px; padding: 3px 12px; font-weight: 600; font-size: 0.9em; background: alpha(@window_fg_color, .08); }
+.pill.ok { background: alpha(@success_color, .18); color: @success_color; }
+.pill.warn { background: alpha(@warning_color, .22); color: @warning_color; }
+.pill.err { background: alpha(@error_color, .18); color: @error_color; }
+.chip { border-radius: 999px; padding: 2px 10px; background: alpha(@window_fg_color, .08); font-size: 0.9em; }
+.chip.empty { opacity: .45; }
+.tag { border-radius: 6px; padding: 1px 8px; font-size: 0.78em; font-weight: 700; background: alpha(@window_fg_color, .12); }
+.tag.prod { background: @error_bg_color; color: @error_fg_color; }
+.dot { min-width: 12px; min-height: 12px; border-radius: 999px; background: alpha(@window_fg_color, .3); }
+.dot.ok { background: @success_color; }
+.dot.work { background: @warning_color; }
+.dot.err { background: @error_color; }
+.unavailable { opacity: .45; }
+.summary { opacity: .75; }
