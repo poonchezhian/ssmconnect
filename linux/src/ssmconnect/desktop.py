@@ -20,7 +20,7 @@ def _entry(extra: str = "") -> str:
         "[Desktop Entry]\nType=Application\nName=SSMConnect\n"
         "Comment=SSH and Remote Desktop to AWS servers over Session Manager\n"
         f"Exec={_exec_line(extra)}\nIcon={APP_ID}\nTerminal=false\n"
-        "Categories=Network;RemoteAccess;System;\nStartupNotify=true\nKeywords=aws;ssm;ssh;rdp;tunnel;\n"
+        "Categories=Network;RemoteAccess;\nStartupNotify=true\nKeywords=aws;ssm;ssh;rdp;tunnel;\n"
     )
 
 

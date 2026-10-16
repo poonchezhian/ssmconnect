@@ -4,6 +4,20 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.0.4] - 2026-10-16
+Native packaging and releases.
+### Added
+- Installable builds from one staging script, so every format ships identical files: a tarball with `install.sh`
+  (per user by default, no root; `--uninstall` removes it), a `.deb` (Debian, Ubuntu, Mint) and an `.rpm` (Fedora, RHEL, openSUSE).
+- Desktop entry, AppStream metadata (validated) and scalable icon, so the app appears in the application menu and software centres.
+- GitHub Actions workflow for the Linux edition only (`linux` branch and `linux-v*` tags): tests, metadata checks,
+  package builds, install smoke tests on Ubuntu and Fedora, `SHA256SUMS.txt`, and a GitHub Release (0.x as pre-release) with notes taken from this file.
+- `scripts/bump-version.sh` keeps `_version.py`, `VERSION` and the AppStream release in step.
+### Changed
+- The update check also considers pre-releases, since all 0.x builds are published as such.
+### Known limits
+- The `.deb` and `.rpm` builders run in CI; they could not be run on the development machine (no `dpkg-deb`/`rpmbuild`).
+
 ## [0.0.3] - 2026-10-16
 The setup wizard and account management.
 ### Added

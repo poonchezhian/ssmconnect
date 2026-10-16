@@ -1,4 +1,6 @@
 # Linux edition only. Runs on the `linux` branch and on linux-v* tags; never touches the Windows workflow.
+# Release: bump with linux/scripts/bump-version.sh, update CHANGELOG.md, commit, then
+#   git tag -a linux-vX.Y.Z -m "SSMConnect for Linux X.Y.Z" && git push origin linux linux-vX.Y.Z
 name: linux-build-and-release
 
 on:
@@ -10,7 +12,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 defaults:
   run:
@@ -21,10 +23,71 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-      - run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 openssh-client openssl xvfb
-      - run: python3 -m unittest discover -s tests -v
+      - run: sudo apt-get update && sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1 openssh-client openssl desktop-file-utils appstream
+      - run: python3 -W error::ResourceWarning -m unittest discover -s tests -v
       - name: Version file agrees with the code
         run: test "$(cat VERSION)" = "$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/ssmconnect/_version.py)"
       - name: Tag matches the version
         if: startsWith(github.ref, 'refs/tags/linux-v')
         run: test "linux-v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+      - name: Changelog has this version
+        if: startsWith(github.ref, 'refs/tags/linux-v')
+        run: grep -q "^## \[$(cat VERSION)\]" CHANGELOG.md
+      - run: desktop-file-validate data/*.desktop && appstreamcli validate --no-net data/*.metainfo.xml
+
+  package:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y rpm
+      - run: packaging/build-tarball.sh && packaging/build-deb.sh && packaging/build-rpm.sh
+      - name: Smoke-test the tarball install
+        run: |
+          d=$(mktemp -d); tar -C "$d" -xzf dist-linux/ssmconnect-*-linux.tar.gz
+          sudo apt-get install -y python3-gi gir1.2-gtk-4.0 gir1.2-adw-1
+          "$d"/ssmconnect-*/install.sh --prefix "$d/p" && HOME="$d" "$d/p/bin/ssmconnect" --version
+      - name: Smoke-test the deb
+        run: sudo apt-get install -y ./dist-linux/ssmconnect_*_all.deb && ssmconnect --version
+      - run: cd dist-linux && sha256sum * > SHA256SUMS.txt && cat SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssmconnect-linux
+          path: linux/dist-linux/*
+
+  rpm-smoke:
+    needs: package
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: ssmconnect-linux
+      - run: dnf install -y ./ssmconnect-*.rpm && ssmconnect --version
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/linux-v')
+    needs: [package, rpm-smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ssmconnect-linux
+          path: dist
+      - name: Release notes from the changelog
+        run: |
+          v="${GITHUB_REF_NAME#linux-v}"
+          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {on=1; next} /^## \[/ {on=0} on' linux/CHANGELOG.md > notes.md
+          { echo; echo "Linux edition. Verify downloads with \`sha256sum -c SHA256SUMS.txt\`."; } >> notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pre=""; case "${GITHUB_REF_NAME}" in linux-v0.*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --title "SSMConnect for Linux ${GITHUB_REF_NAME#linux-v}" --notes-file notes.md $pre

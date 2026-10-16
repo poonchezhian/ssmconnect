@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=SSMConnect
+GenericName=AWS server connections
+Comment=SSH and Remote Desktop to AWS servers over Session Manager, with port 22 closed
+Exec=ssmconnect
+Icon=io.github.poonchezhian.SSMConnect
+Terminal=false
+Categories=Network;RemoteAccess;
+Keywords=aws;ssm;ssh;rdp;tunnel;session manager;ec2;
+StartupNotify=true
+StartupWMClass=io.github.poonchezhian.SSMConnect

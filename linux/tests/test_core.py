@@ -164,3 +164,15 @@ class MiscTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UpdateTests(unittest.TestCase):
+    def test_newest_linux_release_only(self):
+        from ssmconnect import update_checker as u
+        rel = [{"tag_name": "v1.0.42", "html_url": "w"}, {"tag_name": "linux-v0.0.9", "prerelease": True, "html_url": "a"},
+               {"tag_name": "linux-v0.0.10", "prerelease": True, "html_url": "b", "body": "n"}, {"tag_name": "linux-v9.9.9", "draft": True}]
+        info = u.newest_from(rel)
+        self.assertEqual((info.version, info.page_url), ("0.0.10", "b"))
+        self.assertIsNone(u.newest_from([{"tag_name": "v1.0.42"}]))
+        self.assertEqual(u.parse("linux-v1.2.3"), None)
+        self.assertEqual(u.parse("1.2.3"), (1, 2, 3))

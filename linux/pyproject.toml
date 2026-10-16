@@ -23,5 +23,8 @@ ssmconnect = "ssmconnect.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+"ssmconnect.ui" = ["style.css"]
+
 [tool.setuptools.dynamic]
 version = { attr = "ssmconnect._version.__version__" }

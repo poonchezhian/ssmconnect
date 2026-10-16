@@ -62,7 +62,7 @@ def newest_from(releases: list[dict]) -> UpdateInfo | None:
     best: tuple[tuple[int, int, int], dict] | None = None
     for r in releases:
         tag = str(r.get("tag_name", ""))
-        if not tag.startswith(TAG_PREFIX) or r.get("draft") or r.get("prerelease"):
+        if not tag.startswith(TAG_PREFIX) or r.get("draft"):   # 0.x releases are published as pre-releases on purpose
             continue
         v = parse(tag[len(TAG_PREFIX):])
         if v and (best is None or v > best[0]):

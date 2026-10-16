@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Usage: scripts/bump-version.sh patch|minor|major|X.Y.Z
-# Updates src/ssmconnect/_version.py and linux/VERSION. Commit, then tag with: git tag -a linux-vX.Y.Z -m "Linux X.Y.Z"
+# Updates src/ssmconnect/_version.py, linux/VERSION and the AppStream release entry. Commit, then tag with: git tag -a linux-vX.Y.Z -m "Linux X.Y.Z"
 set -euo pipefail
 cd "$(dirname "$0")/.."
 cur=$(sed -n 's/^__version__ = "\(.*\)"/\1/p' src/ssmconnect/_version.py)
@@ -14,4 +14,5 @@ case "${1:-patch}" in
 esac
 sed -i "s/^__version__ = .*/__version__ = \"$new\"/" src/ssmconnect/_version.py
 echo "$new" > VERSION
+sed -i "s|<release version=\"[^\"]*\" date=\"[^\"]*\"/>|<release version=\"$new\" date=\"$(date +%F)\"/>|" data/io.github.poonchezhian.SSMConnect.metainfo.xml
 echo "$cur -> $new"
