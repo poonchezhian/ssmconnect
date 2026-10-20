@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 0.6.3
+- **Fixed blank icons after removing a copy.** Uninstalling a per-user copy could leave a stale icon cache that made every SSMConnect icon blank, also for a package install. Uninstall now cleans it up.
+
 ## 0.6.2
 - Behind the scenes: releases are now signed and the update repository is published automatically. No change to the app.
 
