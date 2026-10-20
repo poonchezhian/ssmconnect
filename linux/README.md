@@ -18,41 +18,14 @@ and the file manager via `sftp://`.
 
 ## Install
 
-Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/releases) (tags named `linux-vX.Y.Z`; check `SHA256SUMS.txt`).
+Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/releases) (tags named `linux-vX.Y.Z`). Full steps, updating and removing: [Install and update](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update).
 
-**The installer (any distribution): `ssmconnect-X.Y.Z-linux-x86_64.bin`**
+- **Any distribution:** `sh ./ssmconnect-X.Y.Z-linux-x86_64.bin` (or double-click it). The installer fetches what is missing (GTK 4/libadwaita, OpenSSH from your distribution; the AWS CLI and Session Manager plugin from Amazon, signature checked), then installs SSMConnect for you (`~/.local`) or for all users (`--system`). Running a newer `.bin` updates in place and keeps your settings; `ssmconnect uninstall` removes it.
+- **Fedora, RHEL, openSUSE:** `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm`
+- **Debian 13+, Ubuntu 24.04+, Mint 22+:** `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb`
+- **From source:** `cargo build --release --locked`, then `target/release/ssmconnect --installer`
 
-```
-sh ./ssmconnect-X.Y.Z-linux-x86_64.bin      # or chmod +x it and double-click
-```
-
-It opens an installation wizard (or asks questions in the terminal when there is no display: `--text`, `--yes` accepts the
-defaults, `--system` installs for all users). The wizard works in this order, so SSMConnect is only installed once everything it needs is there:
-
-1. **Requirements, fetched from their own sources** (nothing third-party is bundled in the installer):
-   - GTK 4 and libadwaita from your distribution's repositories, if they are missing (the file itself offers this before the window opens)
-   - OpenSSH client (and optionally Remmina for Windows servers) from your distribution's repositories, with its package manager (dnf, apt, zypper or pacman), after asking for your password
-   - AWS CLI v2 and the Session Manager plugin straight from Amazon, with Amazon's OpenPGP signature checked
-2. **SSMConnect itself**, for you (`~/.local`, no password) or for all users (`/usr/local`).
-
-**Updating:** run the newer `.bin`. It finds the existing installation, updates it in place and keeps your servers, accounts and settings (it saves a copy
-of your saved servers first). `--update-only` makes it do nothing when SSMConnect is not installed.
-
-**Removing:** *Remove SSMConnect…* on the installer's first page, or `ssmconnect uninstall` (add `--prefix /usr/local` for an all-users install). Your saved
-servers and settings stay unless you ask for them to be deleted (`--remove-settings`); the AWS tools SSMConnect downloaded stay unless you add `--remove-tools`.
-
-**Native packages** (the package manager pulls OpenSSH and GTK for you):
-
-| Distribution | Install |
-|---|---|
-| Fedora, RHEL, openSUSE | `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm` |
-| Debian 13+, Ubuntu 24.04+, Mint 22+ | `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb` |
-| From source | `cargo build --release --locked`, then `target/release/ssmconnect --installer` |
-
-Package installs also add the SSMConnect update repository, so new releases arrive with `dnf upgrade` / `apt upgrade` / your software centre (`https://poonchezhian.github.io/ssmconnect/`).
-
-After a package install, the first run of SSMConnect offers to fetch the AWS CLI and the Session Manager plugin (the same signed downloads).
-Then open **SSMConnect** from the application menu; the first run starts the setup wizard.
+Package installs also add the signed SSMConnect update repository (`https://poonchezhian.github.io/ssmconnect/`), so new releases arrive with `dnf upgrade` / `apt upgrade` / your software centre.
 
 ## Requirements
 
@@ -62,30 +35,15 @@ Then open **SSMConnect** from the application menu; the first run starts the set
 
 ## Verifying the download (signed releases)
 
-Every file on a Linux release page (`.bin`, `.deb`, `.rpm`, `SHA256SUMS.txt`) comes with a detached OpenPGP signature (`<file>.asc`) made with the
-**SSMConnect Linux Releases** key:
+Every release file (`.bin`, `.deb`, `.rpm`, `SHA256SUMS.txt`) has a detached OpenPGP signature (`<file>.asc`) from the **SSMConnect Linux Releases** key:
 
 ```
 Fingerprint  FF9F 45E6 4711 7103 89B3  F1FC 7483 B1F8 DBE4 A803
 Key ID       7483B1F8DBE4A803      (ed25519, created 2026-10-16, expires 2028-10-15)
 ```
 
-The public key is [`SIGNING-KEY.asc`](SIGNING-KEY.asc) in this folder. Check a download before you run it:
-
-```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.3/ssmconnect-0.6.3-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.3/ssmconnect-0.6.3-linux-x86_64.bin.asc
-curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
-
-gpg --import SIGNING-KEY.asc
-gpg --fingerprint 7483B1F8DBE4A803        # must show exactly the fingerprint above
-gpg --verify ssmconnect-0.6.3-linux-x86_64.bin.asc ssmconnect-0.6.3-linux-x86_64.bin
-```
-
-`gpg` should say **Good signature from "SSMConnect Linux Releases"**. (It also prints a warning that the key is not certified by you; that is expected, the fingerprint check above is what ties the key to this project.) If it says **BAD signature**, do not run the file. The release also lists `SHA256SUMS.txt` and `SHA256SUMS.txt.asc`: `sha256sum -c SHA256SUMS.txt` checks the checksums, and the `.asc` file is their signature.
-
-For maintainers: `scripts/sign-release.sh` signs everything in `dist-linux/` and verifies it in a clean keyring, exactly as above. In GitHub Actions the release job
-signs with the key stored in the repository secret `LINUX_SIGNING_KEY` (the exported private key), when that secret exists.
+The public key is [`SIGNING-KEY.asc`](SIGNING-KEY.asc). Step by step: [check the signature](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update#check-the-signature-before-you-run-it).
+For maintainers: `scripts/sign-release.sh` signs by hand; in GitHub Actions the release job signs with the repository secret `LINUX_SIGNING_KEY` and publishes the update repository.
 
 ## Settings and server identities, all in windows
 
@@ -122,9 +80,9 @@ ssmconnect cleanup         remove SSMConnect's traces for this user
 
 ## Good to know
 
-- There is no system-tray icon: GNOME removed tray support and not every desktop has one. Instead, closing the window keeps your
-  connections open in the background (you get one notification), reopening SSMConnect brings the window back, and
-  **Quit** in the menu closes everything. **File > Start when I sign in** brings connections back after login.
+- A tray icon shows how many connections are open and has a quick menu. GNOME needs the AppIndicator extension for it; without a tray, closing the window keeps your
+  connections open in the background (you get one notification), reopening SSMConnect brings the window back, and **Quit** in the menu closes everything.
+  **File > Start when I sign in** brings connections back after login.
 - Wayland and X11 are both supported (plain GTK 4).
 - `ssh ssc-<name>` works from any terminal while SSMConnect is running. Parallel `sftp`/`scp` transfers over one SSM port forward can
   fail; use a single connection.
