@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.poonchezhian.SSMConnect</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>Apache-2.0</project_license>
+  <name>SSMConnect</name>
+  <summary>SSH and Remote Desktop to AWS servers over Session Manager</summary>
+  <description>
+    <p>SSMConnect finds your AWS servers, opens secure tunnels through AWS Systems Manager (port 22 stays closed) and sets up
+    ssh so that a server is one short command away. Windows servers open in a Remote Desktop client.</p>
+  </description>
+  <launchable type="desktop-id">io.github.poonchezhian.SSMConnect.desktop</launchable>
+  <url type="homepage">https://github.com/poonchezhian/ssmconnect</url>
+  <url type="bugtracker">https://github.com/poonchezhian/ssmconnect/issues</url>
+  <developer id="io.github.poonchezhian"><name>Poonchezhian Periasamy</name></developer>
+  <content_rating type="oars-1.1"/>
+  <requires><display_length compare="ge">360</display_length></requires>
+  <releases>
+    <release version="0.3.2" date="2026-10-16"/>
+  </releases>
+</component>

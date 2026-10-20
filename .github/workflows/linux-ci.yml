@@ -1,0 +1,141 @@
+# Linux edition only. Runs on the `linux` branch and on linux-v* tags; never touches the Windows workflow.
+# Release: scripts/bump-version.sh, update CHANGELOG.md, commit, then
+#   git tag -a linux-vX.Y.Z -m "SSMConnect for Linux X.Y.Z" && git push origin linux --follow-tags
+name: linux-build-and-release
+
+on:
+  push:
+    branches: [linux]
+    tags: ['linux-v*']
+  pull_request:
+    branches: [linux]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    working-directory: linux
+
+env:
+  CARGO_TERM_COLOR: never
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev openssh-client openssl python3 desktop-file-utils appstream
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            linux/target
+          key: cargo-${{ hashFiles('linux/Cargo.lock') }}
+      - run: cargo build --locked --all-targets
+      - run: cargo test --locked
+      - name: Version files agree
+        run: |
+          v=$(cat VERSION)
+          test "$v" = "$(sed -n '0,/^version = "\(.*\)"/s//\1/p' Cargo.toml | head -1)"
+          grep -q "release version=\"$v\"" data/*.metainfo.xml
+      - name: Tag matches the version and the changelog
+        if: startsWith(github.ref, 'refs/tags/linux-v')
+        run: |
+          test "linux-v$(cat VERSION)" = "${GITHUB_REF_NAME}"
+          grep -q "^## \[$(cat VERSION)\]" CHANGELOG.md
+      - run: desktop-file-validate data/*.desktop && appstreamcli validate --no-net data/*.metainfo.xml
+
+  # Downloads Amazon's real packages and signatures and checks them against the built-in keys. If AWS ever rotates a key this turns red
+  # (it does not block releases): that is the signal to ship the new key.
+  signature-live:
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - run: SSMCONNECT_NET_TESTS=1 cargo test --locked --test signature
+
+  package:
+    needs: test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev
+      - run: packaging/build-bin.sh && packaging/build-deb.sh
+      - name: Smoke-test the .bin installer end to end (real downloads from Amazon, signature checked)
+        run: |
+          d=$(mktemp -d)
+          HOME="$d" sh dist-linux/ssmconnect-*-linux-*.bin --text --yes --prefix "$d/p"
+          HOME="$d" "$d/p/bin/ssmconnect" --version
+          # the runner already has the AWS tools, so the installer rightly does not download them again: just check they are found and run
+          out=$(HOME="$d" "$d/p/bin/ssmconnect" doctor); echo "$out"
+          echo "$out" | grep -Eq "^ok +AWS CLI"
+          HOME="$d" aws --version
+          HOME="$d" "$d/p/bin/ssmconnect" uninstall --prefix "$d/p"
+      - name: Smoke-test the deb
+        run: sudo apt-get install -y ./dist-linux/ssmconnect_*.deb && ssmconnect --version && ssmconnect doctor || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssmconnect-linux-bin-deb
+          path: linux/dist-linux/*
+
+  rpm:
+    needs: test
+    runs-on: ubuntu-24.04
+    container: fedora:latest
+    steps:
+      - name: Install the build tools (before checkout, so not in the linux/ folder yet)
+        working-directory: .
+        run: dnf install -y git cargo rust gcc gtk4-devel libadwaita-devel rpm-build openssh-clients
+      - uses: actions/checkout@v4
+      - run: packaging/build-rpm.sh
+      - name: Smoke-test the rpm
+        run: dnf install -y dist-linux/ssmconnect-*.rpm && ssmconnect --version
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssmconnect-linux-rpm
+          path: linux/dist-linux/*.rpm
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/linux-v')
+    needs: [package, rpm]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: ssmconnect-linux-*
+          merge-multiple: true
+          path: dist
+      - name: Checksums, signatures and release notes (from the changelog)
+        env:
+          SIGNING_KEY: ${{ secrets.LINUX_SIGNING_KEY }}
+        run: |
+          cp linux/SIGNING-KEY.asc dist/
+          if [ -n "$SIGNING_KEY" ]; then
+            export GNUPGHOME=$(mktemp -d); chmod 700 "$GNUPGHOME"
+            printf '%s' "$SIGNING_KEY" | gpg --batch --quiet --import
+            for f in dist/*.bin dist/*.deb dist/*.rpm; do [ -e "$f" ] && gpg --batch --yes --armor --detach-sign --output "$f.asc" "$f"; done
+          else
+            echo "::warning::LINUX_SIGNING_KEY is not set: the release is published WITHOUT signatures"
+          fi
+          (cd dist && sha256sum $(ls | grep -v -e '\.asc$' -e SHA256SUMS -e SIGNING-KEY) > SHA256SUMS.txt && cat SHA256SUMS.txt)
+          [ -n "$SIGNING_KEY" ] && gpg --batch --yes --armor --detach-sign --output dist/SHA256SUMS.txt.asc dist/SHA256SUMS.txt
+          v="${GITHUB_REF_NAME#linux-v}"
+          awk -v v="$v" '$0 ~ "^## \\["v"\\]" {on=1; next} /^## \[/ {on=0} on' linux/CHANGELOG.md > notes.md
+          { echo; echo "Linux edition (native, Rust + GTK 4). Check a download: \`gpg --import SIGNING-KEY.asc\`, confirm the fingerprint (FF9F 45E6 4711 7103 89B3 F1FC 7483 B1F8 DBE4 A803), then \`gpg --verify <file>.asc <file>\`. Checksums: \`sha256sum -c SHA256SUMS.txt\`."; } >> notes.md
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # a release made by hand (for example with locally signed files) is left alone
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then echo "Release $GITHUB_REF_NAME already exists; not touching it."; exit 0; fi
+          pre=""; case "${GITHUB_REF_NAME}" in linux-v0.*) pre="--prerelease" ;; esac
+          gh release create "$GITHUB_REF_NAME" dist/* --title "SSMConnect for Linux ${GITHUB_REF_NAME#linux-v}" --notes-file notes.md $pre
