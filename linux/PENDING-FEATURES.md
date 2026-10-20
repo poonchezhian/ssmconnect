@@ -11,6 +11,7 @@ Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Packaging (not in Windows, found while comparing)
 - [ ] The `.rpm` is built on Fedora (`fc44`) and needs glibc 2.39+. Tested 2026-10-20 in containers: installs on AlmaLinux 10 (RHEL 10) and openSUSE Tumbleweed; fails on AlmaLinux 9 (RHEL 9, also needs libadwaita 1.5) and openSUSE Leap 15.6 (glibc). Decide whether RHEL 9 / Leap are worth a separate build (older toolchain, newer libadwaita unavailable there).
+- [ ] **Support every vendor-supported OS release** (deferred by the owner to a later day; checked against endoflife.date on 2026-10-20). Supported and probably fine once built/tested natively: Fedora 43/44, RHEL/Alma/Rocky 10, openSUSE Leap 16.0 and Tumbleweed, Ubuntu 24.04/26.04, Debian 13, Mint 22. Supported but libadwaita is older than the 1.5 the UI needs: RHEL/Alma/Rocky 8 and 9, Ubuntu 22.04 and Mint 21, Debian 12. Options were: native packages only for the first group; plus a Flatpak for the second; or port the UI to older libadwaita. Out of support, ignore: Leap 15.6, Fedora 42 and older, Debian 11, Ubuntu 25.10 and older non-LTS.
 - [ ] Only `x86_64`/`amd64`. No arm64 build.
 
 ## Done recently
