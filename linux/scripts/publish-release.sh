@@ -16,13 +16,22 @@ ver=$(cat VERSION); tag="linux-v$ver"
 repo=${GITHUB_REPOSITORY:-poonchezhian/ssmconnect}
 run() { if [ $dry = 1 ]; then echo "[dry run] $*"; else "$@"; fi; }
 [ $dry = 1 ] || [ -n "${GITHUB_TOKEN:-}" ] || { echo "Set GITHUB_TOKEN (a personal access token with write access to $repo) and run again." >&2; exit 2; }
-auth=(-c "http.extraheader=Authorization: Basic $(printf 'x-access-token:%s' "${GITHUB_TOKEN:-dry}" | base64 -w0)")
+# Hand the token to git through GIT_ASKPASS so it never appears on a command line (visible in /proc/<pid>/cmdline).
+askpass=; if [ $dry != 1 ]; then
+  askpass=$(mktemp); chmod 700 "$askpass"
+  cat >"$askpass" <<'EOF2'
+#!/bin/sh
+case "$1" in *Username*) printf '%s\n' x-access-token ;; *) printf '%s\n' "$GITHUB_TOKEN" ;; esac
+EOF2
+  export GIT_ASKPASS="$askpass" GIT_TERMINAL_PROMPT=0
+fi
+trap '[ -z "$askpass" ] || rm -f "$askpass"' EXIT
 
 echo "== 1. push the code and the tag $tag"
 git remote get-url origin >/dev/null 2>&1 || git remote add origin "https://github.com/$repo.git"
 git rev-parse -q --verify "refs/tags/$tag" >/dev/null || { echo "tag $tag does not exist; create it first" >&2; exit 1; }
 git verify-tag "$tag" 2>&1 | grep -E "Good signature" || echo "note: the tag is not signed (or the key is not in this keyring)"
-run git "${auth[@]}" push origin linux "$tag"
+run git push origin linux "$tag"
 
 echo "== 2. the GitHub release with the signed files"
 files=(dist-linux/*.bin dist-linux/*.bin.asc dist-linux/*.deb dist-linux/*.deb.asc dist-linux/*.rpm dist-linux/*.rpm.asc dist-linux/SHA256SUMS.txt dist-linux/SHA256SUMS.txt.asc SIGNING-KEY.asc)
@@ -30,7 +39,7 @@ existing=(); for f in "${files[@]}"; do [ -e "$f" ] && existing+=("$f"); done
 notes=$(awk -v v="$ver" '$0 ~ "^## \\["v"\\]" {on=1; next} /^## \[/ {on=0} on' CHANGELOG.md)
 notes+=$'\n\nLinux edition (native, Rust + GTK 4). Check a download: `gpg --import SIGNING-KEY.asc`, confirm the fingerprint (FF9F 45E6 4711 7103 89B3 F1FC 7483 B1F8 DBE4 A803), then `gpg --verify <file>.asc <file>`. Checksums: `sha256sum -c SHA256SUMS.txt`.'
 if [ $dry = 1 ]; then echo "[dry run] would create release $tag and upload: ${existing[*]}"; else
-  api() { curl -fsS -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" "$@"; }
+  api() { printf 'header = "Authorization: Bearer %s"\n' "$GITHUB_TOKEN" | curl -fsS -K - -H "Accept: application/vnd.github+json" "$@"; }
   rel=$(api "https://api.github.com/repos/$repo/releases/tags/$tag" 2>/dev/null || true)
   if [ -z "$rel" ]; then
     body=$(python3 -c 'import json,sys; print(json.dumps({"tag_name":sys.argv[1],"name":"SSMConnect for Linux "+sys.argv[2],"body":sys.argv[3],"prerelease":sys.argv[2].startswith("0."),"draft":False}))' "$tag" "$ver" "$notes")
@@ -47,14 +56,14 @@ if [ $dry = 1 ]; then echo "[dry run] would create release $tag and upload: ${ex
 fi
 
 echo "== 3. the wiki"
-w=$(mktemp -d); trap 'rm -rf "$w"' EXIT
+w=$(mktemp -d); trap 'rm -rf "$w"; [ -z "$askpass" ] || rm -f "$askpass"' EXIT
 if [ $dry = 1 ]; then echo "[dry run] would copy $(ls ../wiki/*.md | wc -l) page(s) from ../wiki into the wiki repo and push"; else
-  git "${auth[@]}" clone -q "https://github.com/$repo.wiki.git" "$w"
+  git clone -q "https://github.com/$repo.wiki.git" "$w"
   cp ../wiki/*.md "$w"/
   git -C "$w" add -A
   if git -C "$w" diff --cached --quiet; then echo "  wiki already up to date"; else
     git -C "$w" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" commit -q -m "Linux edition: announcement, install and update guide, release notes"
-    git "${auth[@]}" -C "$w" push -q origin HEAD
+    git -C "$w" push -q origin HEAD
     echo "  wiki updated"
   fi
 fi
