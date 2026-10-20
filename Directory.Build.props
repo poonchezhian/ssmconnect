@@ -1,6 +1,8 @@
 <Project>
   <PropertyGroup>
     <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- Lets non-Windows machines (the CodeQL scan on GitHub) compile the Windows projects. No effect on normal Windows builds. -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>12</LangVersion>
