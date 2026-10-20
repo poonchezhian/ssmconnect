@@ -2,6 +2,12 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 0.5.0
+- **Tray icon.** A notification-area icon shows how many connections are open and has a menu: Open SSMConnect, Start / Stop / Restart connections, Preferences, Quit. Clicking it opens the window, and it flags a connection with a problem. On GNOME it needs the AppIndicator extension; where there is no tray, SSMConnect works as before.
+
+## 0.4.0
+- First release presented as a regular (not pre-release) version, published next to the Windows installer. No change in behaviour; the release helper no longer exposes the GitHub token on a command line.
+
 ## 0.3.2 - first public Linux release
 - **Same icon as the Windows edition**, in every size the desktop needs.
 - **Signed releases.** Every file has an OpenPGP signature; the key fingerprint is published in the README and on [Linux: Install and Update](Linux-Install-and-Update#check-the-signature-before-you-run-it).

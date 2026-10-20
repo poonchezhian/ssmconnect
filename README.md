@@ -12,7 +12,7 @@ SSMConnect is a small Windows app for developers who just want to connect. A sho
 
 **[Download SSMConnect for Windows (SSMConnect-Setup-x64.exe)](https://github.com/poonchezhian/ssmconnect/releases/latest/download/SSMConnect-Setup-x64.exe)**: one file, 64-bit Windows 10 or later. It installs the AWS CLI and the Session Manager plugin too if they are missing.
 
-**[Download SSMConnect for Linux (ssmconnect-0.4.0-linux-x86_64.bin)](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.4.0/ssmconnect-0.4.0-linux-x86_64.bin)**: one installer file for 64-bit Linux desktops. See [Linux edition](#linux-edition-new) for how to run and verify it.
+**[Download SSMConnect for Linux (ssmconnect-0.5.0-linux-x86_64.bin)](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.0/ssmconnect-0.5.0-linux-x86_64.bin)**: one installer file for 64-bit Linux desktops. See [Linux edition](#linux-edition-new) for how to run and verify it.
 
 All versions, release notes and checksums are on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases). The Windows app and the Linux edition are released separately: Windows versions are tagged `vX.Y.Z` (the release marked **Latest**), Linux versions are tagged `linux-vX.Y.Z` and titled **SSMConnect for Linux**. `SHA256SUMS.txt` on each release lists the SHA-256 of every file; compare it with `Get-FileHash .\SSMConnect-Setup-x64.exe` (Windows) or `sha256sum -c SHA256SUMS.txt` (Linux) if you like.
 
@@ -22,7 +22,7 @@ Once installed, SSMConnect keeps itself up to date (see [Updates](#updates)).
 
 SSMConnect now also runs natively on **Linux** (GTK 4 + libadwaita, written in Rust; no Wine, Mono or Electron). It does the same job: it finds your servers, opens the SSM tunnels, and makes each server one click or one short command away (`ssh ssc-<server-name>`), with **Files** over SFTP and **Remote Desktop** for Windows servers.
 
-**Download:** [ssmconnect-0.4.0-linux-x86_64.bin](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.4.0/ssmconnect-0.4.0-linux-x86_64.bin) (8.2 MB) from the [`linux-v0.4.0` release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.4.0), or pick the newest *SSMConnect for Linux* on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases). The installer is a release file, not part of the source tree, so you will not find it inside the `linux/` folder. Run it (`sh ./ssmconnect-0.4.0-linux-x86_64.bin`, or make it executable and double-click) and the installer window guides you: it first fetches what SSMConnect needs from each tool's own source (the AWS CLI and Session Manager plugin from Amazon with their signatures checked, OpenSSH from your distribution), then installs SSMConnect. Nothing third-party is bundled. Running a newer installer over an existing install updates it and keeps your servers and settings. Needs a desktop distribution with GTK 4.12+ and libadwaita 1.5+ (Ubuntu 24.04+, Fedora 40+, Debian 13+ and similar).
+**Download:** [ssmconnect-0.5.0-linux-x86_64.bin](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.0/ssmconnect-0.5.0-linux-x86_64.bin) (10.6 MB) from the [`linux-v0.5.0` release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.5.0), or pick the newest *SSMConnect for Linux* on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases). The installer is a release file, not part of the source tree, so you will not find it inside the `linux/` folder. Run it (`sh ./ssmconnect-0.5.0-linux-x86_64.bin`, or make it executable and double-click) and the installer window guides you: it first fetches what SSMConnect needs from each tool's own source (the AWS CLI and Session Manager plugin from Amazon with their signatures checked, OpenSSH from your distribution), then installs SSMConnect. Nothing third-party is bundled. Running a newer installer over an existing install updates it and keeps your servers and settings. Needs a desktop distribution with GTK 4.12+ and libadwaita 1.5+ (Ubuntu 24.04+, Fedora 40+, Debian 13+ and similar).
 
 **The installer is signed.** Every Linux release file has a detached OpenPGP signature (`.asc`), made with the *SSMConnect Linux Releases* key, fingerprint
 
@@ -33,13 +33,13 @@ FF9F 45E6 4711 7103 89B3  F1FC 7483 B1F8 DBE4 A803      (key ID 7483B1F8DBE4A803
 The public key is in this repository ([`linux/SIGNING-KEY.asc`](linux/SIGNING-KEY.asc)). To check a download:
 
 ```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.4.0/ssmconnect-0.4.0-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.4.0/ssmconnect-0.4.0-linux-x86_64.bin.asc
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.0/ssmconnect-0.5.0-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.0/ssmconnect-0.5.0-linux-x86_64.bin.asc
 curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/main/linux/SIGNING-KEY.asc
 
 gpg --import SIGNING-KEY.asc
 gpg --fingerprint 7483B1F8DBE4A803        # must show exactly the fingerprint above
-gpg --verify ssmconnect-0.4.0-linux-x86_64.bin.asc ssmconnect-0.4.0-linux-x86_64.bin
+gpg --verify ssmconnect-0.5.0-linux-x86_64.bin.asc ssmconnect-0.5.0-linux-x86_64.bin
 ```
 
 `gpg` should say **Good signature from "SSMConnect Linux Releases"**. (It also prints a warning that the key is not certified by you; that is expected, the fingerprint check above is what ties the key to this project.) If it says **BAD signature**, do not run the file. The release also lists `SHA256SUMS.txt` and `SHA256SUMS.txt.asc`: `sha256sum -c SHA256SUMS.txt` checks the checksums, and the `.asc` file is their signature.
