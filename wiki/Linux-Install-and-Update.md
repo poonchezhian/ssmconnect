@@ -2,9 +2,9 @@
 
 ## Install
 
-1. Download `ssmconnect-0.5.0-linux-x86_64.bin` and its `.asc` signature from the [Linux 0.5.0 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.5.0).
+1. Download `ssmconnect-0.5.1-linux-x86_64.bin` and its `.asc` signature from the [Linux 0.5.1 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.5.1).
 2. [Check the signature](#check-the-signature-before-you-run-it).
-3. Run it: open a terminal in the download folder and type `sh ./ssmconnect-0.5.0-linux-x86_64.bin` (or right-click the file, make it executable, and double-click it).
+3. Run it: open a terminal in the download folder and type `sh ./ssmconnect-0.5.1-linux-x86_64.bin` (or right-click the file, make it executable, and double-click it).
 
 The installer window has four steps:
 
@@ -27,13 +27,13 @@ Key ID       7483B1F8DBE4A803   (ed25519, expires 2028-10-15)
 ```
 
 ```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.0/ssmconnect-0.5.0-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.0/ssmconnect-0.5.0-linux-x86_64.bin.asc
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.1/ssmconnect-0.5.1-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.5.1/ssmconnect-0.5.1-linux-x86_64.bin.asc
 curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
 
 gpg --import SIGNING-KEY.asc
 gpg --fingerprint 7483B1F8DBE4A803
-gpg --verify ssmconnect-0.5.0-linux-x86_64.bin.asc ssmconnect-0.5.0-linux-x86_64.bin
+gpg --verify ssmconnect-0.5.1-linux-x86_64.bin.asc ssmconnect-0.5.1-linux-x86_64.bin
 ```
 
 - The fingerprint that `gpg --fingerprint` prints must match the one above, character for character.

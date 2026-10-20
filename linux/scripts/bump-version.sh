@@ -15,7 +15,7 @@ case "${1:-patch}" in
 esac
 sed -i "0,/^version = \".*\"/s//version = \"$new\"/" Cargo.toml
 echo "$new" > VERSION
-sed -i "s|<release version=\"[^\"]*\" date=\"[^\"]*\"/>|<release version=\"$new\" date=\"$(date +%F)\"/>|" data/io.github.poonchezhian.SSMConnect.metainfo.xml
+sed -i "s|^\( *\)<releases>|\1<releases>\n\1  <release version=\"$new\" date=\"$(date +%F)\"/>|" data/io.github.poonchezhian.SSMConnect.metainfo.xml   # newest first; older entries stay
 # download links and install steps in the READMEs and the wiki pages follow the new version too
 for f in ../README.md README.md ../wiki/Linux-Edition.md ../wiki/Linux-Install-and-Update.md; do
   sed -i "s/linux-v$cur/linux-v$new/g; s/ssmconnect-$cur-linux/ssmconnect-$new-linux/g; s/Linux $cur release/Linux $new release/g" "$f"

@@ -4,7 +4,8 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
-## [Unreleased]
+## [0.5.1] - 2026-10-20
+Select all in the wizard.
 ### Added
 - **Select all / Select none** on the server list in the setup wizard (as in the Windows edition). Select all ticks every server that is ready; servers that are
   not reachable stay unticked.

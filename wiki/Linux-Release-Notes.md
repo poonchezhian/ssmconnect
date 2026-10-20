@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 0.5.1
+- **Select all / Select none** on the server list in the setup wizard. Select all ticks every server that is ready; servers that are not reachable stay unticked.
+
 ## 0.5.0
 - **Tray icon.** A notification-area icon shows how many connections are open and has a menu: Open SSMConnect, Start / Stop / Restart connections, Preferences, Quit. Clicking it opens the window, and it flags a connection with a problem. On GNOME it needs the AppIndicator extension; where there is no tray, SSMConnect works as before.
 

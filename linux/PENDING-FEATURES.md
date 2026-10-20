@@ -1,6 +1,6 @@
 # Linux edition: pending features
 
-What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 0.5.0 plus unreleased changes).
+What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 0.5.1).
 Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Features
@@ -15,7 +15,7 @@ Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Done recently
 - Tray icon (0.5.0).
-- Select all / Select none in the setup wizard server list (unreleased).
+- Select all / Select none in the setup wizard server list (0.5.1).
 
 ## Not planned (Windows-only on purpose)
 - PuTTY, WinSCP and MobaXterm sessions. On Linux, SSMConnect writes `ssh ssc-<name>` entries instead.
