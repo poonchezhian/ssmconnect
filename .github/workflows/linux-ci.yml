@@ -159,3 +159,15 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
         run: cd linux && scripts/publish-stable.sh ../release-files
+      - name: Keep dist/ and the wiki current
+        if: env.PUBLISH_REPO == '1'
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch -q origin main
+          git switch -q -C main origin/main
+          linux/scripts/update-dist.sh "$PWD/release-files"
+          linux/scripts/sync-wiki.sh "Linux ${GITHUB_REF_NAME#linux-v}"
