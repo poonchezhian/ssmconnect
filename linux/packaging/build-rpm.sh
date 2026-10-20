@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Builds dist-linux/ssmconnect-VERSION-1.ARCH.rpm (Fedora, RHEL, openSUSE ...) from source. Needs rpmbuild, cargo, gtk4-devel, libadwaita-devel.
+# The build needs about 2 GB of temporary space: if /tmp is a small RAM disk, set TMPDIR to a folder on a real disk first.
 set -euo pipefail
 here=$(cd "$(dirname "$0")/.." && pwd)
 cd "$here"

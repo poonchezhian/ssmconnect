@@ -7,9 +7,10 @@ Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 - [ ] **Verify the tray icon on a real tray.** Added in 0.5.0 but only tested on a desktop without a tray (stock GNOME). Check it on KDE or GNOME with the AppIndicator extension: icon, tooltip, menu entries, "needs attention" state.
 
 ## Release process
-- [ ] **Build `.deb` and `.rpm` on this machine** (needs `dpkg-deb` and `rpmbuild`; install them with `sudo dnf install -y dpkg rpm-build`, which needs the sudo password) so a release does not depend on the GitHub build artifacts.
+_(nothing open here right now)_
 
 ## Done recently
+- `.deb` and `.rpm` now build on this computer (`dpkg` and `rpm-build` installed, 2026-10-20). `/tmp` is a small RAM disk here, so build the rpm with `TMPDIR=$HOME/.cache/ssmconnect-build packaging/build-rpm.sh` (it takes about 10 minutes).
 - `LINUX_SIGNING_KEY` added to the repository's GitHub secrets (2026-10-20), so tag builds can sign releases. Not yet exercised: check the signatures on the next release that CI publishes.
 - Signed the 0.4.0 release files (signature files added to the release, 2026-10-20).
 - One-click "Update now" and a one-time hint on GNOME when there is no tray (0.6.0).
