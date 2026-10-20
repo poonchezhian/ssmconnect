@@ -120,8 +120,11 @@ jobs:
         run: |
           cp linux/SIGNING-KEY.asc dist/
           if [ -n "$SIGNING_KEY" ]; then
-            export GNUPGHOME=$(mktemp -d); chmod 700 "$GNUPGHOME"
+            sudo apt-get update && sudo apt-get install -y rpm createrepo-c dpkg-dev
+            export GNUPGHOME=$(mktemp -d); chmod 700 "$GNUPGHOME"; echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
             printf '%s' "$SIGNING_KEY" | gpg --batch --quiet --import
+            # the rpm itself is signed too (the update repository requires it), before the detached signature and the checksums are made
+            for f in dist/*.rpm; do rpmsign --addsign --define "_gpg_name FF9F45E64711710389B3F1FC7483B1F8DBE4A803" "$f"; done
             for f in dist/*.bin dist/*.deb dist/*.rpm; do [ -e "$f" ] && gpg --batch --yes --armor --detach-sign --output "$f.asc" "$f"; done
           else
             echo "::warning::LINUX_SIGNING_KEY is not set: the release is published WITHOUT signatures"
@@ -139,3 +142,14 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then echo "Release $GITHUB_REF_NAME already exists; not touching it."; exit 0; fi
           pre=""; case "${GITHUB_REF_NAME}" in linux-v0.*) pre="--prerelease" ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* --title "SSMConnect for Linux ${GITHUB_REF_NAME#linux-v}" --notes-file notes.md $pre
+          echo "PUBLISH_REPO=1" >> "$GITHUB_ENV"
+      - name: Update repository (dnf + apt on GitHub Pages)
+        if: env.PUBLISH_REPO == '1' && env.GNUPGHOME != ''
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
+          cd linux && scripts/publish-repo.sh ../dist
