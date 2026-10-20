@@ -1,3 +1,3 @@
-bca093cb8c6bb4bd1176ddcc4f3bcc6de11bfdd8ef1359f144c104e21490f049  ssmconnect-0.6.3-1.fc44.x86_64.rpm
-b6fec2a75d99fad3c3ca97afafd6958dc0e448a4a5295f6f281f9e8a35a511c4  ssmconnect-0.6.3-linux-x86_64.bin
-ace2a401891eea5d41e7b2ae6b5931a727eacca3cd19d7c689b2e23cac44302c  ssmconnect_0.6.3_amd64.deb
+57efd4fb6ea74c34b756a5bab1afd20573fe022a1e9505335ef85e9da8e176ac  ssmconnect-0.6.4-1.fc44.x86_64.rpm
+a75be95763f4cd9586a2fdcde78f6d86fe6eb15d7399d7330e9e26b6ae8361ad  ssmconnect-0.6.4-linux-x86_64.bin
+acdb4aa8c1ad0bdebe0301a9ae90c97802b378483596e47d8a483ca4fa630f88  ssmconnect_0.6.4_amd64.deb
