@@ -4,6 +4,17 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.6.0] - 2026-10-20
+One-click updates.
+### Added
+- **Update now.** *Help > Check for updates* (and the notification) now offers to install the new version itself, as the Windows edition does: it downloads the installer from the
+  GitHub release, accepts it only if its OpenPGP signature is valid for the built-in SSMConnect release key **and** its SHA-256 equals the one published in `SHA256SUMS.txt`,
+  then closes SSMConnect, runs the installer in update mode (your servers and settings are kept) and opens the new version. Copies installed by a package manager or for all
+  users still get the download page (their package manager or the installer updates them).
+- **A hint on GNOME.** When GNOME shows no tray (it needs the AppIndicator extension), SSMConnect says so once in a notification instead of silently having no icon.
+### Tests
+- The real 0.5.1 release is downloaded and verified against the built-in key and the published checksum, and a damaged copy is refused (`SSMCONNECT_NET_TESTS=1`); checksum-list parsing; only project release addresses are downloaded.
+
 ## [0.5.1] - 2026-10-20
 Select all in the wizard.
 ### Added

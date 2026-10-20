@@ -22,6 +22,7 @@ pub mod prereq_installer;
 pub mod sso;
 pub mod sso_discovery;
 pub mod signature;
+pub mod self_update;
 pub mod ssh_config;
 pub mod status_store;
 pub mod tunnel_manager;

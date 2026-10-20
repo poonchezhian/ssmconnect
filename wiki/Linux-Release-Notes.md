@@ -2,6 +2,10 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 0.6.0
+- **Update now.** *Help > Check for updates* offers to install the new version itself: it downloads the installer, checks its signature and checksum, closes SSMConnect, updates it in place (servers and settings are kept) and opens the new version. Package-manager installs still update through `dnf` or `apt`.
+- **A hint on GNOME** when no tray icon can be shown (GNOME needs the AppIndicator extension).
+
 ## 0.5.1
 - **Select all / Select none** on the server list in the setup wizard. Select all ticks every server that is ready; servers that are not reachable stay unticked.
 

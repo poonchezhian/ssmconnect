@@ -23,6 +23,13 @@ pub const SESSION_MANAGER_PLUGIN: TrustedKey = TrustedKey {
     armored: include_str!("keys/session-manager-plugin.asc"),
 };
 
+/// The key SSMConnect's own releases are signed with (the same key as `SIGNING-KEY.asc`); used by "Update now" to check the installer it downloads.
+pub const SSMCONNECT_RELEASES: TrustedKey = TrustedKey {
+    name: "the SSMConnect Linux Releases key",
+    fingerprint: "FF9F45E64711710389B3F1FC7483B1F8DBE4A803",
+    armored: include_str!("keys/ssmconnect-releases.asc"),
+};
+
 fn hex_upper(b: &[u8]) -> String { b.iter().map(|x| format!("{x:02X}")).collect() }
 
 impl TrustedKey {

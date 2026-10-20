@@ -11,7 +11,12 @@ pub const RELEASES_PAGE: &str = "https://github.com/poonchezhian/ssmconnect/rele
 const INTERVAL: f64 = 24.0 * 3600.0;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct UpdateInfo { pub version: String, pub tag: String, pub notes: String, pub page_url: String }
+pub struct UpdateInfo { pub version: String, pub tag: String, pub notes: String, pub page_url: String, pub assets: Vec<(String, String)> }
+
+impl UpdateInfo {
+    /// The download address of the release file called `name`.
+    pub fn asset(&self, name: &str) -> Option<&str> { self.assets.iter().find(|(n, _)| n == name).map(|(_, u)| u.as_str()) }
+}
 
 pub fn parse(v: &str) -> Option<(u32, u32, u32)> {
     let mut it = v.trim().trim_start_matches('v').split('.');
@@ -45,6 +50,7 @@ pub fn newest_from(releases: &[Value]) -> Option<UpdateInfo> {
         version: format!("{a}.{b}.{c}"), tag: r["tag_name"].as_str().unwrap_or("").into(),
         notes: util::truncate(r.get("body").and_then(Value::as_str).unwrap_or(""), 1500),
         page_url: r.get("html_url").and_then(Value::as_str).unwrap_or(RELEASES_PAGE).into(),
+        assets: r.get("assets").and_then(Value::as_array).map(|a| a.iter().filter_map(|x| Some((x.get("name")?.as_str()?.to_string(), x.get("browser_download_url")?.as_str()?.to_string()))).collect()).unwrap_or_default(),
     })
 }
 
@@ -67,9 +73,11 @@ mod tests {
     #[test]
     fn newest_linux_release_only() {
         let rel: Vec<Value> = serde_json::from_str(r#"[{"tag_name":"v1.0.42","html_url":"w"},{"tag_name":"linux-v0.0.9","prerelease":true,"html_url":"a"},
-            {"tag_name":"linux-v0.0.10","prerelease":true,"html_url":"b","body":"n"},{"tag_name":"linux-v9.9.9","draft":true}]"#).unwrap();
+            {"tag_name":"linux-v0.0.10","prerelease":true,"html_url":"b","body":"n","assets":[{"name":"f.bin","browser_download_url":"https://x/f.bin"}]},{"tag_name":"linux-v9.9.9","draft":true}]"#).unwrap();
         let i = newest_from(&rel).unwrap();
         assert_eq!((i.version.as_str(), i.page_url.as_str()), ("0.0.10", "b"));
+        assert_eq!(i.asset("f.bin"), Some("https://x/f.bin"));
+        assert_eq!(i.asset("g.bin"), None);
         assert!(newest_from(&rel[..1]).is_none());
         assert_eq!(parse("linux-v1.2.3"), None);
         assert_eq!(parse("1.2.3"), Some((1, 2, 3)));

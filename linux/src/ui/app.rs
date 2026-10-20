@@ -3,7 +3,7 @@
 use super::common::{confirm, in_background, message};
 use super::window::Dashboard;
 use crate::tunnel_manager::TunnelManager;
-use crate::{aws_cli, aws_profiles as ap, config_store, desktop, discovery, launchers, paths, update_checker, APP_ID, VERSION};
+use crate::{self_update, aws_cli, aws_profiles as ap, config_store, desktop, discovery, launchers, paths, update_checker, APP_ID, VERSION};
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
@@ -176,15 +176,37 @@ impl App {
             Some(i) if manual => {
                 let win = me.show_window();
                 let (url, notes) = (i.page_url.clone(), i.notes.chars().take(600).collect::<String>());
-                confirm(&win.win, &format!("SSMConnect {} is available", i.version), &format!("You have {VERSION}.\n\n{notes}\n\nOpen the download page?"), "Open page", false, move || launchers::open_url(&url));
+                match self_update::updatable_prefix() {
+                    Some(prefix) => {
+                        let app = me.clone();
+                        confirm(&win.win, &format!("SSMConnect {} is available", i.version),
+                            &format!("You have {VERSION}.\n\n{notes}\n\nUpdate now? SSMConnect downloads the new version, checks its signature, closes (your connections close with it), updates itself and opens again. Your servers and settings are kept."),
+                            "Update now", false, move || app.update_now(i.clone(), prefix.clone()));
+                    }
+                    None => confirm(&win.win, &format!("SSMConnect {} is available", i.version), &format!("You have {VERSION}.\n\n{notes}\n\nOpen the download page?"), "Open page", false, move || launchers::open_url(&url)),
+                }
             }
             Some(i) if update_checker::should_notify(&i.version) => {
                 let n = gio::Notification::new(&format!("SSMConnect {} is available", i.version));
-                n.set_body(Some("Open the Releases page to update."));
+                n.set_body(Some("Choose Help > Check for updates to install it."));
                 me.gtk.send_notification(Some("update"), &n);
             }
             None if manual => me.toast(&format!("You have the latest version ({VERSION}).")),
             _ => {}
+        });
+    }
+
+    /// Downloads and checks the new installer, then hands over to it and quits (the installer starts the new version).
+    fn update_now(self: &Rc<Self>, info: update_checker::UpdateInfo, prefix: std::path::PathBuf) {
+        self.toast("Downloading the update...");
+        let tx = super::common::progress_channel({ let me = self.clone(); move |m| me.toast(&m) });
+        let (me, url) = (self.clone(), info.page_url.clone());
+        in_background(move || self_update::download(&info, &|m| { let _ = tx.send_blocking(m); }), move |r| {
+            let win = me.show_window();
+            match r.and_then(|file| self_update::apply(&file, &prefix)) {
+                Ok(()) => me.gtk.quit(),
+                Err(e) => confirm(&win.win, "The update could not be installed", &format!("{e}\n\nNothing was changed. Open the download page to update by hand?"), "Open page", false, move || launchers::open_url(&url)),
+            }
         });
     }
 

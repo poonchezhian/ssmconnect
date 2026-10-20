@@ -62,12 +62,24 @@ impl ksni::Tray for Tray {
     }
 }
 
+/// On GNOME, which shows no tray without an extension, says so once (a marker file keeps it from repeating).
+fn gnome_hint(app: &Rc<App>) {
+    if !std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_uppercase().contains("GNOME")) { return; }
+    let marker = crate::paths::config_dir().join("tray-hint-shown");
+    if marker.exists() { return; }
+    let _ = std::fs::create_dir_all(crate::paths::config_dir());
+    let _ = std::fs::write(&marker, "");
+    let n = gtk::gio::Notification::new("No tray icon on this desktop");
+    n.set_body(Some("GNOME shows tray icons only with the \"AppIndicator and KStatusNotifierItem Support\" extension. Install it to get the SSMConnect icon; everything else works without it."));
+    app.gtk.send_notification(Some("tray-hint"), &n);
+}
+
 /// Puts the icon in the notification area and keeps it up to date. Does nothing if the desktop has no tray.
 pub fn start(app: &Rc<App>) {
     let (tx, rx) = async_channel::unbounded();
     let handle = match (Tray { tx, up: 0, total: 0, problems: 0, running: false }).spawn() {
         Ok(h) => h,
-        Err(e) => { applog::info(&format!("No tray icon on this desktop ({e}); carrying on without one.")); return; }
+        Err(e) => { applog::info(&format!("No tray icon on this desktop ({e}); carrying on without one.")); gnome_hint(app); return; }
     };
 
     let a = app.clone();
