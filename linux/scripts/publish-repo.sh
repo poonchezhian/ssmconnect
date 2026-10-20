@@ -27,7 +27,10 @@ cp SIGNING-KEY.asc "$site/"
 
 echo "== rpm repository ($(basename "$rpm"))"
 cp "$rpm" "$site/rpm/"
-rpmsign --addsign --define "_gpg_name $key" "$site/rpm/$(basename "$rpm")" >/dev/null
+# sign the rpm itself unless it already is (so the file on the release page and the one in the repository are the same file)
+if rpm -qpi "$site/rpm/$(basename "$rpm")" 2>/dev/null | grep -q '^Signature *: *(none)'; then
+  rpmsign --addsign --define "_gpg_name $key" "$site/rpm/$(basename "$rpm")" >/dev/null
+fi
 createrepo_c --quiet "$site/rpm"
 gpg --batch --yes --armor --detach-sign --local-user "$key" --output "$site/rpm/repodata/repomd.xml.asc" "$site/rpm/repodata/repomd.xml"
 
