@@ -287,7 +287,24 @@ pub fn uninstall(prefix: &Path) -> Result<usize, String> {
     }
     let _ = fs::remove_file(prefix.join(MANIFEST));
     for d in ["share/ssmconnect", "share/doc/ssmconnect", "share/licenses/ssmconnect"] { let _ = fs::remove_dir(prefix.join(d)); }
+    refresh_icon_cache_after_removal(&prefix.join("share/icons/hicolor"));
     Ok(n)
+}
+
+/// A leftover icon-theme.cache that still lists the app icon makes GTK look for icons that are gone, so every copy of the icon (also the one a package installs
+/// under /usr) is drawn blank. Rebuild the cache, or delete it with the empty folders when no icons are left.
+fn refresh_icon_cache_after_removal(hicolor: &Path) {
+    fn has_icons(dir: &Path) -> bool {
+        fs::read_dir(dir).map(|rd| rd.flatten().any(|e| { let p = e.path(); if p.is_dir() { has_icons(&p) } else { p.file_name().is_some_and(|n| n != "icon-theme.cache") } })).unwrap_or(false)
+    }
+    if !hicolor.is_dir() { return; }
+    if has_icons(hicolor) {
+        if which("gtk-update-icon-cache").is_some() { let _ = Command::new("gtk-update-icon-cache").args(["-q", "-t"]).arg(hicolor).output(); }
+        return;
+    }
+    let _ = fs::remove_file(hicolor.join("icon-theme.cache"));
+    if let Ok(rd) = fs::read_dir(hicolor) { for e in rd.flatten() { let _ = fs::remove_dir_all(e.path()); } }
+    let _ = fs::remove_dir(hicolor);
 }
 
 /// Removes the program, and (only when asked) the person's settings and the AWS tools SSMConnect downloaded for them.
@@ -332,6 +349,22 @@ pub fn install_files_elevated(prefix: &Path, source_exe: &Path, how: Elevation, 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stale_icon_cache_is_removed_with_the_last_icon() {
+        let d = std::env::temp_dir().join(format!("ssmc-icons-{}", std::process::id()));
+        let hi = d.join("share/icons/hicolor");
+        fs::create_dir_all(hi.join("16x16/apps")).unwrap();
+        fs::write(hi.join("icon-theme.cache"), b"stale").unwrap();
+        refresh_icon_cache_after_removal(&hi);
+        assert!(!hi.exists(), "the cache and empty folders must not outlive the icons");
+        fs::create_dir_all(hi.join("16x16/apps")).unwrap();
+        fs::write(hi.join("16x16/apps/other.png"), b"x").unwrap();
+        fs::write(hi.join("icon-theme.cache"), b"stale").unwrap();
+        refresh_icon_cache_after_removal(&hi);
+        assert!(hi.join("16x16/apps/other.png").exists(), "other apps' icons stay");
+        let _ = fs::remove_dir_all(&d);
+    }
 
     #[test]
     fn package_manager_from_os_release() {
