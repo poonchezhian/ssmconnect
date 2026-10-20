@@ -1,10 +1,10 @@
 # SSMConnect for Linux
 
 SSH and Remote Desktop to AWS servers **with port 22 closed**, through AWS Systems Manager (SSM) Session Manager.
-This is the native Linux edition (Rust, GTK 4 + libadwaita). The Windows edition lives on the `main` branch; this branch
-only ever adds files under `linux/` and `.github/workflows/linux-*.yml`, so merging or pushing never overwrites it.
+This is the native Linux edition (Rust, GTK 4 + libadwaita). The Windows edition lives in the same repository (everything outside the `linux/` folder); the two editions
+are kept side by side on the `main` branch and are released separately.
 
-> **Status:** early iteration (0.0.x). Try it against a non-production server first.
+> **Status:** early release (0.x). Try it against a non-production server first.
 
 ## How it works
 
@@ -71,13 +71,13 @@ Key ID       7483B1F8DBE4A803      (ed25519, created 2026-10-16, expires 2028-10
 The public key is [`SIGNING-KEY.asc`](SIGNING-KEY.asc) in this folder. Check a download before you run it:
 
 ```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.3.2/ssmconnect-0.3.2-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.3.2/ssmconnect-0.3.2-linux-x86_64.bin.asc
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.4.0/ssmconnect-0.4.0-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.4.0/ssmconnect-0.4.0-linux-x86_64.bin.asc
 curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
 
 gpg --import SIGNING-KEY.asc
 gpg --fingerprint 7483B1F8DBE4A803        # must show exactly the fingerprint above
-gpg --verify ssmconnect-0.3.2-linux-x86_64.bin.asc ssmconnect-0.3.2-linux-x86_64.bin
+gpg --verify ssmconnect-0.4.0-linux-x86_64.bin.asc ssmconnect-0.4.0-linux-x86_64.bin
 ```
 
 `gpg` should say **Good signature from "SSMConnect Linux Releases"**. (It also prints a warning that the key is not certified by you; that is expected, the fingerprint check above is what ties the key to this project.) If it says **BAD signature**, do not run the file. The release also lists `SHA256SUMS.txt` and `SHA256SUMS.txt.asc`: `sha256sum -c SHA256SUMS.txt` checks the checksums, and the `.asc` file is their signature.
