@@ -31,12 +31,17 @@ cargo build --release --locked
 
 %install
 target/release/ssmconnect --install-files --prefix %{_prefix} --destdir %{buildroot}
+# the update repository: new releases arrive with the system's normal updates (dnf upgrade, GNOME Software, Discover)
+install -Dpm644 packaging/repo/ssmconnect.repo %{buildroot}%{_sysconfdir}/yum.repos.d/ssmconnect.repo
+install -Dpm644 SIGNING-KEY.asc %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect
 
 %files
 %license %{_licensedir}/%{name}/LICENSE
 %license %{_licensedir}/%{name}/NOTICE
 %doc %{_docdir}/ssmconnect
 %{_bindir}/ssmconnect
+%config(noreplace) %{_sysconfdir}/yum.repos.d/ssmconnect.repo
+%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect
 %{_datadir}/applications/io.github.poonchezhian.SSMConnect.desktop
 %{_datadir}/metainfo/io.github.poonchezhian.SSMConnect.metainfo.xml
 %{_datadir}/icons/hicolor/*/apps/io.github.poonchezhian.SSMConnect.png

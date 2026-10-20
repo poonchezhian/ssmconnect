@@ -1,6 +1,6 @@
 # Linux edition: pending features
 
-What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 0.6.0).
+What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 0.6.1).
 Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Features
@@ -10,6 +10,7 @@ Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 _(nothing open here right now)_
 
 ## Done recently
+- Update repository for dnf and apt, shipped with the rpm and deb (0.6.1).
 - `.deb` and `.rpm` now build on this computer (`dpkg` and `rpm-build` installed, 2026-10-20). `/tmp` is a small RAM disk here, so build the rpm with `TMPDIR=$HOME/.cache/ssmconnect-build packaging/build-rpm.sh` (it takes about 10 minutes).
 - `LINUX_SIGNING_KEY` added to the repository's GitHub secrets (2026-10-20), so tag builds can sign releases. Not yet exercised: check the signatures on the next release that CI publishes.
 - Signed the 0.4.0 release files (signature files added to the release, 2026-10-20).

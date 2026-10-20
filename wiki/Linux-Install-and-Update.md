@@ -2,9 +2,9 @@
 
 ## Install
 
-1. Download `ssmconnect-0.6.0-linux-x86_64.bin` and its `.asc` signature from the [Linux 0.6.0 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.6.0).
+1. Download `ssmconnect-0.6.1-linux-x86_64.bin` and its `.asc` signature from the [Linux 0.6.1 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.6.1).
 2. [Check the signature](#check-the-signature-before-you-run-it).
-3. Run it: open a terminal in the download folder and type `sh ./ssmconnect-0.6.0-linux-x86_64.bin` (or right-click the file, make it executable, and double-click it).
+3. Run it: open a terminal in the download folder and type `sh ./ssmconnect-0.6.1-linux-x86_64.bin` (or right-click the file, make it executable, and double-click it).
 
 The installer window has four steps:
 
@@ -27,13 +27,13 @@ Key ID       7483B1F8DBE4A803   (ed25519, expires 2028-10-15)
 ```
 
 ```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.0/ssmconnect-0.6.0-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.0/ssmconnect-0.6.0-linux-x86_64.bin.asc
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.1/ssmconnect-0.6.1-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.1/ssmconnect-0.6.1-linux-x86_64.bin.asc
 curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
 
 gpg --import SIGNING-KEY.asc
 gpg --fingerprint 7483B1F8DBE4A803
-gpg --verify ssmconnect-0.6.0-linux-x86_64.bin.asc ssmconnect-0.6.0-linux-x86_64.bin
+gpg --verify ssmconnect-0.6.1-linux-x86_64.bin.asc ssmconnect-0.6.1-linux-x86_64.bin
 ```
 
 - The fingerprint that `gpg --fingerprint` prints must match the one above, character for character.
@@ -51,6 +51,7 @@ Run the newer `.bin`. It finds the installation, updates it **in place** and kee
 - Going back to an older version needs an explicit confirmation.
 - An install made by a package manager (`dnf`, `apt`) is left to that package manager.
 - **File > Preferences** can check for new versions once a day and tell you when one exists.
+- **Installed from the `.rpm` or `.deb`?** The package adds the SSMConnect update repository (a signed repository on GitHub Pages) and its key, so new versions arrive with your system's normal updates: `sudo dnf upgrade` (Fedora, RHEL, openSUSE) or `sudo apt update && sudo apt upgrade` (Debian, Ubuntu), or your software centre. To stop getting updates from it, set `enabled=0` in `/etc/yum.repos.d/ssmconnect.repo` or `Enabled: no` in `/etc/apt/sources.list.d/ssmconnect.sources`. To add it before installing, see https://poonchezhian.github.io/ssmconnect/.
 - **Help > Check for updates**, then **Update now**, installs the new version for you: SSMConnect downloads the installer, checks its signature and checksum, closes, updates itself (your servers and settings are kept) and opens again. This works for a copy installed by the installer in your own folder; for a package-manager or all-users install it opens the download page instead.
 
 ## Remove

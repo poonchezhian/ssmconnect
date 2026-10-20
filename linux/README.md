@@ -49,6 +49,8 @@ servers and settings stay unless you ask for them to be deleted (`--remove-setti
 | Debian 13+, Ubuntu 24.04+, Mint 22+ | `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb` |
 | From source | `cargo build --release --locked`, then `target/release/ssmconnect --installer` |
 
+Package installs also add the SSMConnect update repository, so new releases arrive with `dnf upgrade` / `apt upgrade` / your software centre (`https://poonchezhian.github.io/ssmconnect/`).
+
 After a package install, the first run of SSMConnect offers to fetch the AWS CLI and the Session Manager plugin (the same signed downloads).
 Then open **SSMConnect** from the application menu; the first run starts the setup wizard.
 
@@ -71,13 +73,13 @@ Key ID       7483B1F8DBE4A803      (ed25519, created 2026-10-16, expires 2028-10
 The public key is [`SIGNING-KEY.asc`](SIGNING-KEY.asc) in this folder. Check a download before you run it:
 
 ```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.0/ssmconnect-0.6.0-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.0/ssmconnect-0.6.0-linux-x86_64.bin.asc
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.1/ssmconnect-0.6.1-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.1/ssmconnect-0.6.1-linux-x86_64.bin.asc
 curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
 
 gpg --import SIGNING-KEY.asc
 gpg --fingerprint 7483B1F8DBE4A803        # must show exactly the fingerprint above
-gpg --verify ssmconnect-0.6.0-linux-x86_64.bin.asc ssmconnect-0.6.0-linux-x86_64.bin
+gpg --verify ssmconnect-0.6.1-linux-x86_64.bin.asc ssmconnect-0.6.1-linux-x86_64.bin
 ```
 
 `gpg` should say **Good signature from "SSMConnect Linux Releases"**. (It also prints a warning that the key is not certified by you; that is expected, the fingerprint check above is what ties the key to this project.) If it says **BAD signature**, do not run the file. The release also lists `SHA256SUMS.txt` and `SHA256SUMS.txt.asc`: `sha256sum -c SHA256SUMS.txt` checks the checksums, and the `.asc` file is their signature.

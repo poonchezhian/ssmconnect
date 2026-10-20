@@ -1,0 +1,7 @@
+# SSMConnect for Linux: installed by the ssmconnect package so that "apt upgrade" / the software updater brings new releases.
+# The repository is signed with the SSMConnect Linux Releases key (fingerprint FF9F 45E6 4711 7103 89B3 F1FC 7483 B1F8 DBE4 A803).
+# To stop getting updates from here, set "Enabled: no" (or delete this file).
+Types: deb
+URIs: https://poonchezhian.github.io/ssmconnect/deb/
+Suites: ./
+Signed-By: /usr/share/keyrings/ssmconnect-archive-keyring.gpg

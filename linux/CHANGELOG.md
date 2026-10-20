@@ -4,6 +4,15 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.6.1] - 2026-10-20
+Updates through your system's package manager.
+### Added
+- **Update repository.** The `.rpm` and `.deb` now install a repository file (`/etc/yum.repos.d/ssmconnect.repo`, or `/etc/apt/sources.list.d/ssmconnect.sources`) and the SSMConnect
+  release key, so new releases arrive with the system's normal updates (`dnf upgrade`, `apt upgrade`, GNOME Software, Discover). The repository is on GitHub Pages
+  (`https://poonchezhian.github.io/ssmconnect/`); its metadata and the rpm are signed with the release key, and dnf and apt check the signatures.
+  Set `enabled=0` (rpm) or `Enabled: no` (deb) in that file to stop getting updates from it. The `.bin` installer is unchanged.
+- `scripts/publish-repo.sh` builds, signs and publishes the repository from the newest `.rpm` and `.deb`.
+
 ## [0.6.0] - 2026-10-20
 One-click updates.
 ### Added

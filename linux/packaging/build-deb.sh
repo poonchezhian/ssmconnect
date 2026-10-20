@@ -8,7 +8,13 @@ mkdir -p "$out"
 cargo build --release --locked >&2
 target/release/ssmconnect --install-files --prefix /usr --destdir "$root"
 mv "$root/usr/share/licenses/ssmconnect" "$root/usr/share/doc/ssmconnect/license" && rmdir "$root/usr/share/licenses"
+# the update repository: new releases arrive with the system's normal updates (apt upgrade, GNOME Software, Discover)
+install -Dm644 packaging/repo/ssmconnect.sources "$root/etc/apt/sources.list.d/ssmconnect.sources"
+install -d "$root/usr/share/keyrings"
+gpg --dearmor < SIGNING-KEY.asc > "$root/usr/share/keyrings/ssmconnect-archive-keyring.gpg"
+chmod 644 "$root/usr/share/keyrings/ssmconnect-archive-keyring.gpg"
 install -d "$root/DEBIAN"
+echo /etc/apt/sources.list.d/ssmconnect.sources > "$root/DEBIAN/conffiles"
 cat > "$root/DEBIAN/control" <<CTL
 Package: ssmconnect
 Version: $ver
