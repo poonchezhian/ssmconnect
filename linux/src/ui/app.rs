@@ -61,6 +61,7 @@ impl App {
         glib::timeout_add_local(std::time::Duration::from_millis(500), move || {
             if SIGNALLED.load(std::sync::atomic::Ordering::SeqCst) { app.quit(); glib::ControlFlow::Break } else { glib::ControlFlow::Continue }
         });
+        if self.on_ready.borrow().is_none() { super::tray::start(self); }   // the example programs run beside a real SSMConnect: no second icon
         std::mem::forget(self.gtk.hold());   // the app lives until Quit, even with the window hidden
         let a = self.clone();
         glib::timeout_add_seconds_local_once(8, move || a.background_jobs());

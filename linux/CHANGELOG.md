@@ -4,6 +4,12 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [Unreleased]
+### Added
+- **Tray icon.** A notification-area icon (StatusNotifierItem) shows how many connections are open and has a menu: Open SSMConnect, Start / Stop / Restart connections,
+  Preferences, Quit. Clicking the icon opens the window. It turns to "needs attention" when a connection has a problem. Desktops without a tray (stock GNOME needs
+  the AppIndicator extension) simply carry on without the icon, as before.
+
 ## [0.4.0] - 2026-10-20
 First release presented as a regular (not pre-release) version, published next to the Windows installer.
 ### Changed
