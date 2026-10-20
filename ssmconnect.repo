@@ -1,0 +1,10 @@
+# SSMConnect for Linux: installed by the ssmconnect package so that "dnf upgrade" / the software updater brings new releases.
+# Packages and the repository's metadata are signed with the SSMConnect Linux Releases key
+# (fingerprint FF9F 45E6 4711 7103 89B3 F1FC 7483 B1F8 DBE4 A803). To stop getting updates from here, set enabled=0.
+[ssmconnect]
+name=SSMConnect for Linux
+baseurl=https://poonchezhian.github.io/ssmconnect/rpm/
+enabled=1
+gpgcheck=1
+repo_gpgcheck=1
+gpgkey=https://poonchezhian.github.io/ssmconnect/SIGNING-KEY.asc

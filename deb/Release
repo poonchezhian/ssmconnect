@@ -1,0 +1,10 @@
+Origin: SSMConnect
+Label: SSMConnect for Linux
+Suite: stable
+Codename: ssmconnect
+Date: Tue, 20 Oct 2026 10:37:04 UTC
+Architectures: amd64
+Description: SSMConnect for Linux update repository
+SHA256:
+ 59791ceb72eeb80018c358d1d6b395c0751fdc087fd4b762e6699d5250d1792f 881 Packages
+ 6bc79981dae2d1904b069ca32a858fd4bb842f543add27c9352de7f047d5955a 588 Packages.gz

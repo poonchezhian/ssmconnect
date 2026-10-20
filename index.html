@@ -1,0 +1,10 @@
+<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SSMConnect for Linux: update repository</title>
+<body style="font:16px/1.5 system-ui,sans-serif;max-width:46rem;margin:2rem auto;padding:0 1rem">
+<h1>SSMConnect for Linux: update repository</h1>
+<p>The <code>ssmconnect</code> .rpm and .deb install the repository file for you, so new releases arrive with your system's normal updates. Download the first package from the
+<a href="https://github.com/poonchezhian/ssmconnect/releases">Releases page</a>, or add the repository by hand:</p>
+<p><b>Fedora, RHEL, openSUSE (dnf)</b><br><code>sudo curl -o /etc/yum.repos.d/ssmconnect.repo https://poonchezhian.github.io/ssmconnect/ssmconnect.repo &amp;&amp; sudo dnf install ssmconnect</code></p>
+<p><b>Debian, Ubuntu (apt)</b><br><code>sudo curl -o /usr/share/keyrings/ssmconnect-archive-keyring.asc https://poonchezhian.github.io/ssmconnect/SIGNING-KEY.asc</code><br>
+<code>echo -e "Types: deb\nURIs: https://poonchezhian.github.io/ssmconnect/deb/\nSuites: ./\nSigned-By: /usr/share/keyrings/ssmconnect-archive-keyring.asc" | sudo tee /etc/apt/sources.list.d/ssmconnect.sources</code><br>
+<code>sudo apt update &amp;&amp; sudo apt install ssmconnect</code></p>
+<p>Signing key: <a href="SIGNING-KEY.asc">SIGNING-KEY.asc</a>, fingerprint <code>FF9F 45E6 4711 7103 89B3 F1FC 7483 B1F8 DBE4 A803</code>. Check it matches before you trust it.</p>
