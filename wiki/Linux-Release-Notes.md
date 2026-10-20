@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 0.6.2
+- Behind the scenes: releases are now signed and the update repository is published automatically. No change to the app.
+
 ## 0.6.1
 - **Updates through your package manager.** The `.rpm` and `.deb` now add the SSMConnect update repository and its signing key, so new releases arrive with your system's normal updates (`sudo dnf upgrade`, `sudo apt upgrade`, GNOME Software, Discover). The repository and the rpm are signed, and your system checks the signatures.
 

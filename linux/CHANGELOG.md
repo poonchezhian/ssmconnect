@@ -4,6 +4,11 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.6.2] - 2026-10-20
+Releases sign and publish themselves.
+### Changed
+- The release workflow now signs the `.rpm` itself (not only the detached `.asc`) and publishes the update repository on GitHub Pages, both with the release key kept as a repository secret. No change to the app.
+
 ## [0.6.1] - 2026-10-20
 Updates through your system's package manager.
 ### Added

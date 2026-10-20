@@ -18,9 +18,9 @@ ssh ssc-web-1  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  your server (p
 
 ## Get it
 
-1. Download **[ssmconnect-0.6.1-linux-x86_64.bin](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.1/ssmconnect-0.6.1-linux-x86_64.bin)** (and its [signature](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.1/ssmconnect-0.6.1-linux-x86_64.bin.asc)) from the [Linux 0.6.1 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.6.1).
+1. Download **[ssmconnect-0.6.2-linux-x86_64.bin](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.2/ssmconnect-0.6.2-linux-x86_64.bin)** (and its [signature](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.2/ssmconnect-0.6.2-linux-x86_64.bin.asc)) from the [Linux 0.6.2 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.6.2).
 2. [Check the signature](Linux-Install-and-Update#check-the-signature-before-you-run-it) (recommended).
-3. Run it: `sh ./ssmconnect-0.6.1-linux-x86_64.bin`, or make it executable and double-click it. Follow the installer window.
+3. Run it: `sh ./ssmconnect-0.6.2-linux-x86_64.bin`, or make it executable and double-click it. Follow the installer window.
 
 Details, updating and removing: [Install and Update](Linux-Install-and-Update). What changed so far: [Linux Release Notes](Linux-Release-Notes).
 
