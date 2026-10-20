@@ -142,6 +142,13 @@ impl Wizard {
 
         // page 3: servers
         let p3 = page("Pick your servers", "Tick the servers you want to connect to. Servers marked 'not reachable' have no working SSM agent yet.");
+        let sel_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let sel_all = gtk::Button::with_label("Select all");
+        let sel_none = gtk::Button::with_label("Select none");
+        sel_all.set_tooltip_text(Some("Ticks every server that is ready; servers that are not reachable stay unticked"));
+        sel_row.append(&sel_all);
+        sel_row.append(&sel_none);
+        p3.append(&sel_row);
         let srv_box = gtk::Box::new(gtk::Orientation::Vertical, 16);
         p3.append(&srv_box);
 
@@ -166,6 +173,8 @@ impl Wizard {
         let inner = Rc::new(Inner { app: app.clone(), win, add_account, step: Cell::new(0), busy: Cell::new(false), d: RefCell::new(Data { cfg: config_store::load().unwrap_or_default(), ..Default::default() }),
             stack, step_label, back: back.clone(), next: next.clone(), status, req_box, install_btn: install_btn.clone(), acct_choice: acct_choice.clone(), new_box, url_row,
             sso_region_row, hint, region_row, srv_box, key_box, key_note, sum_box });
+        let me = inner.clone(); sel_all.connect_clicked(move |_| me.select_all(true));
+        let me = inner.clone(); sel_none.connect_clicked(move |_| me.select_all(false));
         let me = inner.clone(); back.connect_clicked(move |_| me.go(me.step.get().saturating_sub(1)));
         let me = inner.clone(); next.connect_clicked(move |_| me.on_next());
         let me = inner.clone(); install_btn.connect_clicked(move |_| me.install());
@@ -220,6 +229,11 @@ impl Inner {
     fn selected(&self) -> Vec<(String, DiscoveredServer)> {
         let d = self.d.borrow();
         d.found.iter().filter(|(p, s)| d.checks.iter().any(|(cp, ci, c)| cp == p && *ci == s.instance_id && c.is_active())).cloned().collect()
+    }
+
+    /// Ticks (or clears) every server in the list; servers that are not reachable stay as they are (unticked).
+    fn select_all(&self, on: bool) {
+        for (_, _, c) in self.d.borrow().checks.iter() { if c.is_sensitive() { c.set_active(on); } }
     }
 
     fn go(self: &Rc<Self>, n: usize) {
