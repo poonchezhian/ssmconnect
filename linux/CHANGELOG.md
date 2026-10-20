@@ -4,6 +4,13 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [0.4.0] - 2026-10-20
+First release presented as a regular (not pre-release) version, published next to the Windows installer.
+### Changed
+- No change to how the program behaves: this is 0.3.2 promoted to a regular release, with a new version number.
+- The release helper script `scripts/publish-release.sh` no longer places the GitHub token on a command line (it was readable from the process list). It now
+  reaches git through a temporary `GIT_ASKPASS` helper and curl through standard input.
+
 ## [0.3.2] - 2026-10-16
 Same icon as the Windows edition.
 ### Changed
