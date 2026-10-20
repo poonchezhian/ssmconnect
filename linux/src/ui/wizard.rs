@@ -12,6 +12,14 @@ use std::collections::HashSet;
 use std::rc::Rc;
 
 const STEPS: [&str; 5] = ["Requirements", "AWS account", "Servers", "SSH keys", "Save"];
+const TITLES: [&str; 5] = ["Check requirements", "Connect to AWS", "Pick your servers", "Match SSH keys", "Save connections"];
+const SUBTITLES: [&str; 5] = [
+    "Checking the AWS tools SSMConnect relies on.",
+    "Choose the AWS account and region where your servers run.",
+    "Tick the servers you want to connect to.",
+    "SSMConnect finds the SSH key for each Linux server.",
+    "Saving your connections for ssh and your file manager.",
+];
 
 struct KeyRow { profile: String, server: DiscoveredServer, user: adw::EntryRow, combo: adw::ComboRow }
 
@@ -38,7 +46,7 @@ struct Inner {
     busy: Cell<bool>,
     d: RefCell<Data>,
     stack: gtk::Stack,
-    step_label: gtk::Label,
+    band: Rc<super::common::Band>,
     back: gtk::Button,
     next: gtk::Button,
     status: gtk::Label,
@@ -64,13 +72,10 @@ fn scroller(child: &impl IsA<gtk::Widget>) -> gtk::ScrolledWindow {
     sc
 }
 
-fn page(title: &str, text: &str) -> gtk::Box {
+fn page(_title: &str, text: &str) -> gtk::Box {   // the title is in the band above
     let b = gtk::Box::new(gtk::Orientation::Vertical, 14);
-    let h = gtk::Label::builder().label(title).xalign(0.0).build();
-    h.add_css_class("title-2");
     let d = gtk::Label::builder().label(text).xalign(0.0).wrap(true).build();
     d.add_css_class("dim-label");
-    b.append(&h);
     b.append(&d);
     b
 }
@@ -89,20 +94,25 @@ impl Wizard {
     pub fn new(app: &Rc<App>, parent: &adw::ApplicationWindow, add_account: bool) -> Wizard {
         let win = adw::Window::builder().title("Set up SSMConnect").default_width(760).default_height(700).modal(true).transient_for(parent).build();
         let view = adw::ToolbarView::new();
+        super::common::ssm_style(&view);
         let header = adw::HeaderBar::new();
-        let step_label = gtk::Label::new(None);
-        header.set_title_widget(Some(&step_label));
+        header.add_css_class("ssm-top");
+        header.set_show_title(false);
         view.add_top_bar(&header);
+        let band = Rc::new(super::common::Band::new(STEPS.len()));
+        view.add_top_bar(&band.root);
         let stack = gtk::Stack::builder().transition_type(gtk::StackTransitionType::SlideLeftRight).vexpand(true).build();
         let toasts = adw::ToastOverlay::new();
         toasts.set_child(Some(&stack));
         view.set_content(Some(&toasts));
-        let bar = gtk::Box::builder().spacing(8).margin_top(8).margin_bottom(8).margin_start(16).margin_end(16).build();
-        let back = gtk::Button::with_label("Back");
+        let bar = gtk::Box::builder().spacing(10).build();
+        bar.add_css_class("ssm-bar");
+        let back = gtk::Button::builder().label("Back").width_request(110).build();
+        back.add_css_class("plain");
         let status = gtk::Label::builder().xalign(0.0).hexpand(true).wrap(true).ellipsize(gtk::pango::EllipsizeMode::End).build();
         status.add_css_class("summary");
-        let next = gtk::Button::with_label("Next");
-        next.add_css_class("suggested-action");
+        let next = gtk::Button::builder().label("Next").width_request(150).build();
+        next.add_css_class("main");
         for w in [back.upcast_ref::<gtk::Widget>(), status.upcast_ref(), next.upcast_ref()] { bar.append(w); }
         view.add_bottom_bar(&bar);
         win.set_content(Some(&view));
@@ -171,7 +181,7 @@ impl Wizard {
         for (i, p) in [&p1, &p2, &p3, &p4, &p5].into_iter().enumerate() { stack.add_named(&scroller(p), Some(&i.to_string())); }
 
         let inner = Rc::new(Inner { app: app.clone(), win, add_account, step: Cell::new(0), busy: Cell::new(false), d: RefCell::new(Data { cfg: config_store::load().unwrap_or_default(), ..Default::default() }),
-            stack, step_label, back: back.clone(), next: next.clone(), status, req_box, install_btn: install_btn.clone(), acct_choice: acct_choice.clone(), new_box, url_row,
+            stack, band, back: back.clone(), next: next.clone(), status, req_box, install_btn: install_btn.clone(), acct_choice: acct_choice.clone(), new_box, url_row,
             sso_region_row, hint, region_row, srv_box, key_box, key_note, sum_box });
         let me = inner.clone(); sel_all.connect_clicked(move |_| me.select_all(true));
         let me = inner.clone(); sel_none.connect_clicked(move |_| me.select_all(false));
@@ -241,7 +251,7 @@ impl Inner {
         if n == 3 && !self.selected().iter().any(|(_, s)| !s.is_windows()) { n = if self.step.get() < 3 { 4 } else { 2 }; }   // no Linux server ticked: nothing to match a key to
         self.step.set(n);
         self.stack.set_visible_child_name(&n.to_string());
-        self.step_label.set_text(&format!("Step {} of {}: {}", n + 1, STEPS.len(), STEPS[n]));
+        self.band.set(TITLES[n], &format!("Step {} of {}   |   {}", n + 1, STEPS.len(), SUBTITLES[n]), n);
         self.back.set_visible(n > 0);
         self.next.set_label(if n == 4 { "Save and connect" } else { "Next" });
         self.say("");

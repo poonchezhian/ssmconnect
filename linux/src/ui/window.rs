@@ -1,7 +1,7 @@
 //! The dashboard: header (account switcher, status pills, summary, organization chips), the action buttons and one card per server.
 
 use super::app::App;
-use super::common::{clear_box, esc, in_background, pill, set_pill};
+use super::common::{clear_box, in_background, pill, set_pill};
 use crate::models::{AppConfig, State, TunnelConfig, TunnelStatus};
 use crate::{aws_cli, aws_profiles as ap, config_store, known_hosts, launchers, sso, ssh_config};
 use adw::prelude::*;
@@ -11,8 +11,9 @@ use std::collections::{BTreeMap, HashSet};
 use std::rc::{Rc, Weak};
 
 struct ServerRow {
-    row: adw::ActionRow,
-    dot: gtk::Box,
+    card: gtk::Box,
+    line: gtk::Label,
+    status: gtk::Label,
     buttons: Vec<(&'static str, gtk::Button)>,
     tunnel: TunnelConfig,
 }
@@ -24,7 +25,8 @@ pub struct Dashboard {
     rows: RefCell<Vec<ServerRow>>,
     toasts: adw::ToastOverlay,
     stack: gtk::Stack,
-    switcher: gtk::MenuButton,
+    switch_title: gtk::Label,
+    switch_avatar: gtk::Label,
     switch_pop: gtk::Popover,
     switch_box: gtk::Box,
     banner: adw::Banner,
@@ -42,72 +44,105 @@ pub struct Dashboard {
 
 impl Dashboard {
     pub fn new(app: &Rc<App>) -> Rc<Dashboard> {
-        let win = adw::ApplicationWindow::builder().application(&app.gtk).title("SSMConnect").default_width(860).default_height(720).build();
+        let win = adw::ApplicationWindow::builder().application(&app.gtk).title("SSMConnect").default_width(1040).default_height(760).build();
         let toasts = adw::ToastOverlay::new();
         let view = adw::ToolbarView::new();
+        super::common::ssm_style(&view);
 
-        // header
+        // top: the menu bar (File, AWS, Servers, Help) in the window's title bar, then the teal band with the logo and the account switcher
         let header = adw::HeaderBar::new();
-        let switcher = gtk::MenuButton::builder().label("Account").tooltip_text("Switch AWS account").build();
-        switcher.add_css_class("flat");
+        header.add_css_class("ssm-top");
+        header.set_show_title(false);
+        header.pack_start(&gtk::PopoverMenuBar::from_model(Some(&Self::menu())));
+        view.add_top_bar(&header);
+
+        let band = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+        band.add_css_class("ssm-band");
+        let logo = gtk::Image::from_icon_name(crate::APP_ID);
+        logo.set_pixel_size(46);
+        band.append(&logo);
+        let titles = gtk::Box::new(gtk::Orientation::Vertical, 2);
+        titles.set_valign(gtk::Align::Center);
+        titles.set_hexpand(true);
+        let t1 = gtk::Label::builder().label("SSMConnect").xalign(0.0).build();
+        t1.add_css_class("band-title");
+        let t2 = gtk::Label::builder().label("Your AWS servers, one click away. Secure SSH and Remote Desktop through SSM, with no open ports.").xalign(0.0).wrap(true).build();
+        t2.add_css_class("band-sub");
+        titles.append(&t1);
+        titles.append(&t2);
+        band.append(&titles);
+        let switch_avatar = gtk::Label::new(Some("+"));
+        switch_avatar.add_css_class("avatar-mint");
+        let switch_title = gtk::Label::builder().label("Account").xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).max_width_chars(22).build();
+        switch_title.add_css_class("acct-name");
+        let kicker = gtk::Label::builder().label("AWS ACCOUNT").xalign(0.0).build();
+        kicker.add_css_class("acct-kicker");
+        let chip_text = gtk::Box::new(gtk::Orientation::Vertical, 0);
+        chip_text.set_hexpand(true);
+        chip_text.append(&kicker);
+        chip_text.append(&switch_title);
+        let chip = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        chip.append(&switch_avatar);
+        chip.append(&chip_text);
+        chip.append(&gtk::Image::from_icon_name("pan-down-symbolic"));
+        let switcher = gtk::MenuButton::builder().child(&chip).tooltip_text("Switch AWS account").valign(gtk::Align::Center).always_show_arrow(false).build();
+        switcher.add_css_class("acct-chip");
         let switch_pop = gtk::Popover::new();
         let switch_box = gtk::Box::new(gtk::Orientation::Vertical, 2);
         switch_pop.set_child(Some(&switch_box));
         switcher.set_popover(Some(&switch_pop));
-        header.set_title_widget(Some(&switcher));
-        header.pack_end(&gtk::MenuButton::builder().icon_name("open-menu-symbolic").menu_model(&Self::menu()).primary(true).tooltip_text("Main menu").build());
-        view.add_top_bar(&header);
+        band.append(&switcher);
+        view.add_top_bar(&band);
         let banner = adw::Banner::builder().revealed(false).build();
+        banner.add_css_class("ssm-banner");
         view.add_top_bar(&banner);
 
         // empty state and main page
         let stack = gtk::Stack::new();
         let empty = adw::StatusPage::builder().icon_name("network-server-symbolic").title("No servers yet")
             .description("Add your AWS account and pick the servers you want to connect to.").build();
-        let add = gtk::Button::builder().label("Add servers").halign(gtk::Align::Center).action_name("app.add-servers").build();
-        add.add_css_class("suggested-action");
-        add.add_css_class("pill");
-        empty.set_child(Some(&add));
         stack.add_named(&empty, Some("empty"));
 
         let scroll = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
-        let clamp = adw::Clamp::builder().maximum_size(820).margin_top(12).margin_bottom(24).margin_start(16).margin_end(16).build();
-        let main = gtk::Box::new(gtk::Orientation::Vertical, 14);
+        let clamp = adw::Clamp::builder().maximum_size(1180).tightening_threshold(900).margin_top(14).margin_bottom(20).margin_start(22).margin_end(22).build();
+        let main = gtk::Box::new(gtk::Orientation::Vertical, 10);
         clamp.set_child(Some(&main));
         scroll.set_child(Some(&clamp));
         stack.add_named(&scroll, Some("main"));
 
-        let pills = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let pills = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        pills.set_homogeneous(true);
         let (p_conn, p_signin, p_tools) = (pill("Connections"), pill("AWS sign-in"), pill("AWS tools"));
         for p in [&p_conn, &p_signin, &p_tools] { pills.append(p); }
         main.append(&pills);
-        let summary = gtk::Label::builder().xalign(0.0).wrap(true).build();
-        summary.add_css_class("summary");
+        let summary = gtk::Label::builder().xalign(0.0).wrap(true).margin_top(4).build();
+        summary.add_css_class("ssm-summary");
         main.append(&summary);
-        let chips = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).max_children_per_line(8).column_spacing(6).row_spacing(6).homogeneous(false).build();
+        let chips = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).max_children_per_line(12).column_spacing(8).row_spacing(6).homogeneous(false).build();
         main.append(&chips);
-        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 8);
-        let groups = gtk::Box::new(gtk::Orientation::Vertical, 18);
-        main.append(&bar);
+        let groups = gtk::Box::new(gtk::Orientation::Vertical, 12);
         main.append(&groups);
         view.set_content(Some(&stack));
+
+        // the bottom bar: connection controls on the left, the main action on the right
+        let bar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+        bar.add_css_class("ssm-bar");
+        view.add_bottom_bar(&bar);
         toasts.set_child(Some(&view));
         win.set_content(Some(&toasts));
 
-        let d = Rc::new(Dashboard { win: win.clone(), app: Rc::downgrade(app), cfg: RefCell::new(AppConfig::default()), rows: RefCell::new(vec![]), toasts, stack, switcher,
+        let d = Rc::new(Dashboard { win: win.clone(), app: Rc::downgrade(app), cfg: RefCell::new(AppConfig::default()), rows: RefCell::new(vec![]), toasts, stack, switch_title, switch_avatar,
             switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0), trusted: RefCell::new(BTreeMap::new()) });
 
-        for (label, icon, css, f) in [("Start", "media-playback-start-symbolic", "suggested-action", Dashboard::start as fn(&Rc<Dashboard>)),
-                                      ("Stop", "media-playback-stop-symbolic", "", Dashboard::stop), ("Restart", "view-refresh-symbolic", "", Dashboard::restart)] {
-            let b = gtk::Button::new();
-            b.set_child(Some(&adw::ButtonContent::builder().icon_name(icon).label(label).build()));
-            if !css.is_empty() { b.add_css_class(css); }
+        for (label, css, f) in [("Start", "go", Dashboard::start as fn(&Rc<Dashboard>)), ("Stop", "halt", Dashboard::stop), ("Restart", "plain", Dashboard::restart)] {
+            let b = gtk::Button::builder().label(label).width_request(124).build();
+            b.add_css_class(css);
             let dd = d.clone();
             b.connect_clicked(move |_| f(&dd));
             bar.append(&b);
         }
-        let add = gtk::Button::builder().hexpand(true).halign(gtk::Align::End).action_name("app.add-servers").build();
-        add.set_child(Some(&adw::ButtonContent::builder().icon_name("list-add-symbolic").label("Add / change servers").build()));
+        let add = gtk::Button::builder().label("Add / change servers…").hexpand(true).halign(gtk::Align::End).width_request(250).action_name("app.add-servers").build();
+        add.add_css_class("main");
         bar.append(&add);
 
         let hide = gio::SimpleAction::new("hide", None);
@@ -150,18 +185,17 @@ impl Dashboard {
     }
 
     fn menu() -> gio::Menu {
-        let menu = gio::Menu::new();
-        let section = |title: Option<&str>, items: &[(&str, &str)]| {
-            let s = gio::Menu::new();
-            for (l, a) in items { s.append(Some(l), Some(a)); }
-            menu.append_section(title, &s);
+        let bar = gio::Menu::new();
+        let sub = |title: &str, items: &[(&str, &str)]| {
+            let m = gio::Menu::new();
+            for (l, a) in items { m.append(Some(l), Some(a)); }
+            bar.append_submenu(Some(title), &m);
         };
-        section(Some("File"), &[("Preferences", "app.preferences"), ("Add to application menu", "app.create-launcher"), ("Hide window", "win.hide")]);
-        section(Some("AWS"), &[("Add AWS account…", "app.add-account"), ("Manage accounts…", "app.manage-accounts"), ("Sign in again", "app.sign-in-again")]);
-        section(Some("Servers"), &[("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("What changed since the last scan", "app.changes")]);
-        section(Some("Help"), &[("Check for updates", "app.check-updates"), ("Open log file", "app.open-log"), ("Clean up this user's settings…", "app.cleanup"), ("About SSMConnect", "app.about")]);
-        section(None, &[("Quit and close all connections", "app.quit")]);
-        menu
+        sub("_File", &[("Preferences", "app.preferences"), ("Add to application menu", "app.create-launcher"), ("Hide window", "win.hide"), ("Quit and close all connections", "app.quit")]);
+        sub("_AWS", &[("Add AWS account…", "app.add-account"), ("Manage accounts…", "app.manage-accounts"), ("Sign in again", "app.sign-in-again")]);
+        sub("_Servers", &[("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("What changed since the last scan", "app.changes")]);
+        sub("_Help", &[("Check for updates", "app.check-updates"), ("Open log file", "app.open-log"), ("Clean up this user's settings…", "app.cleanup"), ("About SSMConnect", "app.about")]);
+        bar
     }
 
     fn app(&self) -> Option<Rc<App>> { self.app.upgrade() }
@@ -207,11 +241,20 @@ impl Dashboard {
     fn build_switcher(self: &Rc<Self>) {
         clear_box(&self.switch_box);
         let (prim, cur) = (self.primaries(), self.current_key());
-        self.switcher.set_label(&prim.iter().find(|(k, _)| *k == cur).map(|(_, l)| l.clone()).unwrap_or_else(|| "No account".into()));
+        let title = prim.iter().find(|(k, _)| *k == cur).map(|(_, l)| l.clone());
+        self.switch_title.set_text(title.as_deref().unwrap_or("Add an AWS account"));
+        self.switch_avatar.set_text(&initial(title.as_deref()));
         let mut sorted = prim.clone();
         sorted.sort_by_key(|(k, _)| *k != cur);
         for (k, l) in sorted {
-            let b = gtk::Button::builder().label(format!("{l}{}", if k == cur { "  ✓" } else { "" })).build();
+            let b = gtk::Button::new();
+            let row = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+            let av = gtk::Label::new(Some(&initial(Some(&l))));
+            av.add_css_class("avatar-soft");
+            if k == cur { av.add_css_class("avatar-current"); }
+            row.append(&av);
+            row.append(&gtk::Label::builder().label(&l).xalign(0.0).hexpand(true).build());
+            b.set_child(Some(&row));
             b.add_css_class("flat");
             let d = self.clone();
             b.connect_clicked(move |_| d.select_account(&k));
@@ -247,15 +290,23 @@ impl Dashboard {
         for t in &tunnels { by_profile.entry(t.profile.clone()).or_default().push(t); }
         let multi = by_profile.len() > 1;
         for (profile, mut items) in by_profile {
-            let g = adw::PreferencesGroup::new();
-            if multi { g.set_title(&esc(&cfg.alias_or(&profile, &profile))); }
+            let g = gtk::Box::new(gtk::Orientation::Vertical, 8);
+            if multi {
+                let h = gtk::Label::builder().label(cfg.alias_or(&profile, &profile)).xalign(0.0).margin_top(6).build();
+                h.add_css_class("ghead");
+                g.append(&h);
+            }
+            let cards = gtk::FlowBox::builder().selection_mode(gtk::SelectionMode::None).homogeneous(true).column_spacing(12).row_spacing(12)
+                .min_children_per_line(1).max_children_per_line(6).build();
+            cards.add_css_class("cards");
             items.sort_by_key(|t| t.name.to_lowercase());
             for t in items {
                 let alias = aliases.get(&t.instance_id).cloned().unwrap_or_else(|| ssh_config::host_alias(&t.name, &t.instance_id));
                 let sr = self.server_row(t, &alias);
-                g.add(&sr.row);
+                cards.append(&sr.card);
                 self.rows.borrow_mut().push(sr);
             }
+            g.append(&cards);
             self.groups.append(&g);
         }
         // organization chips (greyed when empty)
@@ -267,10 +318,13 @@ impl Dashboard {
         let members: Vec<ap::ProfileInfo> = everyone.into_iter().filter(|p| ap::primary_key(p) == cur && p.kind == ap::Kind::Sso).collect();
         if !members.is_empty() {
             let preferred: HashSet<String> = counts.keys().cloned().collect();
+            let k = gtk::Label::new(Some("Organization accounts"));
+            k.add_css_class("org-kicker");
+            self.chips.append(&k);
             for p in ap::one_each(&members, &preferred, None) {
                 let n = counts.get(&p.name).copied().unwrap_or(0);
                 let l = gtk::Label::new(Some(&format!("{}  {n}", cfg.alias_or(&p.name, &p.name))));
-                l.add_css_class("chip");
+                l.add_css_class("org-chip");
                 if n == 0 { l.add_css_class("empty"); }
                 self.chips.append(&l);
             }
@@ -279,43 +333,73 @@ impl Dashboard {
     }
 
     fn server_row(self: &Rc<Self>, t: &TunnelConfig, alias: &str) -> ServerRow {
-        let row = adw::ActionRow::builder().title(esc(&t.name)).title_lines(1).subtitle_lines(2).build();
-        let dot = gtk::Box::builder().valign(gtk::Align::Center).build();
-        dot.add_css_class("dot");
-        row.add_prefix(&dot);
+        let card = gtk::Box::new(gtk::Orientation::Vertical, 10);
+        card.add_css_class("scard");
+        card.add_css_class("grey");
+        card.set_size_request(300, -1);
+        // top: operating-system badge, name, environment tag, second line
+        let top = gtk::Box::new(gtk::Orientation::Horizontal, 12);
+        top.append(&super::common::os_avatar(t.is_rdp()));
+        let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
+        text.set_hexpand(true);
+        let name_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let name = gtk::Label::builder().label(&t.name).xalign(0.0).hexpand(true).ellipsize(gtk::pango::EllipsizeMode::End).build();
+        name.add_css_class("card-name");
+        name_row.append(&name);
         if !t.environment.is_empty() {
-            let tag = gtk::Label::builder().label(if t.is_prod() { "PROD" } else { &t.environment }).valign(gtk::Align::Center).build();
+            let env = if t.is_prod() { "PROD".to_string() } else { t.environment.to_uppercase() };
+            let tag = gtk::Label::builder().label(env).valign(gtk::Align::Center).build();
             tag.add_css_class("tag");
             if t.is_prod() { tag.add_css_class("prod"); }
-            row.add_suffix(&tag);
+            name_row.append(&tag);
         }
+        let line = gtk::Label::builder().xalign(0.0).ellipsize(gtk::pango::EllipsizeMode::End).build();
+        line.add_css_class("card-line");
+        text.append(&name_row);
+        text.append(&line);
+        top.append(&text);
+        card.append(&top);
+        // bottom: status pill on the left, the action buttons on the right
+        let bottom = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let status = gtk::Label::builder().label("●  Stopped").valign(gtk::Align::Center).build();
+        status.add_css_class("status");
+        bottom.append(&status);
+        let spacer = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        spacer.set_hexpand(true);
+        bottom.append(&spacer);
+        card.append(&bottom);
         let mut buttons = vec![];
-        let mut action = |icon: &str, label: &'static str, f: Box<dyn Fn(&Rc<Dashboard>, &TunnelConfig, &str)>| {
-            let b = gtk::Button::builder().valign(gtk::Align::Center).build();
-            b.set_child(Some(&adw::ButtonContent::builder().icon_name(icon).label(label).build()));
-            b.add_css_class("flat");
+        let mut action = |label: &'static str, f: Box<dyn Fn(&Rc<Dashboard>, &TunnelConfig, &str)>| {
+            let b = gtk::Button::builder().label(label).valign(gtk::Align::Center).build();
+            b.add_css_class("abtn");
             let (d, t, alias) = (Rc::downgrade(self), t.clone(), alias.to_string());
             b.connect_clicked(move |b| if let Some(d) = d.upgrade() { d.guarded(b, &t, &alias, &f); });
-            row.add_suffix(&b);
+            bottom.append(&b);
             buttons.push((label, b));
         };
         if t.is_rdp() {
-            action("computer-symbolic", "Remote Desktop", Box::new(|d, t, _| if let Err(e) = launchers::open_rdp(t) { d.toast(&e); }));
-            action("dialog-password-symbolic", "Get password", Box::new(|d, t, _| d.get_password(t)));
+            action("Remote Desktop", Box::new(|d, t, _| if let Err(e) = launchers::open_rdp(t) { d.toast(&e); }));
+            action("Get password", Box::new(|d, t, _| d.get_password(t)));
         } else {
-            action("utilities-terminal-symbolic", "Terminal", Box::new(|d, _, a| if let Err(e) = launchers::open_terminal(a) { d.toast(&e); }));
-            action("folder-remote-symbolic", "Files", Box::new(|d, t, a| d.open_files(t, a)));
+            action("Terminal", Box::new(|d, _, a| if let Err(e) = launchers::open_terminal(a) { d.toast(&e); }));
+            action("Files", Box::new(|d, t, a| d.open_files(t, a)));
         }
+        // double-click anywhere else on the card does the main thing
+        let first = buttons.first().map(|(_, b)| b.clone());
+        let dbl = gtk::GestureClick::new();
+        dbl.connect_pressed(move |_, n, _, _| if n == 2 { if let Some(b) = &first { b.emit_clicked(); } });
+        card.add_controller(dbl);
         // the "more" menu
         let more = gtk::MenuButton::builder().icon_name("view-more-symbolic").valign(gtk::Align::Center).tooltip_text("More").build();
         more.add_css_class("flat");
+        more.add_css_class("abtn-more");
         let menu = gio::Menu::new();
         menu.append(Some(if t.is_rdp() { "Copy local address" } else { "Copy ssh command" }), Some("row.copy"));
         menu.append(Some(if t.is_rdp() { "Open Remote Desktop address" } else { "Copy sftp address" }), Some("row.copy-alt"));
         if !t.is_rdp() { menu.append(Some("Open sftp in a terminal"), Some("row.sftp")); menu.append(Some("Server identity…"), Some("row.identity")); }
         menu.append(Some("Change login user or key file…"), Some("row.settings"));
         more.set_menu_model(Some(&menu));
-        row.add_suffix(&more);
+        bottom.append(&more);
         let group = gio::SimpleActionGroup::new();
         let mk = |name: &str, f: Box<dyn Fn(&Rc<Dashboard>)>| {
             let a = gio::SimpleAction::new(name, None);
@@ -332,8 +416,8 @@ impl Dashboard {
         mk("settings", Box::new(move |d| if let Some(a) = d.app() { super::server_settings::show(&a, &d.win, &t4); }));
         let a3 = alias.to_string();
         mk("sftp", Box::new(move |d| if let Err(e) = launchers::open_sftp_terminal(&a3) { d.toast(&e); }));
-        row.insert_action_group("row", Some(&group));
-        ServerRow { row, dot, buttons, tunnel: t.clone() }
+        card.insert_action_group("row", Some(&group));
+        ServerRow { card, line, status, buttons, tunnel: t.clone() }
     }
 
     // Unavailable buttons are dimmed, not disabled, so their hover note still shows and a click explains why.
@@ -449,17 +533,34 @@ impl Dashboard {
 
 fn clear_chips(c: &gtk::FlowBox) { while let Some(ch) = c.first_child() { c.remove(&ch); } }
 
+fn initial(name: Option<&str>) -> String {
+    name.and_then(|n| n.trim().chars().next()).map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "+".into())
+}
+
 fn update_row(sr: &ServerRow, st: Option<&TunnelStatus>, tools: &launchers::Tools) {
     let t = &sr.tunnel;
     let state = st.map(|s| s.state).unwrap_or(State::Disabled);
     let up = state == State::Connected;
-    for c in ["ok", "work", "err"] { sr.dot.remove_css_class(c); }
-    match state { State::Connected => sr.dot.add_css_class("ok"), State::Starting | State::Retrying => sr.dot.add_css_class("work"), State::Error => sr.dot.add_css_class("err"), State::Disabled => {} }
+    for c in ["green", "amber", "red", "grey"] { sr.card.remove_css_class(c); }
+    for c in ["ok", "warn", "err"] { sr.status.remove_css_class(c); }
+    let (level, kind, text) = match state {
+        State::Connected => ("green", "ok", "Connected"),
+        State::Starting => ("amber", "warn", "Connecting..."),
+        State::Retrying => ("amber", "warn", "Retrying"),
+        State::Error => ("red", "err", "Problem"),
+        State::Disabled => ("grey", "", "Stopped"),
+    };
+    sr.card.add_css_class(level);
+    if !kind.is_empty() { sr.status.add_css_class(kind); }
+    sr.status.set_text(&format!("●  {text}"));
     let what = if t.is_rdp() { "Windows".to_string() } else if t.os_name.is_empty() { "Linux".into() } else { t.os_name.clone() };
-    let status = match state { State::Connected => "Connected", State::Starting => "Connecting...", State::Retrying => "Retrying", State::Error => "Problem", State::Disabled => "Off" };
-    let mut detail = format!("{what} · local port {} · {status}", t.local_port);
-    if let Some(s) = st.filter(|s| matches!(s.state, State::Error | State::Retrying | State::Starting) && !s.message.is_empty()) { detail += &format!("\n{}", s.message); }
-    sr.row.set_subtitle(&esc(&detail));
+    // second line: the operating system and port, or - when something is not right - what is wrong
+    let problem = st.filter(|s| matches!(s.state, State::Error | State::Retrying | State::Starting) && !s.message.is_empty());
+    sr.line.remove_css_class("bad");
+    match problem {
+        Some(s) => { sr.line.set_text(&s.message); if state == State::Error { sr.line.add_css_class("bad"); } }
+        None => sr.line.set_text(&format!("{what}  -  local port {}", t.local_port)),
+    }
     for (label, b) in &sr.buttons {
         let (ok, why) = if !up { (false, "Waiting for the connection to open (see the status line).".to_string()) } else { match *label {
             "Terminal" => if tools.terminal.is_some() && tools.ssh.is_some() { (true, "Open a terminal and run ssh for this server".into()) } else { (false, "No terminal or ssh program found. Use More > Copy ssh command.".into()) },

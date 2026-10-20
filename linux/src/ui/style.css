@@ -1,14 +1,98 @@
+/* Look shared with the Windows edition: a deep-teal header band, pale page, white cards with a coloured status strip. */
+
+/* ---- older small widgets (wizard, installer) ---- */
 .pill { border-radius: 999px; padding: 3px 12px; font-weight: 600; font-size: 0.9em; background: alpha(@window_fg_color, .08); }
-.pill.ok { background: alpha(@success_color, .18); color: @success_color; }
-.pill.warn { background: alpha(@warning_color, .22); color: @warning_color; }
-.pill.err { background: alpha(@error_color, .18); color: @error_color; }
 .chip { border-radius: 999px; padding: 2px 10px; background: alpha(@window_fg_color, .08); font-size: 0.9em; }
 .chip.empty { opacity: .45; }
-.tag { border-radius: 6px; padding: 1px 8px; font-size: 0.78em; font-weight: 700; background: alpha(@window_fg_color, .12); }
-.tag.prod { background: @error_bg_color; color: @error_fg_color; }
-.dot { min-width: 12px; min-height: 12px; border-radius: 999px; background: alpha(@window_fg_color, .3); }
-.dot.ok { background: @success_color; }
-.dot.work { background: @warning_color; }
-.dot.err { background: @error_color; }
+.tag { border-radius: 999px; padding: 1px 9px; font-size: 0.8em; font-weight: 600; background: #e8f0f0; color: #46606a; }
+.tag.prod { background: #fad6d6; color: #910014; }
 .unavailable { opacity: .45; }
 .summary { opacity: .75; }
+
+/* ---- dashboard ---- */
+.ssm { background: #f3f7f7; color: #16282e; }
+.ssm.dark { background: @window_bg_color; color: @window_fg_color; }
+
+headerbar.ssm-top { background: #052e34; color: white; box-shadow: none; border-bottom: none; min-height: 34px; }
+headerbar.ssm-top windowcontrols button, headerbar.ssm-top menubar > item { color: white; }
+headerbar.ssm-top menubar > item:hover, headerbar.ssm-top menubar > item:checked { background: alpha(white, .16); border-radius: 6px; }
+headerbar.ssm-top menubar > item { padding: 2px 10px; }
+headerbar.ssm-top windowcontrols button:hover { background: alpha(white, .16); }
+
+.ssm-band { background-image: radial-gradient(circle at 96% -20%, alpha(white, .07) 0, alpha(white, .07) 130px, transparent 131px), linear-gradient(90deg, #052e34, #0e7470); padding: 0 24px; min-height: 84px; }
+.ssm-band .band-title { color: white; font-size: 14pt; font-weight: 600; }
+.ssm-band .band-sub { color: #bee4e0; font-size: 8.5pt; }
+
+.acct-chip { background: alpha(white, .14); color: white; border: 1px solid alpha(white, .35); border-radius: 999px; padding: 5px 14px 5px 6px; min-height: 0; }
+.acct-chip:hover { background: alpha(white, .22); border-color: alpha(white, .6); }
+.acct-chip .acct-kicker { font-size: 7pt; color: #bee4e0; }
+.acct-chip .acct-name { font-size: 10pt; font-weight: 600; color: white; }
+.avatar-mint { background: #6ee7b7; color: #052e34; border-radius: 999px; min-width: 32px; min-height: 32px; font-weight: 600; font-size: 11pt; }
+.avatar-soft { background: #d6e8e6; color: #0f766e; border-radius: 999px; min-width: 28px; min-height: 28px; font-weight: 600; }
+.avatar-current { background: #0d9488; color: white; }
+
+banner.ssm-banner > revealer > widget { background: #e0f2f1; color: #04463f; }
+banner.ssm-banner > revealer > widget label { color: #04463f; font-weight: 600; }
+banner.ssm-banner button { background: #0d9488; color: white; box-shadow: none; }
+banner.ssm-banner button:hover { background: #0f766e; }
+
+.spill { border-radius: 999px; padding: 0 14px; min-height: 40px; font-weight: 600; background: #e4e4e4; color: #373737; }
+.spill.ok { background: #ceeed6; color: #005523; }
+.spill.warn { background: #ffeaba; color: #734100; }
+.spill.err { background: #fad6d6; color: #910014; }
+.ssm.dark .spill { background: alpha(white, .1); color: @window_fg_color; }
+.ssm.dark .spill.ok { background: alpha(#22aa50, .25); color: #7ee2a0; }
+.ssm.dark .spill.warn { background: alpha(#f0aa14, .25); color: #ffd36b; }
+.ssm.dark .spill.err { background: alpha(#cd2832, .3); color: #ff9aa3; }
+
+.ssm-summary { font-size: 11pt; font-weight: 600; }
+.org-chip { border-radius: 999px; padding: 3px 12px; background: #d6eeea; color: #16282e; font-size: 0.9em; }
+.org-chip.empty { background: #eaf0f0; color: #5e6e72; }
+.org-kicker { color: #5e6e72; font-size: 0.9em; }
+.ssm.dark .org-chip { background: alpha(#0d9488, .3); color: @window_fg_color; }
+.ssm.dark .org-chip.empty { background: alpha(white, .08); color: alpha(@window_fg_color, .6); }
+.ghead { color: #69707a; font-weight: 700; font-size: 9pt; }
+
+flowbox.cards > flowboxchild { padding: 0; background: none; outline: none; border-radius: 10px; }
+.scard { background: white; border: 1px solid #d6e1e2; border-left-width: 6px; border-radius: 10px; padding: 14px 14px 12px 14px; }
+.scard.green { border-left-color: #22aa50; }
+.scard.amber { border-left-color: #f0aa14; }
+.scard.red { border-left-color: #cd2832; }
+.scard.grey { border-left-color: #969696; }
+.ssm.dark .scard { background: @card_bg_color; border-color: alpha(white, .14); }
+.ssm.dark .scard.green { border-left-color: #22aa50; }
+.ssm.dark .scard.amber { border-left-color: #f0aa14; }
+.ssm.dark .scard.red { border-left-color: #cd2832; }
+.ssm.dark .scard.grey { border-left-color: #969696; }
+.scard .card-name { font-size: 10pt; font-weight: 600; }
+.scard .card-line { font-size: 8.5pt; color: #5e6e72; }
+.scard .card-line.bad { color: #910014; }
+.ssm.dark .scard .card-line { color: alpha(@window_fg_color, .65); }
+.ssm.dark .scard .card-line.bad { color: #ff9aa3; }
+.scard .status { border-radius: 999px; padding: 3px 12px; font-size: 8.5pt; font-weight: 600; background: #e4e4e4; color: #373737; }
+.scard .status.ok { background: #ceeed6; color: #005523; }
+.scard .status.warn { background: #ffeaba; color: #734100; }
+.scard .status.err { background: #fad6d6; color: #910014; }
+.ssm.dark .scard .status { background: alpha(white, .1); color: @window_fg_color; }
+.ssm.dark .scard .status.ok { background: alpha(#22aa50, .25); color: #7ee2a0; }
+.ssm.dark .scard .status.warn { background: alpha(#f0aa14, .25); color: #ffd36b; }
+.ssm.dark .scard .status.err { background: alpha(#cd2832, .3); color: #ff9aa3; }
+
+button.abtn { background: #0d9488; color: white; border-radius: 7px; padding: 3px 14px; min-height: 22px; font-size: 8.5pt; font-weight: 400; box-shadow: none; }
+button.abtn:hover { background: #0f766e; }
+button.abtn.amber { background: #d97706; }
+button.abtn.amber:hover { background: #b45309; }
+button.abtn-more { border-radius: 7px; padding: 3px 6px; min-height: 22px; }
+
+.ssm-bar { background: white; border-top: 1px solid #d6e1e2; padding: 12px 22px; }
+.ssm.dark .ssm-bar { background: @headerbar_bg_color; border-top-color: alpha(white, .14); }
+.ssm-bar button { border-radius: 8px; min-height: 40px; font-weight: 600; box-shadow: none; }
+.ssm-bar button.go { background: #16a34a; color: white; }
+.ssm-bar button.go:hover { background: #15803d; }
+.ssm-bar button.halt { background: #dc2626; color: white; }
+.ssm-bar button.halt:hover { background: #b91c1c; }
+.ssm-bar button.plain { background: #e8f0f0; color: #16282e; }
+.ssm-bar button.plain:hover { background: #d6e4e4; }
+.ssm.dark .ssm-bar button.plain { background: alpha(white, .1); color: @window_fg_color; }
+.ssm-bar button.main { background: #0d9488; color: white; }
+.ssm-bar button.main:hover { background: #0f766e; }

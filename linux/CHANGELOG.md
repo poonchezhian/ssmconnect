@@ -6,6 +6,8 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 ### Changed
+- **The dashboard and the setup wizard now look like the Windows edition**: a deep-teal header band with the logo (and the account switcher, or the wizard's step dots), a File / AWS / Servers / Help menu bar, three equal status pills, organization chips, server cards with a coloured status strip, an operating-system badge, an environment tag, a status pill and the action buttons, and a bottom bar with Start / Stop / Restart and *Add / change servers*. Light and dark themes both work.
+### Changed
 - The release workflow also replaces the installers kept in `dist/` and syncs the GitHub wiki after publishing (`scripts/update-dist.sh`, `scripts/sync-wiki.sh`), so the last manual steps of a release are gone.
 
 ## [0.6.4] - 2026-10-20
