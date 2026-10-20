@@ -2,6 +2,12 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 1.0.0
+- **Looks like the Windows app.** The dashboard, setup wizard, *Manage accounts* and *Server identities* now share the Windows edition's look: the teal header band, menu bar, status pills, server cards with a coloured strip, and the bottom bar with Start, Stop, Restart and *Add / change servers*. Light and dark themes both work.
+- Fixed blank icons after removing a per-user copy of SSMConnect (a stale icon cache).
+- Download links that never go stale: `ssmconnect-linux-x86_64.bin`, `.rpm` and `ssmconnect-linux-amd64.deb` always point at the newest version.
+- From 1.0.0 on, Linux releases are regular releases. They are not marked *Latest*, so the Windows release stays the one behind the main download button.
+
 ## 0.6.4
 - **Download links that never go stale.** `ssmconnect-linux-x86_64.bin`, `.rpm` and `ssmconnect-linux-amd64.deb` always point at the newest version (see [Install and Update](Linux-Install-and-Update)).
 

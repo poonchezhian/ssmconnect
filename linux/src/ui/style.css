@@ -80,6 +80,11 @@ flowbox.cards > flowboxchild { padding: 0; background: none; outline: none; bord
 
 button.abtn { background: #0d9488; color: white; border-radius: 7px; padding: 3px 14px; min-height: 22px; font-size: 8.5pt; font-weight: 400; box-shadow: none; }
 button.abtn:hover { background: #0f766e; }
+button.abtn.plain { background: #e8f0f0; color: #16282e; }
+button.abtn.plain:hover { background: #d6e4e4; }
+button.abtn.red { background: #dc2626; color: white; }
+button.abtn.red:hover { background: #b91c1c; }
+.ssm.dark button.abtn.plain { background: alpha(white, .12); color: @window_fg_color; }
 button.abtn.amber { background: #d97706; }
 button.abtn.amber:hover { background: #b45309; }
 button.abtn-more { border-radius: 7px; padding: 3px 6px; min-height: 22px; }

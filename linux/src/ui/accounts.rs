@@ -10,9 +10,9 @@ use std::rc::Rc;
 pub fn show(app: &Rc<App>, parent: &adw::ApplicationWindow) {
     let dialog = adw::Dialog::builder().title("Manage accounts").content_width(620).content_height(560).build();
     let view = adw::ToolbarView::new();
-    view.add_top_bar(&adw::HeaderBar::new());
+    super::common::dialog_frame(&view, &dialog, "Your AWS accounts", "Rename a sign-in or remove the ones you no longer use.", None);
     let sc = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
-    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(12).margin_top(12).margin_bottom(12).margin_start(16).margin_end(16).build();
+    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(12).margin_top(14).margin_bottom(14).margin_start(20).margin_end(20).build();
     sc.set_child(Some(&body));
     view.set_content(Some(&sc));
     dialog.set_child(Some(&view));
@@ -22,8 +22,8 @@ pub fn show(app: &Rc<App>, parent: &adw::ApplicationWindow) {
 
 fn small_button(label: &str, destructive: bool) -> gtk::Button {
     let b = gtk::Button::builder().label(label).valign(gtk::Align::Center).build();
-    b.add_css_class("flat");
-    if destructive { b.add_css_class("destructive-action"); }
+    b.add_css_class("abtn");
+    b.add_css_class(if destructive { "red" } else { "plain" });
     b
 }
 

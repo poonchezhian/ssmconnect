@@ -15,12 +15,10 @@ struct Row { tunnel: TunnelConfig, alias: String, trust: Trust, saved: Vec<HostK
 pub fn show(app: &Rc<App>, parent: &impl IsA<gtk::Widget>) {
     let dialog = adw::Dialog::builder().title("Server identities").content_width(680).content_height(600).build();
     let view = adw::ToolbarView::new();
-    let header = adw::HeaderBar::new();
     let refresh = gtk::Button::builder().icon_name("view-refresh-symbolic").tooltip_text("Check again").build();
-    header.pack_start(&refresh);
-    view.add_top_bar(&header);
+    super::common::dialog_frame(&view, &dialog, "Server identities", "Confirm each server once, so SSH can be sure it talks to the right one.", Some(&refresh));
     let sc = gtk::ScrolledWindow::builder().hscrollbar_policy(gtk::PolicyType::Never).vexpand(true).build();
-    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).margin_top(14).margin_bottom(18).margin_start(16).margin_end(16).build();
+    let body = gtk::Box::builder().orientation(gtk::Orientation::Vertical).spacing(14).margin_top(14).margin_bottom(18).margin_start(20).margin_end(20).build();
     sc.set_child(Some(&body));
     view.set_content(Some(&sc));
     dialog.set_child(Some(&view));
@@ -76,14 +74,15 @@ fn render(app: &Rc<App>, dialog: &adw::Dialog, body: &gtk::Box, rows: Vec<Row>) 
         match r.trust {
             Trust::Unknown => {
                 let b = gtk::Button::builder().label("Check and confirm…").valign(gtk::Align::Center).sensitive(r.online).build();
-                b.add_css_class("suggested-action");
+                b.add_css_class("abtn");
                 let (a, d, bd, r2) = (app.clone(), dialog.clone(), body.clone(), r.clone());
                 b.connect_clicked(move |_| confirm_flow(&a, &d, &bd, &r2, false));
                 row.add_suffix(&b);
             }
             Trust::Trusted => {
                 let b = gtk::Button::builder().label("Forget").valign(gtk::Align::Center).tooltip_text("SSMConnect will ask you to confirm this server again next time").build();
-                b.add_css_class("flat");
+                b.add_css_class("abtn");
+                b.add_css_class("plain");
                 let (a, d, bd, r2) = (app.clone(), dialog.clone(), body.clone(), r.clone());
                 b.connect_clicked(move |_| match known_hosts::forget(&r2.alias) {
                     Ok(()) => { a.toast("Forgotten. You will be asked to confirm this server again."); a.refresh_trust(); load(&a, &d, &bd); }
@@ -93,7 +92,8 @@ fn render(app: &Rc<App>, dialog: &adw::Dialog, body: &gtk::Box, rows: Vec<Row>) 
             }
             Trust::Changed => {
                 let b = gtk::Button::builder().label("Review…").valign(gtk::Align::Center).sensitive(r.online).build();
-                b.add_css_class("destructive-action");
+                b.add_css_class("abtn");
+                b.add_css_class("red");
                 let (a, d, bd, r2) = (app.clone(), dialog.clone(), body.clone(), r.clone());
                 b.connect_clicked(move |_| confirm_flow(&a, &d, &bd, &r2, true));
                 row.add_suffix(&b);

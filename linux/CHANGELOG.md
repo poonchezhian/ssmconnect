@@ -4,11 +4,16 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
-## [Unreleased]
+## [1.0.0] - 2026-10-20
+The first stable release of the native Linux edition, now looking like the Windows app.
 ### Changed
-- **The dashboard and the setup wizard now look like the Windows edition**: a deep-teal header band with the logo (and the account switcher, or the wizard's step dots), a File / AWS / Servers / Help menu bar, three equal status pills, organization chips, server cards with a coloured status strip, an operating-system badge, an environment tag, a status pill and the action buttons, and a bottom bar with Start / Stop / Restart and *Add / change servers*. Light and dark themes both work.
-### Changed
-- The release workflow also replaces the installers kept in `dist/` and syncs the GitHub wiki after publishing (`scripts/update-dist.sh`, `scripts/sync-wiki.sh`), so the last manual steps of a release are gone.
+- **The whole interface now follows the Windows edition**: a deep-teal header band with the logo (and the account switcher, or the setup wizard's step dots), a File / AWS / Servers / Help menu bar, three equal status pills, organization chips, server cards with a coloured status strip, an operating-system badge, an environment tag, a status pill and the action buttons, and a bottom bar with Start / Stop / Restart and *Add / change servers*. The Manage accounts and Server identities dialogs have the same band and bottom bar. Light and dark themes both work.
+- Releases from 1.0.0 on are regular releases (not pre-releases). They are never marked *Latest*, so the Windows release keeps that place and the Windows download link keeps working.
+### Fixed
+- Removing a `~/.local` copy no longer leaves a stale icon cache behind. The leftover `icon-theme.cache` still listed the app icon, so after switching to the package install every icon of SSMConnect was drawn blank; uninstall now rebuilds or deletes that cache.
+### Added
+- **Stable download names**, like the Windows app's `SSMConnect-Setup-x64.exe`: the rolling `linux-latest` release always holds the newest `ssmconnect-linux-x86_64.bin`, `.rpm` and `ssmconnect-linux-amd64.deb` (with signatures and checksums).
+- The release workflow also replaces the installers kept in `dist/` and syncs the GitHub wiki after publishing, so the last manual steps of a release are gone.
 
 ## [0.6.4] - 2026-10-20
 ### Added

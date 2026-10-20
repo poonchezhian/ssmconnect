@@ -4,7 +4,7 @@ SSH and Remote Desktop to AWS servers **with port 22 closed**, through AWS Syste
 This is the native Linux edition (Rust, GTK 4 + libadwaita). The Windows edition lives in the same repository (everything outside the `linux/` folder); the two editions
 are kept side by side on the `main` branch and are released separately.
 
-> **Status:** early release (0.x). Try it against a non-production server first.
+> **Status:** 1.0, the first stable release of the native Linux edition. As with any tool that opens connections to your servers, try it against a non-production server first.
 
 ## How it works
 

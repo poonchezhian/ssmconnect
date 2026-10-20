@@ -1,6 +1,6 @@
 # Linux edition: pending features
 
-What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 0.6.4).
+What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 1.0.0).
 Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Features

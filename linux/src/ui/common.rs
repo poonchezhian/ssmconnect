@@ -160,3 +160,24 @@ impl Band {
         self.dots.queue_draw();
     }
 }
+
+/// The shared frame of the small dialogs (accounts, server identities): teal title bar, band with a title and a line below, a bottom bar with a *Done* button.
+pub fn dialog_frame(view: &adw::ToolbarView, dialog: &adw::Dialog, title: &str, sub: &str, header_extra: Option<&gtk::Button>) {
+    ssm_style(view);
+    let header = adw::HeaderBar::new();
+    header.add_css_class("ssm-top");
+    header.set_show_title(false);
+    if let Some(b) = header_extra { header.pack_start(b); }
+    view.add_top_bar(&header);
+    let band = Band::new(0);
+    band.set(title, sub, 0);
+    view.add_top_bar(&band.root);
+    let bar = gtk::Box::new(gtk::Orientation::Horizontal, 10);
+    bar.add_css_class("ssm-bar");
+    let done = gtk::Button::builder().label("Done").hexpand(true).halign(gtk::Align::End).width_request(110).build();
+    done.add_css_class("main");
+    let d = dialog.clone();
+    done.connect_clicked(move |_| { d.close(); });
+    bar.append(&done);
+    view.add_bottom_bar(&bar);
+}

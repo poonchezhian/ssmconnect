@@ -37,7 +37,7 @@ On the AWS side nothing changes: each server needs the SSM Agent and an instance
 
 ## Good to know
 
-- Early release (0.x). Try it against a non-production server first.
+- Version 1.0 and later are stable releases. Try it against a non-production server first, as with any tool that opens connections.
 - There is no system-tray icon (GNOME removed tray support). Closing the window keeps your connections open; **Quit** in the menu closes them.
 - The Windows edition is unchanged and keeps its own releases (`vX.Y.Z`). Linux releases are tagged `linux-vX.Y.Z`.
 

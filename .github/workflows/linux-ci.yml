@@ -141,7 +141,7 @@ jobs:
           # a release made by hand (for example with locally signed files) is left alone
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then echo "Release $GITHUB_REF_NAME already exists; not touching it."; exit 0; fi
           pre=""; case "${GITHUB_REF_NAME}" in linux-v0.*) pre="--prerelease" ;; esac
-          gh release create "$GITHUB_REF_NAME" release-files/* --title "SSMConnect for Linux ${GITHUB_REF_NAME#linux-v}" --notes-file notes.md $pre
+          gh release create "$GITHUB_REF_NAME" release-files/* --title "SSMConnect for Linux ${GITHUB_REF_NAME#linux-v}" --notes-file notes.md --latest=false $pre
           echo "PUBLISH_REPO=1" >> "$GITHUB_ENV"
       - name: Update repository (dnf + apt on GitHub Pages)
         if: env.PUBLISH_REPO == '1' && env.GNUPGHOME != ''
