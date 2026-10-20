@@ -10,7 +10,7 @@ Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 - [ ] Add the release-notes entry (wiki) and the README size figure automatically instead of by hand. The first release that exercises the new CI steps (`dist/` swap and wiki sync) should be checked.
 
 ## Packaging (not in Windows, found while comparing)
-- [ ] The `.rpm` is built on Fedora (`fc44`). Check it installs on RHEL/Rocky/openSUSE, or build for each, or drop them from the install table.
+- [ ] The `.rpm` is built on Fedora (`fc44`) and needs glibc 2.39+. Tested 2026-10-20 in containers: installs on AlmaLinux 10 (RHEL 10) and openSUSE Tumbleweed; fails on AlmaLinux 9 (RHEL 9, also needs libadwaita 1.5) and openSUSE Leap 15.6 (glibc). Decide whether RHEL 9 / Leap are worth a separate build (older toolchain, newer libadwaita unavailable there).
 - [ ] Only `x86_64`/`amd64`. No arm64 build.
 
 ## Done recently

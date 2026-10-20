@@ -21,7 +21,7 @@ and the file manager via `sftp://`.
 Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/releases) (tags named `linux-vX.Y.Z`). Full steps, updating and removing: [Install and update](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update).
 
 - **Any distribution:** `sh ./ssmconnect-X.Y.Z-linux-x86_64.bin` (or double-click it). The installer fetches what is missing (GTK 4/libadwaita, OpenSSH from your distribution; the AWS CLI and Session Manager plugin from Amazon, signature checked), then installs SSMConnect for you (`~/.local`) or for all users (`--system`). Running a newer `.bin` updates in place and keeps your settings; `ssmconnect uninstall` removes it.
-- **Fedora, RHEL, openSUSE:** `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm`
+- **Fedora 40+, RHEL 10 and clones, openSUSE Tumbleweed:** `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm` (`sudo zypper install` on openSUSE). Older releases (RHEL 9, Leap 15.6) are too old for the rpm: use the `.bin` installer there if their GTK 4 / libadwaita allow, or a newer release.
 - **Debian 13+, Ubuntu 24.04+, Mint 22+:** `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb`
 - **From source:** `cargo build --release --locked`, then `target/release/ssmconnect --installer`
 
