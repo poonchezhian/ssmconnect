@@ -4,6 +4,10 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [Unreleased]
+### Added
+- **Stable download names**, like the Windows app's `SSMConnect-Setup-x64.exe`: the rolling `linux-latest` release always holds the newest `ssmconnect-linux-x86_64.bin`, `.rpm` and `ssmconnect-linux-amd64.deb` (with signatures and checksums), so a download link never goes stale. The release workflow refreshes it (`scripts/publish-stable.sh`).
+
 ## [0.6.3] - 2026-10-20
 ### Fixed
 - Removing a `~/.local` copy no longer leaves a stale icon cache behind. The leftover `icon-theme.cache` still listed the app icon, so after switching to the package install every icon of SSMConnect was drawn blank; uninstall now rebuilds or deletes that cache.

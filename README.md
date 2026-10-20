@@ -10,7 +10,7 @@ SSMConnect is a small app for developers who just want to connect. A short wizar
 
 **[SSMConnect for Windows (SSMConnect-Setup-x64.exe)](https://github.com/poonchezhian/ssmconnect/releases/latest/download/SSMConnect-Setup-x64.exe)**: one file, 64-bit Windows 10 or later. It installs the AWS CLI and the Session Manager plugin too if they are missing.
 
-**[SSMConnect for Linux (ssmconnect-0.6.3-linux-x86_64.bin)](https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.3/ssmconnect-0.6.3-linux-x86_64.bin)** (10.8 MB): one signed installer for 64-bit Linux desktops, also as `.rpm` and `.deb`. See [Linux edition](#linux-edition) below.
+**[SSMConnect for Linux (ssmconnect-linux-x86_64.bin)](https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-x86_64.bin)** (about 11 MB): one signed installer for 64-bit Linux desktops, always the newest version. Also as [`.rpm`](https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-x86_64.rpm) and [`.deb`](https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-amd64.deb). See [Linux edition](#linux-edition) below.
 
 All versions, release notes and checksums are on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases). Windows versions are tagged `vX.Y.Z` (the release marked **Latest**); Linux versions are tagged `linux-vX.Y.Z` and titled **SSMConnect for Linux**. Installed copies check for updates by themselves ([Windows](https://github.com/poonchezhian/ssmconnect/wiki/Getting-Started#keeping-it-up-to-date), [Linux](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update#update)).
 
@@ -37,7 +37,7 @@ Run `SSMConnect-Setup-x64.exe`, accept the Apache 2.0 licence, and leave **Open 
 
 ## Linux edition
 
-A native Linux app (GTK 4 + libadwaita, written in Rust; no Wine, Mono or Electron) that does the same job, with **Files** over SFTP and **Remote Desktop** for Windows servers. Run the `.bin` (`sh ./ssmconnect-0.6.3-linux-x86_64.bin`) or install the `.rpm` / `.deb`; the `.rpm` and `.deb` also add a signed update repository, so new releases arrive with `dnf upgrade` / `apt upgrade`.
+A native Linux app (GTK 4 + libadwaita, written in Rust; no Wine, Mono or Electron) that does the same job, with **Files** over SFTP and **Remote Desktop** for Windows servers. Run the `.bin` (`sh ./ssmconnect-linux-x86_64.bin`) or install the `.rpm` / `.deb`; the `.rpm` and `.deb` also add a signed update repository, so new releases arrive with `dnf upgrade` / `apt upgrade`.
 
 Every Linux release file has a detached OpenPGP signature (`.asc`) from the *SSMConnect Linux Releases* key, fingerprint
 

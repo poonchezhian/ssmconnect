@@ -2,9 +2,9 @@
 
 ## Install
 
-1. Download `ssmconnect-0.6.3-linux-x86_64.bin` and its `.asc` signature from the [Linux 0.6.3 release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-v0.6.3).
+1. Download `ssmconnect-linux-x86_64.bin` and its `.asc` signature from the [newest Linux release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-latest).
 2. [Check the signature](#check-the-signature-before-you-run-it).
-3. Run it: open a terminal in the download folder and type `sh ./ssmconnect-0.6.3-linux-x86_64.bin` (or right-click the file, make it executable, and double-click it).
+3. Run it: open a terminal in the download folder and type `sh ./ssmconnect-linux-x86_64.bin` (or right-click the file, make it executable, and double-click it).
 
 The installer window has four steps:
 
@@ -17,6 +17,8 @@ No display (for example over ssh)? The same questions are asked in the terminal.
 
 If GTK 4 or libadwaita are missing, the file itself offers to install them from your distribution before the window opens.
 
+The same file names always point at the newest version: `ssmconnect-linux-x86_64.bin`, `ssmconnect-linux-x86_64.rpm` and `ssmconnect-linux-amd64.deb` (each with a `.asc` signature) under [releases/download/linux-latest](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-latest). Older versions stay on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases).
+
 ## Check the signature before you run it
 
 Every file is signed with the **SSMConnect Linux Releases** key:
@@ -27,13 +29,13 @@ Key ID       7483B1F8DBE4A803   (ed25519, expires 2028-10-15)
 ```
 
 ```
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.3/ssmconnect-0.6.3-linux-x86_64.bin
-curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-v0.6.3/ssmconnect-0.6.3-linux-x86_64.bin.asc
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-x86_64.bin
+curl -LO https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-x86_64.bin.asc
 curl -LO https://raw.githubusercontent.com/poonchezhian/ssmconnect/linux/linux/SIGNING-KEY.asc
 
 gpg --import SIGNING-KEY.asc
 gpg --fingerprint 7483B1F8DBE4A803
-gpg --verify ssmconnect-0.6.3-linux-x86_64.bin.asc ssmconnect-0.6.3-linux-x86_64.bin
+gpg --verify ssmconnect-linux-x86_64.bin.asc ssmconnect-linux-x86_64.bin
 ```
 
 - The fingerprint that `gpg --fingerprint` prints must match the one above, character for character.

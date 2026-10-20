@@ -153,3 +153,9 @@ jobs:
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git config --global url."https://x-access-token:${GH_TOKEN}@github.com/".insteadOf "https://github.com/"
           cd linux && scripts/publish-repo.sh ../release-files
+      - name: Stable file names (the linux-latest release)
+        if: env.PUBLISH_REPO == '1' && env.GNUPGHOME != ''
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GH_TOKEN: ${{ github.token }}
+        run: cd linux && scripts/publish-stable.sh ../release-files
