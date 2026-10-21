@@ -4,6 +4,10 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [Unreleased]
+### Fixed
+- Publishing the Flatpak repository from a CI artifact: the empty folders an OSTree repository needs are restored, and the repository index and app-store data are signed when they are made (so `flatpak update` does not complain about missing signatures).
+
 ## [1.1.0] - 2026-10-21
 Every vendor-supported release of the main distributions is covered.
 ### Added

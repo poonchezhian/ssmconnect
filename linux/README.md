@@ -44,7 +44,7 @@ Key ID       7483B1F8DBE4A803      (ed25519, created 2026-10-16, expires 2028-10
 ```
 
 The public key is [`SIGNING-KEY.asc`](SIGNING-KEY.asc). Step by step: [check the signature](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update#check-the-signature-before-you-run-it).
-For maintainers: `scripts/sign-release.sh` signs by hand; in GitHub Actions the release job signs with the repository secret `LINUX_SIGNING_KEY` and publishes the update repository.
+For maintainers: `scripts/sign-release.sh` signs by hand. In GitHub Actions the release job signs everything (including the rpm itself) with the repository secret `LINUX_SIGNING_KEY`, then publishes the dnf, apt and Flatpak repositories on GitHub Pages (`scripts/publish-repo.sh`), refreshes the stable `linux-latest` downloads (`scripts/publish-stable.sh`), replaces the installers in `dist/` (`scripts/update-dist.sh`) and syncs the wiki (`scripts/sync-wiki.sh`). The same scripts can be run by hand if a step fails.
 
 ## Settings and server identities, all in windows
 
@@ -122,7 +122,9 @@ The 0.0.x releases were a Python prototype; 0.1.0 onward is the native Rust edit
 ```
 scripts/bump-version.sh patch        # or minor / major; edit CHANGELOG.md; commit
 git tag -a linux-v0.1.4 -m "SSMConnect for Linux 0.1.4"
-git push origin linux --follow-tags  # the workflow builds and publishes the release
+git push origin linux --follow-tags  # the workflow builds, signs and publishes the release, the repositories, dist/ and the wiki
 ```
+
+Still by hand for each release: the entry in `../wiki/Linux-Release-Notes.md` and, if it changed a lot, the size shown in `../README.md`. Linux releases are never marked *Latest* (that place belongs to the Windows release).
 
 Licensed under the Apache License 2.0 (see `../LICENSE`).
