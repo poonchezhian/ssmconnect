@@ -9,6 +9,5 @@ state=${SSMCONNECT_FLATPAK_STATE:-$HOME/.cache/ssmconnect-flatpak}
 mkdir -p "$state" dist-linux
 extra=(); [ "${1:-}" = "--install" ] && extra+=(--user --install)
 flatpak-builder --force-clean --disable-rofiles-fuse --default-branch=stable --state-dir="$state" --repo=dist-linux/flatpak-repo "${extra[@]}" "$state/build" packaging/flatpak/$id.yml
-flatpak build-update-repo dist-linux/flatpak-repo >/dev/null
 flatpak build-bundle dist-linux/flatpak-repo "dist-linux/ssmconnect-$ver-x86_64.flatpak" $id stable
 echo "Built dist-linux/ssmconnect-$ver-x86_64.flatpak"

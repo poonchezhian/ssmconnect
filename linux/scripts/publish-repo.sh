@@ -56,6 +56,8 @@ if [ -n "$fp" ] && [ -d "$fp" ] && command -v flatpak >/dev/null; then
   # a downloaded CI artifact has lost its empty folders, which ostree needs
   for d in refs/heads refs/mirrors refs/remotes tmp objects; do mkdir -p "$site/flatpak/repo/$d"; done
   gh_home=${GNUPGHOME:-$HOME/.gnupg}
+  # the repository index (summary) and the app-store data are made again here so that they carry our signature
+  rm -rf "$site/flatpak/repo"/refs/heads/appstream "$site/flatpak/repo"/refs/heads/appstream2 "$site/flatpak/repo"/summary* "$site/flatpak/repo"/summaries
   flatpak build-sign --gpg-sign="$key" --gpg-homedir="$gh_home" "$site/flatpak/repo" io.github.poonchezhian.SSMConnect stable
   flatpak build-update-repo --gpg-sign="$key" --gpg-homedir="$gh_home" --prune "$site/flatpak/repo" >/dev/null
   gpgkey=$(gpg --export "$key" | base64 -w0)
