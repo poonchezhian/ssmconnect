@@ -53,6 +53,8 @@ fp=${SSMCONNECT_FLATPAK_REPO:-}; [ -z "$fp" ] && [ -d "$src/flatpak-repo" ] && f
 if [ -n "$fp" ] && [ -d "$fp" ] && command -v flatpak >/dev/null; then
   echo "== flatpak repository"
   mkdir -p "$site/flatpak"; cp -a "$fp" "$site/flatpak/repo"
+  # a downloaded CI artifact has lost its empty folders, which ostree needs
+  for d in refs/heads refs/mirrors refs/remotes tmp objects; do mkdir -p "$site/flatpak/repo/$d"; done
   gh_home=${GNUPGHOME:-$HOME/.gnupg}
   flatpak build-sign --gpg-sign="$key" --gpg-homedir="$gh_home" "$site/flatpak/repo" io.github.poonchezhian.SSMConnect stable
   flatpak build-update-repo --gpg-sign="$key" --gpg-homedir="$gh_home" --prune "$site/flatpak/repo" >/dev/null
