@@ -20,12 +20,13 @@ and the file manager via `sftp://`.
 
 Download from the [Releases page](https://github.com/poonchezhian/ssmconnect/releases) (tags named `linux-vX.Y.Z`). Full steps, updating and removing: [Install and update](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update).
 
-- **Any distribution:** `sh ./ssmconnect-X.Y.Z-linux-x86_64.bin` (or double-click it). The installer fetches what is missing (GTK 4/libadwaita, OpenSSH from your distribution; the AWS CLI and Session Manager plugin from Amazon, signature checked), then installs SSMConnect for you (`~/.local`) or for all users (`--system`). Running a newer `.bin` updates in place and keeps your settings; `ssmconnect uninstall` removes it.
-- **Fedora 40+, RHEL 10 and clones, openSUSE Tumbleweed:** `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm` (`sudo zypper install` on openSUSE). Older releases (RHEL 9, Leap 15.6) are too old for the rpm: use the `.bin` installer there if their GTK 4 / libadwaita allow, or a newer release.
-- **Debian 13+, Ubuntu 24.04+, Mint 22+:** `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb`
+- **Fedora 43+, RHEL / Alma / Rocky 10, openSUSE Leap 16 and Tumbleweed:** `sudo dnf install ./ssmconnect-X.Y.Z-1.x86_64.rpm` (`sudo zypper install` on openSUSE)
+- **Ubuntu 24.04+, Debian 13, Mint 22:** `sudo apt install ./ssmconnect_X.Y.Z_amd64.deb`
+- **RHEL / Alma / Rocky 8 and 9, Ubuntu 22.04, Mint 21, Debian 12** (GTK 4 / libadwaita too old for the packages): the Flatpak, `flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref`
+- **The `.bin` installer** (where the packages above would work): `sh ./ssmconnect-X.Y.Z-linux-x86_64.bin`. It fetches what is missing (GTK 4 / libadwaita and OpenSSH from your distribution; the AWS CLI and Session Manager plugin from Amazon, signature checked), then installs for you (`~/.local`) or for all users (`--system`). A newer `.bin` updates in place; `ssmconnect uninstall` removes it.
 - **From source:** `cargo build --release --locked`, then `target/release/ssmconnect --installer`
 
-Package installs also add the signed SSMConnect update repository (`https://poonchezhian.github.io/ssmconnect/`), so new releases arrive with `dnf upgrade` / `apt upgrade` / your software centre.
+Package installs also add the signed SSMConnect update repository (`https://poonchezhian.github.io/ssmconnect/`), so new releases arrive with `dnf upgrade` / `apt upgrade` / your software centre; the Flatpak updates with `flatpak update`. Which file for which system, in detail: [Install and update](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update#which-file-is-for-my-system).
 
 ## Requirements
 
@@ -110,7 +111,7 @@ cargo test                           # unit + integration tests, with a fake AWS
 cargo run                            # the app
 cargo run --example e2e_wizard       # drives the real wizard end to end (needs a display)
 cargo run --example screenshot -- out.png dark   # renders the window to a PNG
-packaging/build-bin.sh               # the .bin installer; also build-deb.sh and build-rpm.sh
+packaging/build-bin.sh               # the .bin installer; also build-deb.sh, build-rpm.sh and build-flatpak.sh
 ```
 
 ## Versioning

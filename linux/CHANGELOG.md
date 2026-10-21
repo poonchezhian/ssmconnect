@@ -4,6 +4,14 @@ All notable changes to the Linux edition of SSMConnect. Versions follow [Semanti
 Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with the Windows edition's `vX.Y.Z` tags.
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
+## [1.1.0] - 2026-10-21
+Every vendor-supported release of the main distributions is covered.
+### Added
+- **A Flatpak** for the supported releases whose GTK 4 / libadwaita are too old for the native packages: RHEL, AlmaLinux and Rocky Linux 8 and 9, Ubuntu 22.04, Linux Mint 21 and Debian 12. It carries its own GTK and libadwaita (the GNOME 50 runtime), reads `~/.aws` and `~/.ssh`, and runs the terminal, file manager, Remote Desktop client and ssh on the desktop through `flatpak-spawn --host` (`src/host.rs`). Install with `flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref`; `flatpak update` brings new versions. The Flatpak repository is signed with the release key and published on the same GitHub Pages site; a single-file `ssmconnect-X.Y.Z-x86_64.flatpak` (signed) is on each release, and as `ssmconnect-linux-x86_64.flatpak` on the stable `linux-latest` release.
+- `packaging/build-flatpak.sh`, a CI job that builds it, and signing and publishing of the Flatpak repository in `scripts/publish-repo.sh`.
+### Changed
+- The documentation says which file is for which release (a table in the wiki's *Install and update* page), and lists only vendor-supported releases. Tested by installing in clean containers: Fedora 43 and 44, AlmaLinux 10, openSUSE Leap 16.0 and Tumbleweed (`.rpm`), Ubuntu 24.04 and 26.04, Debian 13 (`.deb`).
+
 ## [1.0.0] - 2026-10-20
 The first stable release of the native Linux edition, now looking like the Windows app.
 ### Changed

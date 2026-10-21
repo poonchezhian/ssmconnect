@@ -9,7 +9,7 @@ use crate::{applog, paths};
 use base64::Engine;
 use sha2::{Digest, Sha256};
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostKey { pub key_type: String, pub b64: String }
@@ -52,13 +52,13 @@ fn parse_key_line(line: &str) -> Option<HostKey> {
 pub fn stored(alias: &str) -> Vec<HostKey> {
     let p = path();
     if !p.exists() { return vec![]; }
-    let Ok(out) = Command::new("ssh-keygen").args(["-F", alias, "-f"]).arg(&p).stdin(Stdio::null()).stderr(Stdio::null()).output() else { return vec![] };
+    let Ok(out) = crate::host::command("ssh-keygen").args(["-F", alias, "-f"]).arg(&p).stdin(Stdio::null()).stderr(Stdio::null()).output() else { return vec![] };
     String::from_utf8_lossy(&out.stdout).lines().filter_map(parse_key_line).collect()
 }
 
 /// Asks the server (through its open tunnel) for its identity.
 pub fn scan(port: u16) -> Result<Vec<HostKey>, String> {
-    let out = Command::new("ssh-keyscan").args(["-T", "10", "-t", "ed25519,ecdsa,rsa", "-p", &port.to_string(), "127.0.0.1"]).stdin(Stdio::null()).output()
+    let out = crate::host::command("ssh-keyscan").args(["-T", "10", "-t", "ed25519,ecdsa,rsa", "-p", &port.to_string(), "127.0.0.1"]).stdin(Stdio::null()).output()
         .map_err(|e| format!("Could not run ssh-keyscan ({e}). Is the OpenSSH client installed?"))?;
     let keys: Vec<HostKey> = String::from_utf8_lossy(&out.stdout).lines().filter_map(parse_key_line).collect();
     if keys.is_empty() { Err("The server did not answer. Wait until its status is green (Connected), then try again.".into()) } else { Ok(keys) }
@@ -99,7 +99,7 @@ pub fn forget(alias: &str) -> Result<(), String> {
     let p = path();
     if !p.exists() { return Ok(()); }
     backup();
-    let out = Command::new("ssh-keygen").args(["-R", alias, "-f"]).arg(&p).stdin(Stdio::null()).output().map_err(|e| format!("Could not run ssh-keygen ({e})."))?;
+    let out = crate::host::command("ssh-keygen").args(["-R", alias, "-f"]).arg(&p).stdin(Stdio::null()).output().map_err(|e| format!("Could not run ssh-keygen ({e})."))?;
     let _ = std::fs::remove_file(p.with_file_name("known_hosts.old"));   // ssh-keygen leaves its own copy; ours is kept as known_hosts.ssmconnect.bak
     if out.status.success() { applog::info(&format!("Forgot the identity of {alias}")); Ok(()) } else { Err("Could not remove the saved identity.".into()) }
 }

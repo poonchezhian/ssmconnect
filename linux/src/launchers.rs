@@ -1,7 +1,7 @@
 //! Opens the tools a person connects with: a terminal running ssh, the file manager over sftp://, a Remote Desktop client,
 //! plus detection of what is installed so the dashboard only offers what works.
 
-use crate::aws_cli::which;
+use crate::host::{command, which};
 use crate::models::TunnelConfig;
 use crate::applog;
 use std::os::unix::process::CommandExt;
@@ -66,7 +66,7 @@ fn open_in_terminal(program: &str, alias: &str) -> Result<(), String> {
     let (exe, args) = find_terminal().ok_or("No terminal program was found. Install one (for example GNOME Terminal), or use 'Copy ssh command'.")?;
     let script = format!("{program} {}; status=$?; if [ $status -ne 0 ]; then echo; read -r -p '{program} ended with an error. Press Enter to close.' _; fi", sh_quote(alias));
     applog::info(&format!("Opening terminal: {exe} {} bash -c ({program} {alias})", args.join(" ")));
-    spawn(Command::new(&exe).args(&args).arg("bash").arg("-c").arg(script))
+    spawn(command(&exe).args(&args).arg("bash").arg("-c").arg(script))
 }
 
 /// Runs a command to the end (at most `secs`), returning (success, stderr text).
@@ -109,21 +109,21 @@ pub fn open_files(user: &str, alias: &str) -> Result<(), String> {
     let url = format!("sftp://{user}@{alias}/");
     if prefs().files_mode == "terminal" { return open_sftp_terminal(alias); }
     let kde = std::env::var("XDG_CURRENT_DESKTOP").is_ok_and(|d| d.to_uppercase().contains("KDE"));
-    if kde && which("dolphin").is_some() { return spawn(Command::new("dolphin").arg(&url)); }   // KIO speaks SFTP itself
+    if kde && which("dolphin").is_some() { return spawn(command("dolphin").arg(&url)); }   // KIO speaks SFTP itself
     if which("gio").is_some() {
         // `gio open sftp://...` alone does nothing ("not mounted"), so log in first, then open the mounted folder
-        let (ok, err) = run_limited(Command::new("gio").args(["mount", &url]), 60);
+        let (ok, err) = run_limited(command("gio").args(["mount", &url]), 60);
         if !ok && !err.to_lowercase().contains("already mounted") {
             applog::warn(&format!("gio mount {url}: {err}"));
             if let Some(p) = sftp_problem(&err) { return Err(p); }
         } else {
-            let (opened, err2) = run_limited(Command::new("gio").args(["open", &url]), 20);
+            let (opened, err2) = run_limited(command("gio").args(["open", &url]), 20);
             if opened { return Ok(()); }
             applog::warn(&format!("gio open {url}: {err2}"));
         }
     }
     for fm in ["dolphin", "thunar", "nemo", "caja", "nautilus", "pcmanfm"] {
-        if which(fm).is_some() { return spawn(Command::new(fm).arg(&url)); }
+        if which(fm).is_some() { return spawn(command(fm).arg(&url)); }
     }
     open_sftp_terminal(alias)
 }
@@ -132,7 +132,7 @@ pub fn open_files(user: &str, alias: &str) -> Result<(), String> {
 pub fn open_rdp(t: &TunnelConfig) -> Result<(), String> {
     let client = find_rdp_client().ok_or("No Remote Desktop client was found. Install Remmina or FreeRDP (xfreerdp), then try again.")?;
     let user = if t.user_name.trim().is_empty() { "Administrator" } else { t.user_name.trim() };
-    let mut cmd = Command::new(client);
+    let mut cmd = command(client);
     if client == "remmina" { cmd.args(["-c", &format!("rdp://{user}@127.0.0.1:{}", t.local_port)]); }
     else { cmd.args([format!("/v:127.0.0.1:{}", t.local_port), format!("/u:{user}"), "/cert:tofu".into(), "/dynamic-resolution".into(), "+clipboard".into()]); }
     spawn(&mut cmd)
@@ -140,7 +140,7 @@ pub fn open_rdp(t: &TunnelConfig) -> Result<(), String> {
 
 pub fn open_url(url: &str) {
     if !(url.starts_with("https://") || url.starts_with("http://")) { return; }
-    let _ = if which("xdg-open").is_some() { spawn(Command::new("xdg-open").arg(url)) } else { spawn(Command::new("gio").args(["open", url])) };
+    let _ = if which("xdg-open").is_some() { spawn(command("xdg-open").arg(url)) } else { spawn(command("gio").args(["open", url])) };
 }
 
-pub fn open_file(path: &str) { if which("xdg-open").is_some() { let _ = spawn(Command::new("xdg-open").arg(path)); } }
+pub fn open_file(path: &str) { if which("xdg-open").is_some() { let _ = spawn(command("xdg-open").arg(path)); } }

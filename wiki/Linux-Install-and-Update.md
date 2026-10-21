@@ -1,5 +1,29 @@
 # Linux: Install, Update and Remove
 
+## Which file is for my system?
+
+| Your system (vendor-supported releases, checked 2026-10) | Use |
+|---|---|
+| Fedora 43 and 44 | the `.rpm` |
+| RHEL, AlmaLinux, Rocky Linux 10 | the `.rpm` |
+| openSUSE Leap 16.0 and Tumbleweed | the `.rpm` |
+| Ubuntu 24.04 and 26.04, Linux Mint 22 | the `.deb` |
+| Debian 13 | the `.deb` |
+| RHEL, AlmaLinux, Rocky Linux 8 and 9 | the Flatpak |
+| Ubuntu 22.04, Linux Mint 21 | the Flatpak |
+| Debian 12 | the Flatpak |
+
+The native packages and the `.bin` installer need GTK 4.12+, libadwaita 1.5+ and glibc 2.39+, which the first five rows ship. The older releases in the last three rows cannot run them, so the Flatpak brings its own GTK and libadwaita (the GNOME runtime). Releases a vendor no longer supports (for example Fedora 42, Debian 11, openSUSE Leap 15.6) are not covered.
+
+**Flatpak** (needs the `flatpak` package, which is in the standard repositories of all three families; on Ubuntu 22.04 and Mint 21 it is already there or one `sudo apt install flatpak` away):
+
+```
+flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref
+flatpak run io.github.poonchezhian.SSMConnect
+```
+
+`flatpak update` brings new versions. The Flatpak keeps its own settings (`~/.var/app/io.github.poonchezhian.SSMConnect`), reads your `~/.aws` and `~/.ssh`, and opens the terminal, file manager, Remote Desktop client and ssh on your desktop. A single-file copy, `ssmconnect-linux-x86_64.flatpak` (with `.asc` signature), is on every release page; install it with `flatpak install --user ssmconnect-linux-x86_64.flatpak`.
+
 ## Install
 
 1. Download `ssmconnect-linux-x86_64.bin` and its `.asc` signature from the [newest Linux release](https://github.com/poonchezhian/ssmconnect/releases/tag/linux-latest).

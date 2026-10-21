@@ -1,0 +1,39 @@
+# Flatpak for the distributions whose GTK 4 / libadwaita are too old for the native .rpm / .deb (RHEL 8 and 9, Ubuntu 22.04, Debian 12, Mint 21):
+# the GNOME runtime brings its own. Build:  packaging/build-flatpak.sh
+app-id: io.github.poonchezhian.SSMConnect
+runtime: org.gnome.Platform
+runtime-version: '50'
+sdk: org.gnome.Sdk
+sdk-extensions:
+  - org.freedesktop.Sdk.Extension.rust-stable
+command: ssmconnect
+finish-args:
+  - --share=network                  # the SSM tunnels and AWS calls
+  - --share=ipc
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --device=dri
+  - --filesystem=~/.ssh              # ~/.ssh/ssmconnect.conf and known_hosts, shared with the ssh on the host
+  - --filesystem=~/.aws              # the AWS profiles and sign-in cache the AWS CLI uses
+  - --filesystem=xdg-download:ro     # where key files usually are
+  - --filesystem=xdg-documents:ro
+  - --talk-name=org.freedesktop.Flatpak   # runs the terminal, file manager, Remote Desktop client and ssh on the host
+  - --talk-name=org.kde.StatusNotifierWatcher
+  - --own-name=org.kde.StatusNotifierItem-2-1
+  - --own-name=org.kde.StatusNotifierItem-2-2
+build-options:
+  append-path: /usr/lib/sdk/rust-stable/bin
+  build-args:
+    - --share=network                # cargo downloads the crates (this is a self-hosted build, not Flathub's offline one)
+  env:
+    CARGO_HOME: /run/build/ssmconnect/cargo
+modules:
+  - name: ssmconnect
+    buildsystem: simple
+    build-commands:
+      - cargo build --release --locked
+      - target/release/ssmconnect --install-files --prefix /app
+    sources:
+      - type: dir
+        path: ../..
+        skip: [target, dist-linux, legacy-python, .git]

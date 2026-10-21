@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 1.1.0
+- **Flatpak for older systems.** RHEL, AlmaLinux and Rocky Linux 8 and 9, Ubuntu 22.04, Linux Mint 21 and Debian 12 are still supported by their vendors but ship a GTK 4 / libadwaita too old for the `.rpm` and `.deb`. The Flatpak brings its own: `flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref`, and `flatpak update` keeps it current. See [Install and Update](Linux-Install-and-Update#which-file-is-for-my-system) for which file fits which system.
+
 ## 1.0.0
 - **Looks like the Windows app.** The dashboard, setup wizard, *Manage accounts* and *Server identities* now share the Windows edition's look: the teal header band, menu bar, status pills, server cards with a coloured strip, and the bottom bar with Start, Stop, Restart and *Add / change servers*. Light and dark themes both work.
 - Fixed blank icons after removing a per-user copy of SSMConnect (a stale icon cache).

@@ -26,7 +26,7 @@ More in the wiki: [Getting Started](https://github.com/poonchezhian/ssmconnect/w
 
 ## Requirements
 
-- Windows 10 / Server 2016 or later (64-bit), or a Linux desktop with GTK 4.12+ and libadwaita 1.5+ (Ubuntu 24.04+, Fedora 40+, Debian 13+ and similar)
+- Windows 10 / Server 2016 or later (64-bit), or a Linux desktop that its vendor still supports (Fedora, RHEL family, openSUSE, Ubuntu, Debian, Mint; older releases use the Flatpak)
 - [AWS CLI v2](https://awscli.amazonaws.com/AWSCLIV2.msi) and the Session Manager plugin: both installers fetch them from Amazon (signature checked) if they are missing
 - An AWS sign-in (company sign-in or access keys; the wizard sets it up) and PuTTY, WinSCP and/or MobaXterm on Windows
 - On the AWS side, each server needs the SSM Agent and an instance role such as `AmazonSSMManagedInstanceCore`; your own role needs `ec2:DescribeInstances`, `ssm:DescribeInstanceInformation` and `ssm:StartSession`. See [For IT Teams](https://github.com/poonchezhian/ssmconnect/wiki/For-IT-Teams).
@@ -37,7 +37,7 @@ Run `SSMConnect-Setup-x64.exe`, accept the Apache 2.0 licence, and leave **Open 
 
 ## Linux edition
 
-A native Linux app (GTK 4 + libadwaita, written in Rust; no Wine, Mono or Electron) that does the same job, with **Files** over SFTP and **Remote Desktop** for Windows servers. Run the `.bin` (`sh ./ssmconnect-linux-x86_64.bin`) or install the `.rpm` / `.deb`; the `.rpm` and `.deb` also add a signed update repository, so new releases arrive with `dnf upgrade` / `apt upgrade`.
+A native Linux app (GTK 4 + libadwaita, written in Rust; no Wine, Mono or Electron) that does the same job, with **Files** over SFTP and **Remote Desktop** for Windows servers. Install the `.rpm` (Fedora, RHEL family 10, openSUSE) or `.deb` (Ubuntu 24.04+, Debian 13, Mint 22), or run the `.bin`; RHEL family 8 and 9, Ubuntu 22.04, Debian 12 and Mint 21 use the Flatpak (`flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref`). The packages add a signed update repository, so new releases arrive with `dnf upgrade` / `apt upgrade` / `flatpak update`. [Which file for which system](https://github.com/poonchezhian/ssmconnect/wiki/Linux-Install-and-Update#which-file-is-for-my-system).
 
 Every Linux release file has a detached OpenPGP signature (`.asc`) from the *SSMConnect Linux Releases* key, fingerprint
 

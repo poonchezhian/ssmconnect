@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Keeps the stable-name downloads of the newest Linux release on the rolling `linux-latest` release, the way the Windows app has SSMConnect-Setup-x64.exe:
-#   https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-x86_64.bin   (also ...-x86_64.rpm, ...-amd64.deb, each with .asc, and SHA256SUMS.txt)
+#   https://github.com/poonchezhian/ssmconnect/releases/download/linux-latest/ssmconnect-linux-x86_64.bin   (also ...-x86_64.rpm, ...-amd64.deb, ...-x86_64.flatpak, each with .asc, and SHA256SUMS.txt)
 # (releases/latest/download/ belongs to the Windows release, so Linux uses its own fixed tag.)
 #
 #   scripts/publish-stable.sh [DIR]     DIR holds the versioned, signed release files (default: dist-linux). Needs gh, gpg, the release key in the keyring.
@@ -18,6 +18,8 @@ out=$(mktemp -d); trap 'rm -rf "$out"' EXIT
 cp "$bin" "$out/ssmconnect-linux-x86_64.bin"; cp "$deb" "$out/ssmconnect-linux-amd64.deb"; cp "$rpm" "$out/ssmconnect-linux-x86_64.rpm"
 # the signature covers the file's bytes, so the versioned .asc is valid for the renamed copy too
 cp "$bin.asc" "$out/ssmconnect-linux-x86_64.bin.asc"; cp "$deb.asc" "$out/ssmconnect-linux-amd64.deb.asc"; cp "$rpm.asc" "$out/ssmconnect-linux-x86_64.rpm.asc"
+fpk=$(newest 'ssmconnect-*.flatpak')
+if [ -n "$fpk" ] && [ -e "$fpk.asc" ]; then cp "$fpk" "$out/ssmconnect-linux-x86_64.flatpak"; cp "$fpk.asc" "$out/ssmconnect-linux-x86_64.flatpak.asc"; fi
 cp SIGNING-KEY.asc "$out/"
 (cd "$out" && sha256sum ssmconnect-linux-* | grep -v '\.asc' > SHA256SUMS.txt)
 gpg --batch --yes --armor --detach-sign --local-user "$key" --output "$out/SHA256SUMS.txt.asc" "$out/SHA256SUMS.txt"

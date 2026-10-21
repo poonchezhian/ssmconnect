@@ -28,7 +28,7 @@ Details, updating and removing: [Install and Update](Linux-Install-and-Update). 
 
 | Needed | Where it comes from |
 |---|---|
-| A desktop Linux with GTK 4.12+ and libadwaita 1.5+ (Ubuntu 24.04+, Fedora 40+, Debian 13+ and similar) | your distribution (the installer offers to install them) |
+| A desktop Linux that its vendor still supports: Fedora 43+, RHEL family 8 to 10, openSUSE Leap 16 / Tumbleweed, Ubuntu 22.04+, Debian 12+, Mint 21+ (see [which file is for my system](Linux-Install-and-Update#which-file-is-for-my-system)) | your distribution; older releases use the Flatpak, which brings its own GTK 4 and libadwaita |
 | OpenSSH client | your distribution |
 | AWS CLI v2 and the Session Manager plugin | Amazon, straight from Amazon's servers, signature checked |
 | Remmina or FreeRDP (only for Windows servers) | your distribution (optional) |

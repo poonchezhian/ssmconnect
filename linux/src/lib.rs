@@ -10,6 +10,7 @@ pub mod cli;
 pub mod config_store;
 pub mod desktop;
 pub mod discovery;
+pub mod host;
 pub mod installer;
 pub mod installer_text;
 pub mod key_finder;

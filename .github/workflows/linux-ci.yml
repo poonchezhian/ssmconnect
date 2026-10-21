@@ -98,9 +98,34 @@ jobs:
           name: ssmconnect-linux-rpm
           path: linux/dist-linux/*.rpm
 
+  # For the distributions whose GTK 4 / libadwaita are too old for the native packages (RHEL 8 and 9, Ubuntu 22.04, Debian 12, Mint 21).
+  # A failure here must not stop a release of the other packages.
+  flatpak:
+    needs: test
+    runs-on: ubuntu-24.04
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - name: flatpak-builder and the GNOME runtime
+        working-directory: .
+        run: |
+          sudo apt-get update && sudo apt-get install -y flatpak flatpak-builder
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0 || true
+          flatpak remote-add --user --if-not-exists flathub https://dl.flathub.org/repo/flathub.flatpakrepo
+          flatpak install --user -y flathub org.gnome.Platform//50 org.gnome.Sdk//50 org.freedesktop.Sdk.Extension.rust-stable//25.08
+      - run: packaging/build-flatpak.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ssmconnect-linux-flatpak
+          path: linux/dist-linux/*.flatpak
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-repo
+          path: linux/dist-linux/flatpak-repo
+
   release:
-    if: startsWith(github.ref, 'refs/tags/linux-v')
-    needs: [package, rpm]
+    if: startsWith(github.ref, 'refs/tags/linux-v') && !cancelled() && needs.package.result == 'success' && needs.rpm.result == 'success'
+    needs: [package, rpm, flatpak]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -114,18 +139,23 @@ jobs:
           pattern: ssmconnect-linux-*
           merge-multiple: true
           path: release-files
+      - uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: flatpak-repo
+          path: flatpak-repo
       - name: Checksums, signatures and release notes (from the changelog)
         env:
           SIGNING_KEY: ${{ secrets.LINUX_SIGNING_KEY }}
         run: |
           cp linux/SIGNING-KEY.asc release-files/
           if [ -n "$SIGNING_KEY" ]; then
-            sudo apt-get update && sudo apt-get install -y rpm createrepo-c dpkg-dev
+            sudo apt-get update && sudo apt-get install -y rpm createrepo-c dpkg-dev flatpak
             export GNUPGHOME=$(mktemp -d); chmod 700 "$GNUPGHOME"; echo "GNUPGHOME=$GNUPGHOME" >> "$GITHUB_ENV"
             printf '%s' "$SIGNING_KEY" | gpg --batch --quiet --import
             # the rpm itself is signed too (the update repository requires it), before the detached signature and the checksums are made
             for f in release-files/*.rpm; do rpmsign --addsign --define "_gpg_name FF9F45E64711710389B3F1FC7483B1F8DBE4A803" "$f"; done
-            for f in release-files/*.bin release-files/*.deb release-files/*.rpm; do [ -e "$f" ] && gpg --batch --yes --armor --detach-sign --output "$f.asc" "$f"; done
+            for f in release-files/*.bin release-files/*.deb release-files/*.rpm release-files/*.flatpak; do [ -e "$f" ] && gpg --batch --yes --armor --detach-sign --output "$f.asc" "$f"; done
           else
             echo "::warning::LINUX_SIGNING_KEY is not set: the release is published WITHOUT signatures"
           fi
@@ -148,6 +178,7 @@ jobs:
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GH_TOKEN: ${{ github.token }}
+          SSMCONNECT_FLATPAK_REPO: ${{ github.workspace }}/flatpak-repo
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"

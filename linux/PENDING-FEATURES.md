@@ -1,6 +1,6 @@
 # Linux edition: pending features
 
-What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-20 (Linux 1.0.0).
+What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-21 (Linux 1.1.0).
 Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Features
@@ -11,10 +11,11 @@ Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Packaging (not in Windows, found while comparing)
 - [ ] The `.rpm` is built on Fedora (`fc44`) and needs glibc 2.39+. Tested 2026-10-20 in containers: installs on AlmaLinux 10 (RHEL 10) and openSUSE Tumbleweed; fails on AlmaLinux 9 (RHEL 9, also needs libadwaita 1.5) and openSUSE Leap 15.6 (glibc). Decide whether RHEL 9 / Leap are worth a separate build (older toolchain, newer libadwaita unavailable there).
-- [ ] **Support every vendor-supported OS release** (deferred by the owner to a later day; checked against endoflife.date on 2026-10-20). Supported and probably fine once built/tested natively: Fedora 43/44, RHEL/Alma/Rocky 10, openSUSE Leap 16.0 and Tumbleweed, Ubuntu 24.04/26.04, Debian 13, Mint 22. Supported but libadwaita is older than the 1.5 the UI needs: RHEL/Alma/Rocky 8 and 9, Ubuntu 22.04 and Mint 21, Debian 12. Options were: native packages only for the first group; plus a Flatpak for the second; or port the UI to older libadwaita. Out of support, ignore: Leap 15.6, Fedora 42 and older, Debian 11, Ubuntu 25.10 and older non-LTS.
+- [ ] **Try the Flatpak on a real RHEL 8/9, Ubuntu 22.04 / Mint 21 and Debian 12 machine.** It is built and tested on Fedora 44 (flatpak 1.18): installs from the signed repository, finds the host's ssh, terminal, Remote Desktop client and file manager, and downloads the AWS tools. Older hosts have flatpak 1.12 to 1.14 and were not tried.
 - [ ] Only `x86_64`/`amd64`. No arm64 build.
 
 ## Done recently
+- Every vendor-supported OS release is covered: native packages tested in containers on Fedora 43/44, RHEL 10, Leap 16, Tumbleweed, Ubuntu 24.04/26.04, Debian 13; a Flatpak for RHEL 8/9, Ubuntu 22.04, Mint 21, Debian 12 (1.1.0).
 - Update repository for dnf and apt, shipped with the rpm and deb (0.6.1).
 - `.deb` and `.rpm` now build on this computer (`dpkg` and `rpm-build` installed, 2026-10-20). `/tmp` is a small RAM disk here, so build the rpm with `TMPDIR=$HOME/.cache/ssmconnect-build packaging/build-rpm.sh` (it takes about 10 minutes).
 - CI signing (the `LINUX_SIGNING_KEY` secret) works: signed rpm, detached signatures, update repository and stable `linux-latest` download names are all produced by CI (0.6.2 to 0.6.4).
