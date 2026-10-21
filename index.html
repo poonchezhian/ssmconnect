@@ -7,4 +7,5 @@
 <p><b>Debian, Ubuntu (apt)</b><br><code>sudo curl -o /usr/share/keyrings/ssmconnect-archive-keyring.asc https://poonchezhian.github.io/ssmconnect/SIGNING-KEY.asc</code><br>
 <code>echo -e "Types: deb\nURIs: https://poonchezhian.github.io/ssmconnect/deb/\nSuites: ./\nSigned-By: /usr/share/keyrings/ssmconnect-archive-keyring.asc" | sudo tee /etc/apt/sources.list.d/ssmconnect.sources</code><br>
 <code>sudo apt update &amp;&amp; sudo apt install ssmconnect</code></p>
+<p><b>Older distributions (RHEL 8 and 9, Ubuntu 22.04, Debian 12, Linux Mint 21: GTK 4 / libadwaita too old for the packages above), Flatpak</b><br><code>flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref</code><br>Updates arrive with <code>flatpak update</code>.</p>
 <p>Signing key: <a href="SIGNING-KEY.asc">SIGNING-KEY.asc</a>, fingerprint <code>FF9F 45E6 4711 7103 89B3 F1FC 7483 B1F8 DBE4 A803</code>. Check it matches before you trust it.</p>

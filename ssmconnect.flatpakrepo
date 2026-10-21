@@ -1,0 +1,6 @@
+[Flatpak Repo]
+Title=SSMConnect for Linux
+Url=https://poonchezhian.github.io/ssmconnect/flatpak/repo/
+Homepage=https://github.com/poonchezhian/ssmconnect
+Comment=SSMConnect for Linux, for distributions whose GTK 4 and libadwaita are too old for the native packages
+GPGKey=mDMEatIqdxYJKwYBBAHaRw8BAQdArtS4g/XVmP6VMih3EiLNk6jUJZB7U6ky1MR7oCJsavS0Y1NTTUNvbm5lY3QgTGludXggUmVsZWFzZXMgKHNpZ25zIHRoZSBMaW51eCBpbnN0YWxsZXJzIHB1Ymxpc2hlZCBvbiBHaXRIdWIpIDxwb29uY2hlemhpYW5AZ21haWwuY29tPoiZBBMWCgBBFiEE/59F5kcRcQOJs/H8dIOx+NvkqAMFAmrSKncCGwMFCQPCZwAFCwkIBwICIgIGFQoJCAsCBBYCAwECHgcCF4AACgkQdIOx+NvkqAO43gEAivM9Y3+nlW8IRPLY6P+Vft1346MujuyTwayItqiadf0BANwligHFxQzlN3r4kRvLVLSWOgPoN1ft4ViavFCwTBUI

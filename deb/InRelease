@@ -5,16 +5,16 @@ Origin: SSMConnect
 Label: SSMConnect for Linux
 Suite: stable
 Codename: ssmconnect
-Date: Tue, 20 Oct 2026 13:38:35 UTC
+Date: Wed, 21 Oct 2026 08:09:54 UTC
 Architectures: amd64
 Description: SSMConnect for Linux update repository
 SHA256:
- 71caaa5c1f4ca737d616c5f7c6b39ac7f684e2cafd862ef170b2944aa74f6538 881 Packages
- 06a34b2745ca63ba0ed77152e2d3d2bff906439bec33c0ee0b53ea01a05d5cac 591 Packages.gz
+ 8705c75aa43086e0a27af855b1ebaf2db4558d77112e08bd50392f5b00d11921 881 Packages
+ 2d0befd4d033bb0f4c8f84de64eadcc43c05a797a544b1bf9a650c83ea495f32 590 Packages.gz
 -----BEGIN PGP SIGNATURE-----
 
-iHUEARYKAB0WIQT/n0XmRxFxA4mz8fx0g7H42+SoAwUCatdu2wAKCRB0g7H42+So
-A32WAQDZiOdmZDEct/T7pULRCWCCCvW0OmRZbcHCakll31RYNAD/b95ABE8DBgCr
-9FUiYQraVccc2x8afu8e95uJFxSzZQY=
-=7gbA
+iHUEARYKAB0WIQT/n0XmRxFxA4mz8fx0g7H42+SoAwUCathzUgAKCRB0g7H42+So
+A4bPAP9T2VJg2vJghHV6PCxVA9LapRHKpxDQvjzKrHEyiaQj4gD6AoBl+Ti18289
++ZJnK/abUg4afdJVfSuJhAudHFQMTQg=
+=WSr7
 -----END PGP SIGNATURE-----
