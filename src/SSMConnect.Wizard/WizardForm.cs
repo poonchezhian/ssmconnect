@@ -196,9 +196,9 @@ public sealed class WizardForm : Form
         _pluginDetail.Text = plugin ?? "Needed to open the secure tunnel.";
 
         var tools = new List<string>();
-        if (File.Exists(@"C:\Program Files\PuTTY\putty.exe") || File.Exists(@"C:\Program Files (x86)\PuTTY\putty.exe")) tools.Add("PuTTY");
-        if (File.Exists(@"C:\Program Files (x86)\WinSCP\WinSCP.exe") || File.Exists(@"C:\Program Files\WinSCP\WinSCP.exe")) tools.Add("WinSCP");
-        if (Directory.Exists(Path.GetDirectoryName(ToolConfigurator.MobaIniPath)!)) tools.Add("MobaXterm");
+        if (ToolDetector.PuttyInstalled) tools.Add("PuTTY");
+        if (ToolDetector.WinScpInstalled) tools.Add("WinSCP");
+        if (ToolDetector.MobaXtermInstalled) tools.Add("MobaXterm");
         _toolsStatus.Text = "SSH tools found on this PC: " + (tools.Count == 0 ? "none yet (sessions are still saved and appear once you install one)" : string.Join(", ", tools));
 
         var ok = aws != null && plugin != null;
@@ -1072,7 +1072,10 @@ public sealed class WizardForm : Form
             if (_moba.Checked)
             {
                 if (Process.GetProcessesByName("MobaXterm").Length > 0) Log("MobaXterm is running - close it and run Apply again to add sessions.");
-                else Log(ToolConfigurator.ConfigureMobaXterm(all) ? "MobaXterm sessions saved (backup: MobaXterm.ini.ssmconnect.bak)." : "MobaXterm not found - skipped.");
+                else if (ToolConfigurator.ConfigureMobaXterm(all)) Log("MobaXterm sessions saved (backup: MobaXterm.ini.ssmconnect.bak).");
+                else Log(ToolDetector.MobaXtermInstalled
+                    ? "MobaXterm is installed but has not been opened yet. Open it once, close it, then run Apply again to add sessions."
+                    : "MobaXterm not found - skipped.");
             }
 
             var live = StatusStore.Load();

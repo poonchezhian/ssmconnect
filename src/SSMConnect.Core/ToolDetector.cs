@@ -29,8 +29,45 @@ public static class ToolDetector
     public static bool WinScpInstalled =>
         RegKey(Registry.CurrentUser, @"Software\Martin Prikryl\WinSCP 2") || WinScpPath != null;
 
-    public static bool MobaXtermInstalled =>
-        File.Exists(ToolConfigurator.MobaIniPath) || FindExe("MobaXterm.exe", @"Mobatek\MobaXterm\MobaXterm.exe", @"MobaXterm\MobaXterm.exe") != null;
+    public static string? MobaXtermPath =>
+        FindExe("MobaXterm.exe", @"Mobatek\MobaXterm\MobaXterm.exe", @"MobaXterm\MobaXterm.exe") ?? FindFromUninstallKeys("MobaXterm");
+
+    public static bool MobaXtermInstalled => File.Exists(ToolConfigurator.MobaIniPath) || MobaXtermPath != null;
+
+    /// <summary>Looks the program up in Windows' "installed programs" list, so it is found wherever it was installed.</summary>
+    static string? FindFromUninstallKeys(string namePrefix)
+    {
+        try
+        {
+            foreach (var (hive, view) in new[]
+            {
+                (RegistryHive.LocalMachine, RegistryView.Registry64), (RegistryHive.LocalMachine, RegistryView.Registry32),
+                (RegistryHive.CurrentUser, RegistryView.Registry64), (RegistryHive.CurrentUser, RegistryView.Registry32),
+            })
+            {
+                using var root = RegistryKey.OpenBaseKey(hive, view);
+                using var list = root.OpenSubKey(@"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall");
+                if (list == null) continue;
+                foreach (var name in list.GetSubKeyNames())
+                {
+                    using var k = list.OpenSubKey(name);
+                    if (k?.GetValue("DisplayName") is not string display || !display.StartsWith(namePrefix, StringComparison.OrdinalIgnoreCase)) continue;
+                    if (k.GetValue("InstallLocation") is string loc && loc.Trim().Length > 0)
+                    {
+                        var f = Path.Combine(loc.Trim().Trim('"'), namePrefix + ".exe");
+                        if (File.Exists(f)) return f;
+                    }
+                    if (k.GetValue("DisplayIcon") is string icon)
+                    {
+                        var f = icon.Split(',')[0].Trim().Trim('"');
+                        if (f.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(f)) return f;
+                    }
+                }
+            }
+        }
+        catch { }
+        return null;
+    }
 
     static bool RegKey(RegistryKey root, string path)
     {
