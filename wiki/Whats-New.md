@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.47
+- **File transfer signs in for you.** Pick a server and it signs in as that server's default user with its saved key, with nothing to type. To act as another user, pick or type the user, enter its password and click **Switch user**. A switched user signs in with a password only; the key is used for the default user alone.
+- **Same organization only.** The file transfer window links servers of one top-level organization (company sign-in) at a time. Choose the organization at the top; both sides list only its servers. Copying to a server outside it is not possible.
+- **This PC is no longer a side** of the file transfer window, so it is strictly server to server.
+
 ## 1.0.46
 - **A proper file browser: Servers > File transfer.** Two side-by-side panes. Each pane is a server or **This PC**. Pick the login user on each side (type any user and click Connect to switch), open folders, select files or folders, and press Copy in either direction. Progress, Stop, and a warning before anything is replaced.
 - **Server to server and to or from your PC** with the same window. The data passes through your PC, so the servers never need to reach each other. No extra tools needed.

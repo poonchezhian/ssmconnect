@@ -39,41 +39,6 @@ public abstract class FsBase : IDisposable
         items.OrderByDescending(e => e.IsDir).ThenBy(e => e.Name, StringComparer.OrdinalIgnoreCase).ToList();
 }
 
-/// <summary>The folders and drives of this PC.</summary>
-public sealed class LocalFs : FsBase
-{
-    public override string Label => "This PC";
-    public override bool IsLocal => true;
-    public override string Home => Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-
-    public override List<FsEntry> List(string path)
-    {
-        if (string.IsNullOrEmpty(path))
-        {
-            return DriveInfo.GetDrives().Where(d => { try { return d.IsReady; } catch { return false; } })
-                .Select(d => new FsEntry(d.Name.TrimEnd('\\'), d.Name, true, 0, DateTime.MinValue)).ToList();
-        }
-        var list = new List<FsEntry>();
-        foreach (var fi in new DirectoryInfo(path).EnumerateFileSystemInfos())
-        {
-            try
-            {
-                var isDir = (fi.Attributes & FileAttributes.Directory) != 0;
-                list.Add(new FsEntry(fi.Name, fi.FullName, isDir, isDir ? 0 : ((FileInfo)fi).Length, fi.LastWriteTime));
-            }
-            catch { /* skip entries that cannot be read */ }
-        }
-        return Sorted(list);
-    }
-
-    public override string Parent(string path) => Path.GetDirectoryName(path.TrimEnd('\\', '/')) ?? "";
-    public override string Combine(string dir, string name) => Path.Combine(dir, name);
-    public override Stream OpenRead(string path) => new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite, 81920);
-    public override Stream OpenWrite(string path) => new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 81920);
-    public override void MakeDir(string path) => Directory.CreateDirectory(path);
-    public override bool Exists(string path) => File.Exists(path) || Directory.Exists(path);
-}
-
 /// <summary>A server, reached over SFTP through its local SSM tunnel port.</summary>
 public sealed class SftpFs : FsBase
 {
@@ -87,29 +52,37 @@ public sealed class SftpFs : FsBase
     public override bool IsLocal => false;
     public override string Home => _home;
 
-    /// <summary>Signs in as <paramref name="user"/> with the server's key and/or a password. Throws when it cannot.</summary>
+    /// <summary>
+    /// Signs in to the server. The server's default user (the one saved with the server) always uses the saved key.
+    /// Any other user signs in with a password only; no key is tried for it.
+    /// </summary>
     public static SftpFs Open(TunnelConfig t, string user, string? password)
     {
+        var isDefault = string.Equals(user, t.UserName, StringComparison.Ordinal);
         var methods = new List<AuthenticationMethod>();
-        string? keyProblem = null;
-        var key = t.KeyFile;
-        if (!string.IsNullOrWhiteSpace(key))
+        if (isDefault)
         {
-            if (key!.EndsWith(".ppk", StringComparison.OrdinalIgnoreCase)) keyProblem = "This server's key is a .ppk file, which cannot be used here. Edit the server to use the .pem key, or enter a password.";
-            else if (!File.Exists(key)) keyProblem = "The key file " + key + " was not found.";
-            else
-            {
-                try
-                {
-                    var pk = string.IsNullOrEmpty(password) ? new PrivateKeyFile(key) : new PrivateKeyFile(key, password);
-                    methods.Add(new PrivateKeyAuthenticationMethod(user, pk));
-                }
-                catch (Exception ex) { keyProblem = "The key file could not be read (" + ex.Message + ")."; }
-            }
+            var key = t.KeyFile;
+            if (string.IsNullOrWhiteSpace(key)) throw new InvalidOperationException("No key file is saved for this server. Edit the server in SSMConnect and choose its key.");
+            if (key!.EndsWith(".ppk", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("This server's key is a .ppk file, which the file browser cannot read. Edit the server and choose the .pem version of the key.");
+            if (!File.Exists(key)) throw new InvalidOperationException("The key file " + key + " was not found.");
+            PrivateKeyFile pk;
+            try { pk = new PrivateKeyFile(key); }
+            catch (Exception ex) { throw new InvalidOperationException("The key file could not be read (" + ex.Message + ")."); }
+            methods.Add(new PrivateKeyAuthenticationMethod(user, pk));
         }
-        else keyProblem = "No key file is saved for this server.";
-        if (!string.IsNullOrEmpty(password)) methods.Add(new PasswordAuthenticationMethod(user, password));
-        if (methods.Count == 0) throw new InvalidOperationException(keyProblem ?? "Nothing to sign in with. Enter a password.");
+        else
+        {
+            if (string.IsNullOrEmpty(password)) throw new InvalidOperationException($"Enter the password for {user}.");
+            methods.Add(new PasswordAuthenticationMethod(user, password));
+            var ki = new KeyboardInteractiveAuthenticationMethod(user);
+            ki.AuthenticationPrompt += (_, e) =>
+            {
+                foreach (var pr in e.Prompts)
+                    if (pr.Request.Contains("assword", StringComparison.OrdinalIgnoreCase)) pr.Response = password;
+            };
+            methods.Add(ki);
+        }
 
         var info = new ConnectionInfo("127.0.0.1", t.LocalPort, user, methods.ToArray()) { Timeout = TimeSpan.FromSeconds(20) };
         var client = new SftpClient(info) { KeepAliveInterval = TimeSpan.FromSeconds(30) };

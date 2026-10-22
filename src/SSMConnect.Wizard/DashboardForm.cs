@@ -401,7 +401,11 @@ public sealed class DashboardForm : Form
     {
         var ssh = _cfg.Tunnels.Where(x => !x.IsRdp && x.Enabled).ToList();
         if (ssh.Count == 0) { MessageBox.Show(this, "Set up at least one Linux server in SSMConnect first.", "SSMConnect"); return; }
-        using var dlg = new TransferDialog(ssh, p => ActiveListeners().Contains(p), preselect);
+        // Servers are grouped by their top-level organization (the company sign-in), and only one group is linked at a time.
+        var orgs = ssh.GroupBy(x => PKey(x.Profile))
+            .Select(g => new TransferDialog.Org(g.Key, PLabel(g.First().Profile), g.ToList()))
+            .OrderBy(o => o.Label, StringComparer.OrdinalIgnoreCase).ToList();
+        using var dlg = new TransferDialog(orgs, p => ActiveListeners().Contains(p), preselect);
         dlg.ShowDialog(this);
     }
 

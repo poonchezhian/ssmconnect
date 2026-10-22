@@ -19,19 +19,20 @@ using SSMConnect.Core;
 namespace SSMConnect.Wizard;
 
 /// <summary>
-/// One side of the file browser: pick This PC or a server, pick the login user, then browse its folders.
+/// One side of the file browser: pick a server (signed in as its default user with the saved key), optionally switch to
+/// another user with a password, then browse its folders.
 /// </summary>
 sealed class FilePane : Panel
 {
-    const string ThisPc = "This PC";
     static readonly string[] CommonUsers = { "ec2-user", "ubuntu", "admin", "root", "centos", "fedora", "rocky", "ssm-user" };
 
-    readonly List<TunnelConfig> _servers;
+    List<TunnelConfig> _servers;
     readonly Func<int, bool> _isUp;
     readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+    bool _loadingServers;
     readonly ComboBox _user = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 120 };
-    readonly TextBox _pass = new() { Width = 120, UseSystemPasswordChar = true, PlaceholderText = "password (optional)" };
-    readonly Button _connect = new() { Text = "Connect", AutoSize = true, MinimumSize = new Size(90, 30), Tag = "primary" };
+    readonly TextBox _pass = new() { Width = 130, UseSystemPasswordChar = true, PlaceholderText = "password" };
+    readonly Button _connect = new() { Text = "Switch user", AutoSize = true, MinimumSize = new Size(110, 30), Tag = "primary" };
     readonly Button _up = new() { Text = "Up", AutoSize = true, MinimumSize = new Size(52, 30) };
     readonly Button _refresh = new() { Text = "Refresh", AutoSize = true, MinimumSize = new Size(76, 30) };
     readonly Button _newFolder = new() { Text = "New folder", AutoSize = true, MinimumSize = new Size(96, 30) };
@@ -41,20 +42,18 @@ sealed class FilePane : Panel
     readonly List<FsEntry> _entries = new();
 
     public FsBase? Fs { get; private set; }
+    public TunnelConfig? Server => _server.SelectedIndex >= 0 && _server.SelectedIndex < _servers.Count ? _servers[_server.SelectedIndex] : null;
     public string CurrentPath { get; private set; } = "";
     public event Action? Changed;
 
-    public FilePane(IEnumerable<TunnelConfig> servers, Func<int, bool> isUp, string defaultChoice)
+    public FilePane(Func<int, bool> isUp)
     {
-        _servers = servers.ToList();
+        _servers = new List<TunnelConfig>();
         _isUp = isUp;
         Dock = DockStyle.Fill;
         BackColor = Color.White;
         Padding = new Padding(8);
 
-        _server.Items.Add(ThisPc);
-        foreach (var s in _servers) _server.Items.Add(s.Name);
-        _server.SelectedIndex = Math.Max(0, _server.Items.IndexOf(defaultChoice));
         _user.Items.AddRange(CommonUsers);
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Margin = new Padding(0) };
@@ -89,8 +88,10 @@ sealed class FilePane : Panel
         Controls.Add(nav);
         Controls.Add(top);
 
-        _server.SelectedIndexChanged += (_, _) => OnServerChosen();
-        _connect.Click += async (_, _) => await ConnectAsync();
+        _server.SelectedIndexChanged += async (_, _) => { if (_loadingServers) return; OnServerChosen(); await ConnectAsync(auto: true); };
+        _user.TextChanged += (_, _) => UpdateUserState();
+        _user.SelectedIndexChanged += (_, _) => UpdateUserState();
+        _connect.Click += async (_, _) => await ConnectAsync(auto: false);
         _up.Click += async (_, _) => { if (Fs != null) await GoAsync(Fs.Parent(CurrentPath)); };
         _refresh.Click += async (_, _) => await GoAsync(CurrentPath);
         _path.KeyDown += async (_, e) => { if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; await GoAsync(_path.Text.Trim()); } };
@@ -102,8 +103,31 @@ sealed class FilePane : Panel
         };
         _newFolder.Click += async (_, _) => await NewFolderAsync();
         _list.SelectedIndexChanged += (_, _) => Changed?.Invoke();
-        OnServerChosen();
         SetEnabledState();
+    }
+
+    /// <summary>Fills the server list (the servers of one organization) and signs in to <paramref name="pick"/> as its default user.</summary>
+    public async Task SetServersAsync(IEnumerable<TunnelConfig> servers, TunnelConfig? pick)
+    {
+        _loadingServers = true;
+        CloseFs();
+        _servers = servers.ToList();
+        _server.Items.Clear();
+        foreach (var s in _servers) _server.Items.Add(s.Name);
+        _server.SelectedIndex = pick != null && _servers.Contains(pick) ? _servers.IndexOf(pick) : (_servers.Count > 0 ? 0 : -1);
+        _loadingServers = false;
+        OnServerChosen();
+        if (_servers.Count > 0) await ConnectAsync(auto: true);
+    }
+
+    bool IsDefaultUser => Server is { } t && string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal);
+
+    void UpdateUserState()
+    {
+        var def = IsDefaultUser;
+        _pass.Enabled = Server != null && !def && _connect.Enabled;
+        _connect.Text = def ? "Reconnect" : "Switch user";
+        if (def) _pass.Text = "";
     }
 
     static Control Wrap(Control c) { c.Margin = new Padding(0, 2, 8, 6); return c; }
@@ -137,21 +161,16 @@ sealed class FilePane : Panel
 
     void OnServerChosen()
     {
-        var idx = _server.SelectedIndex - 1;
-        var isPc = idx < 0;
-        _user.Enabled = !isPc;
-        _pass.Enabled = !isPc;
-        if (!isPc)
+        CloseFs();
+        _pass.Text = "";
+        if (Server is { } t)
         {
-            var t = _servers[idx];
             if (!_user.Items.Contains(t.UserName)) _user.Items.Insert(0, t.UserName);
             _user.Text = t.UserName;
+            _status.Text = "Signing in as " + t.UserName + " with the saved key ...";
         }
-        else _user.Text = "";
-        _pass.Text = "";
-        CloseFs();
-        _connect.Text = isPc ? "Open" : "Connect";
-        _status.Text = isPc ? "Click Open to browse this PC." : "Choose the user to sign in as, then click Connect.";
+        else { _user.Text = ""; _status.Text = "No servers in this organization."; }
+        UpdateUserState();
         SetEnabledState();
         Changed?.Invoke();
     }
@@ -174,57 +193,53 @@ sealed class FilePane : Panel
     /// <summary>Locks the pane while a copy is running.</summary>
     public void SetBusy(bool busy)
     {
-        _server.Enabled = _connect.Enabled = !busy;
-        _user.Enabled = !busy && _server.SelectedIndex > 0;
-        _pass.Enabled = !busy && _server.SelectedIndex > 0;
+        _server.Enabled = _connect.Enabled = _user.Enabled = !busy;
         var on = !busy && Fs != null;
         _up.Enabled = _refresh.Enabled = _newFolder.Enabled = _path.Enabled = _list.Enabled = on;
+        UpdateUserState();
     }
 
-    async Task ConnectAsync()
+    async Task ConnectAsync(bool auto)
     {
         CloseFs();
-        var idx = _server.SelectedIndex - 1;
+        var t = Server;
+        if (t == null) return;
         _connect.Enabled = false;
         try
         {
-            if (idx < 0)
+            var user = _user.Text.Trim();
+            if (user.Length == 0) { MessageBox.Show(FindForm(), "Enter the user to sign in as.", "Copy files"); return; }
+            if (!_isUp(t.LocalPort))
             {
-                Fs = new LocalFs();
-                _status.Text = "This PC";
+                _status.Text = "Not connected yet. Start connections on the dashboard, then click Reconnect.";
+                if (!auto) MessageBox.Show(FindForm(), $"\"{t.Name}\" is not connected yet. Click \"Start connections\" on the dashboard and wait until it turns green.", "Copy files");
+                return;
             }
-            else
-            {
-                var t = _servers[idx];
-                var user = _user.Text.Trim();
-                if (user.Length == 0) { MessageBox.Show(FindForm(), "Enter the user to sign in as.", "Copy files"); return; }
-                if (!_isUp(t.LocalPort))
-                {
-                    MessageBox.Show(FindForm(), $"\"{t.Name}\" is not connected yet. Click \"Start connections\" on the dashboard and wait until it turns green.", "Copy files");
-                    return;
-                }
-                _status.Text = $"Signing in to {t.Name} as {user} ...";
-                var pw = _pass.Text;
-                var fs = await Task.Run(() => SftpFs.Open(t, user, pw));
-                Fs = fs;
-                _status.Text = $"Signed in as {user}";
-            }
+            var def = string.Equals(user, t.UserName, StringComparison.Ordinal);
+            _status.Text = def ? $"Signing in as {user} with the saved key ..." : $"Signing in as {user} with the password ...";
+            var pw = _pass.Text;
+            var fs = await Task.Run(() => SftpFs.Open(t, user, pw));
+            Fs = fs;
+            _status.Text = $"Signed in as {user}";
             SetEnabledState();
-            await GoAsync(Fs!.Home);
+            await GoAsync(fs.Home);
         }
         catch (Exception ex)
         {
             CloseFs();
             _status.Text = "Could not sign in.";
             var msg = ex.Message;
-            if (ex is Renci.SshNet.Common.SshAuthenticationException || msg.Contains("ermission denied", StringComparison.OrdinalIgnoreCase))
-                msg = "The server refused this user. Check that the user exists on that server and that your key is allowed for it. On AWS servers the user is usually ec2-user, ubuntu or admin; root is normally switched off.\n\n" + ex.Message;
+            var def = string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal);
+            if (ex is Renci.SshNet.Common.SshAuthenticationException)
+                msg = def
+                    ? "The server did not accept the saved key for this user. Check the user name and key in the server's settings.\n\n" + ex.Message
+                    : "The server refused this user and password. Check them. Some servers switch password sign-in off (PasswordAuthentication no); in that case only the default user can be used here.\n\n" + ex.Message;
             else if (ex is System.Net.Sockets.SocketException || ex is Renci.SshNet.Common.SshConnectionException)
                 msg = "Could not reach the server through its connection. Make sure it shows Connected on the dashboard.\n\n" + ex.Message;
             AppLog.Warn("File browser sign-in failed: " + ex.Message);
-            MessageBox.Show(FindForm(), msg, "Copy files");
+            if (!(auto && ex is InvalidOperationException)) MessageBox.Show(FindForm(), msg, "Copy files");
         }
-        finally { _connect.Enabled = true; SetEnabledState(); }
+        finally { _connect.Enabled = true; UpdateUserState(); SetEnabledState(); }
     }
 
     public async Task GoAsync(string path)
@@ -249,7 +264,7 @@ sealed class FilePane : Panel
                 _list.Items.Add(it);
             }
             _list.EndUpdate();
-            _status.Text = $"{list.Count} item(s)" + (fs.IsLocal ? "" : "  -  " + fs.Label);
+            _status.Text = $"{list.Count} item(s)  -  {fs.Label}";
         }
         catch (Exception ex)
         {
@@ -262,7 +277,7 @@ sealed class FilePane : Panel
     async Task NewFolderAsync()
     {
         var fs = Fs;
-        if (fs == null || (string.IsNullOrEmpty(CurrentPath) && fs.IsLocal)) return;
+        if (fs == null) return;
         var name = Prompt.Ask(FindForm(), "New folder", "Name of the new folder:", "");
         if (string.IsNullOrWhiteSpace(name)) return;
         try
@@ -275,7 +290,7 @@ sealed class FilePane : Panel
     }
 
     public List<FsEntry> Selected() => _list.SelectedIndices.Cast<int>().Where(i => i < _entries.Count).Select(i => _entries[i]).ToList();
-    public HashSet<string> NamesHere() => new(_entries.Select(e => e.Name), Fs is { IsLocal: true } ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    public HashSet<string> NamesHere() => new(_entries.Select(e => e.Name), StringComparer.Ordinal);
 
     public static string FormatSize(long b)
     {
@@ -314,8 +329,9 @@ static class Prompt
 }
 
 /// <summary>
-/// Two-pane file browser: each side is This PC or a server (and the login user on it). Select files or folders on one
-/// side and copy them to the folder open on the other side. Server-to-server copies travel through this PC.
+/// Two-pane file browser between servers of ONE organization (the top-level AWS sign-in). Each side signs in as the
+/// server's default user with its saved key; a different user can be switched to with a password. Select files or
+/// folders on one side and copy them to the folder open on the other. The data travels through this PC.
 /// </summary>
 public sealed class TransferDialog : Form
 {
@@ -326,29 +342,44 @@ public sealed class TransferDialog : Form
     readonly Label _info = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
     readonly Button _cancel = new() { Text = "Stop", AutoSize = true, MinimumSize = new Size(90, 34), Enabled = false };
     readonly Button _close = new() { Text = "Close", AutoSize = true, MinimumSize = new Size(90, 34), DialogResult = DialogResult.Cancel };
+    readonly TunnelConfig? _preselect;
+    readonly int _startOrg;
     CancellationTokenSource? _cts;
     bool _busy;
 
-    public TransferDialog(IEnumerable<TunnelConfig> servers, Func<int, bool> isUp, TunnelConfig? preselect = null)
+    /// <summary>The servers of one top-level organization.</summary>
+    public sealed record Org(string Key, string Label, List<TunnelConfig> Servers);
+
+    readonly List<Org> _orgs;
+    readonly ComboBox _orgBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+    bool _orgLoading;
+
+    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, TunnelConfig? preselect = null)
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = "Copy files between servers";
         Font = AppTheme.Body();
-        ClientSize = new Size(1180, 700);
-        MinimumSize = new Size(980, 560);
+        ClientSize = new Size(1180, 720);
+        MinimumSize = new Size(980, 580);
         StartPosition = FormStartPosition.CenterParent;
         ShowInTaskbar = false;
         BackColor = AppTheme.Page;
 
-        var ssh = servers.Where(s => !s.IsRdp).ToList();
-        var first = preselect?.Name ?? ssh.FirstOrDefault()?.Name ?? "This PC";
-        var second = ssh.FirstOrDefault(s => s.Name != first)?.Name ?? "This PC";
-        _left = new FilePane(ssh, isUp, first);
-        _right = new FilePane(ssh, isUp, second);
+        _orgs = orgs.Where(o => o.Servers.Count > 0).ToList();
+        _left = new FilePane(isUp);
+        _right = new FilePane(isUp);
+        foreach (var o in _orgs) _orgBox.Items.Add($"{o.Label}   ({o.Servers.Count} server{(o.Servers.Count == 1 ? "" : "s")})");
+        var startOrg = preselect != null ? Math.Max(0, _orgs.FindIndex(o => o.Servers.Contains(preselect))) : 0;
+        _preselect = preselect;
+        _startOrg = startOrg;
 
         var hdr = new HeaderBand { Dock = DockStyle.Top, Height = 84 };
-        hdr.Set("Copy files between servers", "Pick a server (or This PC) and a login user on each side, open the folders, select, then copy.");
+        hdr.Set("Copy files between servers", "Servers sign in with their saved key. Pick another user with a password if you need one. Only servers of the same organization can be linked.");
+
+        var orgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(22, 8, 14, 0), BackColor = AppTheme.Page };
+        orgBar.Controls.Add(new Label { Text = "Organization:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
+        orgBar.Controls.Add(_orgBox);
 
         var mid = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 120, 0, 0), BackColor = AppTheme.Page };
         _toRight.Margin = new Padding(4, 0, 4, 14); _toLeft.Margin = new Padding(4, 0, 4, 14);
@@ -373,12 +404,23 @@ public sealed class TransferDialog : Form
         footer.Controls.Add(_cancel, 2, 0);
         footer.Controls.Add(_close, 3, 0);
         _bar.Margin = new Padding(8, 10, 8, 10);
-        _info.Text = "Tip: to switch to another user on a server, change the user box and click Connect again.";
+        _info.Text = "Tip: to switch to another user, type or pick the user, enter its password and click Switch user.";
 
         Controls.Add(body);
         Controls.Add(footer);
+        Controls.Add(orgBar);
         Controls.Add(hdr);
+        orgBar.BringToFront();
+        hdr.BringToFront();
         AppTheme.Style(this);
+
+        _orgBox.SelectedIndexChanged += async (_, _) => { if (!_orgLoading) await LoadOrgAsync(_orgBox.SelectedIndex, null); };
+        Shown += async (_, _) =>
+        {
+            if (_orgs.Count == 0) return;
+            _orgLoading = true; _orgBox.SelectedIndex = _startOrg; _orgLoading = false;
+            await LoadOrgAsync(_startOrg, _preselect);
+        };
 
         _left.Changed += UpdateButtons;
         _right.Changed += UpdateButtons;
@@ -392,6 +434,14 @@ public sealed class TransferDialog : Form
             _cts?.Cancel();
         };
         UpdateButtons();
+    }
+
+    async Task LoadOrgAsync(int index, TunnelConfig? pick)
+    {
+        if (index < 0 || index >= _orgs.Count) return;
+        var o = _orgs[index];
+        var other = o.Servers.FirstOrDefault(x => x != (pick ?? o.Servers[0])) ?? o.Servers[0];
+        await Task.WhenAll(_left.SetServersAsync(o.Servers, pick ?? o.Servers[0]), _right.SetServersAsync(o.Servers, other));
     }
 
     void UpdateButtons()
@@ -417,7 +467,13 @@ public sealed class TransferDialog : Form
         var items = from.Selected();
         if (items.Count == 0) { MessageBox.Show(this, "Select the files or folders to copy first.", Text); return; }
         if (string.IsNullOrEmpty(to.CurrentPath)) { MessageBox.Show(this, "Open the folder on the other side where the files should go.", Text); return; }
-        if (ReferenceEquals(from.Fs, to.Fs) && items.Any(i => i.IsDir && (to.CurrentPath == i.FullPath || to.CurrentPath.StartsWith(i.FullPath.TrimEnd('/', '\\') + (from.Fs.IsLocal ? "\\" : "/"), StringComparison.Ordinal))))
+        var fromT = from.Server; var toT = to.Server;
+        var org = _orgBox.SelectedIndex >= 0 && _orgBox.SelectedIndex < _orgs.Count ? _orgs[_orgBox.SelectedIndex] : null;
+        if (fromT == null || toT == null || org == null || !org.Servers.Contains(fromT) || !org.Servers.Contains(toT))
+        { MessageBox.Show(this, "Files can only be copied between servers of the same organization.", Text); return; }
+        if (fromT == toT && from.CurrentPath == to.CurrentPath)
+        { MessageBox.Show(this, "The source and the destination are the same folder. Open a different folder on one side.", Text); return; }
+        if (fromT == toT && items.Any(i => i.IsDir && (to.CurrentPath == i.FullPath || to.CurrentPath.StartsWith(i.FullPath.TrimEnd('/') + "/", StringComparison.Ordinal))))
         { MessageBox.Show(this, "A folder cannot be copied into itself.", Text); return; }
 
         var src = from.Fs; var dst = to.Fs; var dstDir = to.CurrentPath;
