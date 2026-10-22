@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.3
+- **Server cards fixed.** The usage bars were hidden behind the tool buttons because the card was too short. Cards are taller and everything on them is fully visible.
+- **File transfer now matches the dashboard.** Rounded glass drop-downs, text boxes and list, a tinted selection, and a glossy progress bar replace the grey Windows controls.
+- **Nothing cut off.** The sidebar status pills use shorter text (details are in their tooltips), and the old "Ready" wording is gone from the toolbar, the colour key, the filters and the tray tip.
+
 ## 2.0.2
 - **No more "No supported authentication methods available" in PuTTY.** A green card only meant the secure tunnel was up; the login (key and user) was never checked. Now, before PuTTY, WinSCP, MobaXterm or file transfer opens, SSMConnect finds the key that belongs to the server (saved path, then its AWS key pair by fingerprint and name), tests which login user the server accepts, saves what works and refreshes the saved sessions. If no key fits, it asks you for the right key file once and remembers it. PuTTY is also started with the user and key explicitly.
 - **Usage bars instead of rings.** CPU, memory and disk show as small button-style bars with an icon and the percentage, in the same green, amber and red as the buttons. The colour key at the bottom shows them.

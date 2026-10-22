@@ -32,15 +32,15 @@ sealed class FilePane : GlassPanel
     readonly Func<TunnelConfig, IWin32Window?, Task<bool>>? _login;
     const string Placeholder = "Select the server to connect";
     readonly Label _hint = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.FromArgb(112, 128, 132), BackColor = Color.White, Text = Placeholder };
-    readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300, DropDownWidth = 480 };
+    readonly GlassSelect _server = new() { Width = 300, MutedIndex = 0 };
     bool _loadingServers;
-    readonly ComboBox _user = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 120 };
-    readonly TextBox _pass = new() { Width = 170, UseSystemPasswordChar = true, PlaceholderText = "sudo password (if asked)" };
+    readonly GlassText _user = new() { Width = 130, Chevron = true };
+    readonly GlassText _pass = new() { Width = 190, UseSystemPasswordChar = true, PlaceholderText = "sudo password (if asked)" };
     readonly Button _connect = new() { Text = "Switch user", AutoSize = true, MinimumSize = new Size(110, 30), Tag = "primary" };
     readonly Button _up = new() { Text = "Up", AutoSize = true, MinimumSize = new Size(52, 30) };
     readonly Button _refresh = new() { Text = "Refresh", AutoSize = true, MinimumSize = new Size(76, 30) };
     readonly Button _newFolder = new() { Text = "New folder", AutoSize = true, MinimumSize = new Size(96, 30) };
-    readonly TextBox _path = new() { Dock = DockStyle.Fill };
+    readonly GlassText _path = new() { Dock = DockStyle.Fill };
     readonly ListView _list = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, MultiSelect = true, HideSelection = false, BorderStyle = BorderStyle.None, BackColor = Color.White };
     readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 26, ForeColor = Color.FromArgb(94, 110, 114), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(4, 0, 0, 0) };
     readonly List<FsEntry> _entries = new();
@@ -65,14 +65,14 @@ sealed class FilePane : GlassPanel
         Margin = new Padding(0);
         _hint.Font = AppTheme.Semi(11f);
 
-        _user.Items.AddRange(CommonUsers);
+        _user.Choices.AddRange(CommonUsers);
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true, WrapContents = true, Margin = new Padding(0) };
         top.Controls.Add(Wrap(_server));
         top.Controls.Add(Wrap(_user));
         top.Controls.Add(Wrap(_pass));
         top.Controls.Add(_connect);
-        _connect.Margin = new Padding(0, 0, 0, 6);
+        _connect.Margin = new Padding(0, 2, 0, 6);
 
         var nav = new TableLayoutPanel { Dock = DockStyle.Top, Height = 38, ColumnCount = 4, RowCount = 1 };
         nav.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -83,12 +83,13 @@ sealed class FilePane : GlassPanel
         nav.Controls.Add(_path, 1, 0);
         nav.Controls.Add(_refresh, 2, 0);
         nav.Controls.Add(_newFolder, 3, 0);
-        _path.Margin = new Padding(6, 5, 6, 0);
+        _path.Margin = new Padding(6, 3, 6, 3);
 
         _list.Columns.Add("Name", 260);
         _list.Columns.Add("Size", 90, HorizontalAlignment.Right);
         _list.Columns.Add("Modified", 130);
         _list.SmallImageList = MakeIcons();
+        GlassList.Apply(_list);
         _list.ListViewItemSorter = null;
 
         var frame = new Panel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = AppTheme.Line };
@@ -103,7 +104,7 @@ sealed class FilePane : GlassPanel
 
         _server.SelectedIndexChanged += async (_, _) => { if (_loadingServers) return; OnServerChosen(); if (Server != null) await ConnectAsync(auto: true); };
         _user.TextChanged += (_, _) => UpdateUserState();
-        _user.SelectedIndexChanged += (_, _) => UpdateUserState();
+        _user.ChoicePicked += UpdateUserState;
         _connect.Click += async (_, _) => await ConnectAsync(auto: false);
         _up.Click += async (_, _) => { if (Fs != null) await GoAsync(Fs.Parent(CurrentPath)); };
         _refresh.Click += async (_, _) => await GoAsync(CurrentPath);
@@ -179,7 +180,7 @@ sealed class FilePane : GlassPanel
         _pass.Text = "";
         if (Server is { } t)
         {
-            if (!_user.Items.Contains(t.UserName)) _user.Items.Insert(0, t.UserName);
+            if (!_user.Choices.Contains(t.UserName)) _user.Choices.Insert(0, t.UserName);
             _user.Text = t.UserName;
             _status.Text = "Signing in as " + t.UserName + " with the saved key ...";
             _hint.Text = "Signing in ...";
@@ -260,7 +261,7 @@ sealed class FilePane : GlassPanel
                     _hint.Text = "Could not sign in. Pick the server again to retry.";
                     return;
                 }
-                if (wasDefault && !string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal)) { if (!_user.Items.Contains(t.UserName)) _user.Items.Insert(0, t.UserName); _user.Text = t.UserName; user = t.UserName; }
+                if (wasDefault && !string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal)) { if (!_user.Choices.Contains(t.UserName)) _user.Choices.Insert(0, t.UserName); _user.Text = t.UserName; user = t.UserName; }
             }
             var def = string.Equals(user, t.UserName, StringComparison.Ordinal);
             _status.Text = def ? $"Signing in as {user} with the saved key ..." : $"Switching to {user} with sudo ...";
@@ -386,7 +387,7 @@ public sealed class TransferDialog : Form
     readonly FilePane _left, _right;
     readonly Button _toRight = new() { Text = "Copy  ▶", AutoSize = true, MinimumSize = new Size(110, 40), Tag = "primary" };
     readonly Button _toLeft = new() { Text = "◀  Copy", AutoSize = true, MinimumSize = new Size(110, 40), Tag = "primary" };
-    readonly ProgressBar _bar = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 1000, Style = ProgressBarStyle.Continuous };
+    readonly GlassProgress _bar = new() { Dock = DockStyle.Fill, Minimum = 0, Maximum = 1000 };
     readonly Label _info = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleLeft, AutoEllipsis = true };
     readonly Button _cancel = new() { Text = "Stop", AutoSize = true, MinimumSize = new Size(90, 34), Enabled = false };
     readonly Button _close = new() { Text = "Close", AutoSize = true, MinimumSize = new Size(90, 34), DialogResult = DialogResult.Cancel };
@@ -402,7 +403,7 @@ public sealed class TransferDialog : Form
     List<Org> _orgs = new();
     readonly Func<int, bool> _isUp;
     readonly Button _refreshOrgs = new() { Text = "Refresh", AutoSize = true, MinimumSize = new Size(90, 30) };
-    readonly ComboBox _orgBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
+    readonly GlassSelect _orgBox = new() { Width = 320 };
     bool _orgLoading;
 
     public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, Func<TunnelConfig, string> serverLabel, TunnelConfig? preselect = null, string? startOrgKey = null, Func<TunnelConfig, Task<bool>>? ensureOpen = null, Func<TunnelConfig, IWin32Window?, Task<bool>>? ensureLogin = null)
@@ -429,6 +430,7 @@ public sealed class TransferDialog : Form
 
         var orgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(22, 8, 14, 0), BackColor = AppTheme.Page };
         orgBar.Controls.Add(new Label { Text = "Organization:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
+        _orgBox.Margin = new Padding(0, 2, 0, 0);
         orgBar.Controls.Add(_orgBox);
         _refreshOrgs.Margin = new Padding(8, 0, 0, 0);
         orgBar.Controls.Add(_refreshOrgs);

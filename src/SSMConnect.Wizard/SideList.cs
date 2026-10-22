@@ -179,7 +179,6 @@ sealed class LegendBar : Control
             x += d + 7 * s + w + 22 * s;
         }
         Item(CardLevel.Green, "Connected");
-        Item(CardLevel.Blue, "Ready");
         Item(CardLevel.Amber, "Signing in or connecting");
         Item(CardLevel.Red, "Stopped after 3 tries");
         Item(CardLevel.Grey, "Switched off");

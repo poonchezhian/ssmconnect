@@ -55,7 +55,7 @@ public sealed class DashboardForm : Form
     readonly SideList _side = new() { Dock = DockStyle.Fill };
     readonly Label _orgTitle = new() { AutoSize = false, AutoEllipsis = true, Font = new Font("Segoe UI Semibold", 16f), ForeColor = AppTheme.Ink };
     readonly Label _orgSub = new() { AutoSize = false, AutoEllipsis = true, ForeColor = Color.FromArgb(84, 100, 106) };
-    readonly TextBox _search = new() { PlaceholderText = "Search servers" };
+    readonly GlassText _search = new() { PlaceholderText = "Search servers" };
     readonly Button _btnSignIn = new() { Text = "Sign in again" }, _btnUsage = new() { Text = "Refresh usage" };
     readonly Button _btnDisconnect = new() { Text = "Stop connections" }, _btnAdd = new() { Text = "Add / change servers..." };
     readonly LegendBar _legend = new() { Dock = DockStyle.Bottom, Height = 38 };
@@ -257,7 +257,7 @@ public sealed class DashboardForm : Form
             _btnSignIn.SetBounds(x - (int)(190 * f), top, (int)(190 * f), bh); x = _btnSignIn.Left - gap;
             _btnUsage.SetBounds(x - (int)(130 * f), top, (int)(130 * f), bh); x = _btnUsage.Left - gap;
             var sw = Math.Min((int)(220 * f), Math.Max((int)(120 * f), x - m - (int)(240 * f)));
-            _search.SetBounds(x - sw, top + (bh - _search.Height) / 2, sw, _search.Height); x = _search.Left - gap;
+            var sh = (int)(32 * f); _search.SetBounds(x - sw, top + (bh - sh) / 2, sw, sh); x = _search.Left - gap;
             var tw = Math.Max((int)(120 * f), x - m);
             _orgTitle.SetBounds(m, (int)(10 * f), tw, (int)(34 * f));
             _orgSub.SetBounds(m, (int)(48 * f), Math.Max((int)(200 * f), toolbar.ClientSize.Width - 2 * m), (int)(24 * f));
@@ -489,7 +489,7 @@ public sealed class DashboardForm : Form
             return st == TunnelStates.Ready || st == TunnelStates.Connected;
         }
         if (!ssh.Any(x => Avail(x.LocalPort)))
-        { MessageBox.Show(this, "No servers are available right now. Sign in (Sign in again) until the cards show Ready, then try again.", "SSMConnect"); return; }
+        { MessageBox.Show(this, "No servers are available right now. Sign in (Sign in again) until the cards turn green, then try again.", "SSMConnect"); return; }
         // Servers are grouped by their top-level organization (the company sign-in), and only one group is linked at a time.
         var orgs = ssh.GroupBy(x => PKey(x.Profile))
             .Select(g => new TransferDialog.Org(g.Key, PLabel(g.First().Profile), g.ToList()))
@@ -789,7 +789,7 @@ public sealed class DashboardForm : Form
 
         string tip = overall switch
         {
-            Level.Green => $"SSMConnect: {connected} connected, {up - connected} ready",
+            Level.Green => $"SSMConnect: {connected} connected",
             Level.Red => $"SSMConnect: attention needed ({up} of {total} available)",
             Level.Grey => "SSMConnect: connections switched off",
             _ => total == 0 ? "SSMConnect: no servers set up" : $"SSMConnect: {up} of {total} available, connecting...",
@@ -829,7 +829,6 @@ public sealed class DashboardForm : Form
         {
             new("all", "All servers", mine.Count, null),
             new("connected", "Connected", mine.Count(x => x.R.Level == Level.Green), CardLevel.Green),
-            new("ready", "Ready", mine.Count(x => x.R.Level == Level.Blue), CardLevel.Blue),
             new("attn", "Needs attention", mine.Count(x => x.R.Level == Level.Red || x.R.Level == Level.Amber), CardLevel.Amber),
             new("prod", "PROD only", mine.Count(x => EnvironmentClassifier.IsProd(EnvOf(x.T))), CardLevel.Red),
         };
@@ -865,7 +864,6 @@ public sealed class DashboardForm : Form
         var out_ = _view != null && _signedOut.Contains(_view);
         var servers = inOrg.Count;
         var connected = inOrg.Count(i => rows[i].Level == Level.Green);
-        var ready = inOrg.Count(i => rows[i].Level == Level.Blue);
         string sub;
         if (_cfg.Tunnels.Count == 0) sub = "No servers yet. Click \"Add / change servers...\" to find your servers.";
         else if (out_) sub = $"Signed out  \u00B7  sign in to connect  \u00B7  {servers} server{(servers == 1 ? "" : "s")}";
@@ -874,7 +872,7 @@ public sealed class DashboardForm : Form
             var exp = OrgExpiry(_view);
             var left = exp.HasValue ? "  \u00B7  " + Span(exp.Value - DateTimeOffset.UtcNow) + " left" : "";
             var used = inOrg.Select(i => UsageOf(ordered[i])?.UsageUtc ?? DateTime.MinValue).DefaultIfEmpty(DateTime.MinValue).Max();
-            sub = $"Signed in{left}  \u00B7  {servers} server{(servers == 1 ? "" : "s")}  \u00B7  {connected} connected  \u00B7  {ready} ready  \u00B7  " +
+            sub = $"Signed in{left}  \u00B7  {servers} server{(servers == 1 ? "" : "s")}  \u00B7  {connected} connected  \u00B7  " +
                   (used > DateTime.MinValue ? "usage updated " + Ago(used) + " ago" : "usage not read yet");
         }
         if (_orgSub.Text != sub) _orgSub.Text = sub;
@@ -1157,11 +1155,11 @@ public sealed class DashboardForm : Form
         _authBusy = true;
         try
         {
-            if (AwsCli.FindAws() == null) { _authText = "AWS sign-in: install AWS CLI first"; _authLevel = Level.Red; _authTip = "The AWS CLI is not installed."; return; }
-            if (_cfg.Tunnels.Count == 0) { _authText = "AWS sign-in: not set up yet"; _authLevel = Level.Grey; _authTip = "Set up your connections to choose an AWS profile."; return; }
+            if (AwsCli.FindAws() == null) { _authText = "Sign-in: install AWS CLI"; _authLevel = Level.Red; _authTip = "The AWS CLI is not installed."; return; }
+            if (_cfg.Tunnels.Count == 0) { _authText = "Sign-in: not set up yet"; _authLevel = Level.Grey; _authTip = "Set up your connections to choose an AWS profile."; return; }
             // one check per organization: one company sign-in covers all of its AWS accounts
             var orgs = _cfg.Tunnels.Where(t => t.Enabled && !string.IsNullOrWhiteSpace(t.Profile)).GroupBy(t => PKey(t.Profile)).ToList();
-            if (orgs.Count == 0) { _authText = "AWS sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Click Add / change servers to choose an AWS account."; return; }
+            if (orgs.Count == 0) { _authText = "Sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Click Add / change servers to choose an AWS account."; return; }
             var failed = new HashSet<string>();
             var names = new List<string>();
             var firstProblem = "";
@@ -1175,15 +1173,15 @@ public sealed class DashboardForm : Form
             _authChecked = true;
             if (failed.Count == 0)
             {
-                _authText = orgs.Count == 1 ? "AWS sign-in: OK" : $"AWS sign-in: OK ({orgs.Count} organizations)";
+                _authText = "AWS sign-in: OK";
                 _authLevel = Level.Green;
                 _authTip = "Signed in: " + string.Join(", ", orgs.Select(o => PLabel(o.First().Profile)));
             }
             else
             {
-                _authText = "Sign-in needed: " + string.Join(", ", names);
+                _authText = failed.Count == 1 ? "Sign-in needed (1 org)" : $"Sign-in needed ({failed.Count} orgs)";
                 _authLevel = Level.Red;
-                _authTip = firstProblem + " Click Sign in again.";
+                _authTip = "Sign in again: " + string.Join(", ", names) + ". " + firstProblem;
             }
         }
         catch (Exception ex) { _authText = "AWS sign-in: unknown"; _authLevel = Level.Amber; _authTip = ex.Message; }

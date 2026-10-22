@@ -103,7 +103,7 @@ public sealed class ServerCard : Control
         a.Spec == b.Spec && a.OsKey == b.OsKey && a.UsageTip == b.UsageTip && a.Cpu == b.Cpu && a.Ram == b.Ram && a.Disk == b.Disk &&
         a.Actions.Count == b.Actions.Count && a.Actions.Zip(b.Actions).All(p => p.First == p.Second);
 
-    public static int HeightFor(float scale) => (int)(150 * scale);
+    public static int HeightFor(float scale) => (int)(172 * scale);
 
     void UpdatePulse()
     {
