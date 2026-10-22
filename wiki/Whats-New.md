@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.48
+- **File transfer window layout fixed.** The server lists on each side were hidden behind the title bar in 1.0.47. Each side now shows its server drop-down, user and password boxes, as intended.
+- **Servers listed under the organization.** The organization starts on the one you are viewing on the dashboard. Each server in the drop-down shows the AWS account it lives in, and picking one signs in as its default user with the saved key.
+- **Sign-in problems are shown on the pane.** If a server cannot be signed in, the reason is printed under that side (hover for the full text) instead of a bare message.
+
 ## 1.0.47
 - **File transfer signs in for you.** Pick a server and it signs in as that server's default user with its saved key, with nothing to type. To act as another user, pick or type the user, enter its password and click **Switch user**. A switched user signs in with a password only; the key is used for the default user alone.
 - **Same organization only.** The file transfer window links servers of one top-level organization (company sign-in) at a time. Choose the organization at the top; both sides list only its servers. Copying to a server outside it is not possible.
