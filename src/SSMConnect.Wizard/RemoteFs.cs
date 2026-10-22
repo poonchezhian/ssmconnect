@@ -148,6 +148,7 @@ public sealed class SudoFs : FsBase
     /// <summary>Signs in as the server's default user (saved key), then checks that sudo can become <paramref name="user"/>.</summary>
     public static SudoFs Open(TunnelConfig t, string user, string? sudoPassword)
     {
+        if (user.Equals("root", StringComparison.OrdinalIgnoreCase)) throw new InvalidOperationException("For safety, this tool never works as root.");
         var client = new SshClient(SftpFs.KeyConnection(t)) { KeepAliveInterval = TimeSpan.FromSeconds(30) };
         var temp = new List<string>();
         try
@@ -180,6 +181,8 @@ public sealed class SudoFs : FsBase
                     throw new InvalidOperationException($"The user \"{user}\" does not exist on this server.");
                 throw new InvalidOperationException("sudo could not switch to " + user + ": " + (e.Length > 0 ? e : "exit code " + probe.Code));
             }
+            // Refuse any account that is really root (uid 0), whatever it is called.
+            if (Run(client, prefix + "id -u").Out.Trim() == "0") throw new InvalidOperationException("That account has root rights. For safety, this tool never works as root.");
             var fs = new SudoFs(client, t.Name, user, prefix, temp);
             var home = Run(client, "getent passwd " + Q(user) + " | cut -d: -f6").Out.Trim();
             fs._home = home.Length > 0 ? home : "/";

@@ -6,6 +6,10 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.50
+- **No root in file transfer.** The file transfer window never works as root. Typing `root` is refused, and any account that turns out to have root rights (uid 0) is refused too. Use a normal user such as `ubuntu` or `ec2-user`.
+- **Only connected servers are listed.** The server lists show only servers that are enabled and showing Connected on the dashboard right now. The organization list shows how many are connected. If servers connect later, click **Refresh**.
+
 ## 1.0.49
 - **Switch user now uses sudo.** In the file transfer window, pick another user and click **Switch user**. SSMConnect stays signed in as the server's default user with its saved key and runs the file work through `sudo -u <user>`, the way Ubuntu lets its default user become someone else. No password sign-in has to be switched on. If sudo asks for a password, type the default user's sudo password in the box; otherwise leave it blank.
 

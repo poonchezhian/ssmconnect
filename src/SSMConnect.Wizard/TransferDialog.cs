@@ -24,7 +24,7 @@ namespace SSMConnect.Wizard;
 /// </summary>
 sealed class FilePane : Panel
 {
-    static readonly string[] CommonUsers = { "ec2-user", "ubuntu", "admin", "root", "centos", "fedora", "rocky", "ssm-user" };
+    static readonly string[] CommonUsers = { "ec2-user", "ubuntu", "admin", "centos", "fedora", "rocky", "ssm-user" };
 
     List<TunnelConfig> _servers;
     readonly Func<int, bool> _isUp;
@@ -213,6 +213,12 @@ sealed class FilePane : Panel
         {
             var user = _user.Text.Trim();
             if (user.Length == 0) { MessageBox.Show(FindForm(), "Enter the user to sign in as.", "Copy files"); return; }
+            if (user.Equals("root", StringComparison.OrdinalIgnoreCase))
+            {
+                _status.Text = "The root user is not allowed in this tool.";
+                if (!auto) MessageBox.Show(FindForm(), "For safety, this tool never works as root. Use a normal user such as ubuntu or ec2-user.", "Copy files");
+                return;
+            }
             if (!_isUp(t.LocalPort))
             {
                 _status.Text = "Not connected yet. Start connections on the dashboard, then click Reconnect.";
@@ -347,14 +353,17 @@ public sealed class TransferDialog : Form
     readonly Button _cancel = new() { Text = "Stop", AutoSize = true, MinimumSize = new Size(90, 34), Enabled = false };
     readonly Button _close = new() { Text = "Close", AutoSize = true, MinimumSize = new Size(90, 34), DialogResult = DialogResult.Cancel };
     readonly TunnelConfig? _preselect;
-    readonly int _startOrg;
+    readonly string? _startKey;
     CancellationTokenSource? _cts;
     bool _busy;
 
     /// <summary>The servers of one top-level organization.</summary>
     public sealed record Org(string Key, string Label, List<TunnelConfig> Servers);
 
-    readonly List<Org> _orgs;
+    readonly List<Org> _all;
+    List<Org> _orgs = new();
+    readonly Func<int, bool> _isUp;
+    readonly Button _refreshOrgs = new() { Text = "Refresh", AutoSize = true, MinimumSize = new Size(90, 30) };
     readonly ComboBox _orgBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
     bool _orgLoading;
 
@@ -370,14 +379,12 @@ public sealed class TransferDialog : Form
         ShowInTaskbar = false;
         BackColor = AppTheme.Page;
 
-        _orgs = orgs.Where(o => o.Servers.Count > 0).ToList();
+        _all = orgs.Where(o => o.Servers.Count > 0).ToList();
+        _isUp = isUp;
         _left = new FilePane(isUp, serverLabel);
         _right = new FilePane(isUp, serverLabel);
-        foreach (var o in _orgs) _orgBox.Items.Add($"{o.Label}   ({o.Servers.Count} server{(o.Servers.Count == 1 ? "" : "s")})");
-        var startOrg = preselect != null ? Math.Max(0, _orgs.FindIndex(o => o.Servers.Contains(preselect)))
-            : Math.Max(0, _orgs.FindIndex(o => o.Key == startOrgKey));
         _preselect = preselect;
-        _startOrg = startOrg;
+        _startKey = preselect != null ? _all.FirstOrDefault(o => o.Servers.Contains(preselect))?.Key : startOrgKey;
 
         var hdr = new HeaderBand { Dock = DockStyle.Top, Height = 84 };
         hdr.Set("Copy files between servers", "Servers sign in with their saved key. To act as another user, pick it and click Switch user (done with sudo). Only servers of the same organization can be linked.");
@@ -385,6 +392,8 @@ public sealed class TransferDialog : Form
         var orgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(22, 8, 14, 0), BackColor = AppTheme.Page };
         orgBar.Controls.Add(new Label { Text = "Organization:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
         orgBar.Controls.Add(_orgBox);
+        _refreshOrgs.Margin = new Padding(8, 0, 0, 0);
+        orgBar.Controls.Add(_refreshOrgs);
 
         var mid = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 120, 0, 0), BackColor = AppTheme.Page };
         _toRight.Margin = new Padding(4, 0, 4, 14); _toLeft.Margin = new Padding(4, 0, 4, 14);
@@ -409,7 +418,7 @@ public sealed class TransferDialog : Form
         footer.Controls.Add(_cancel, 2, 0);
         footer.Controls.Add(_close, 3, 0);
         _bar.Margin = new Padding(8, 10, 8, 10);
-        _info.Text = "Tip: Switch user uses sudo, like Ubuntu does. Leave the password blank unless sudo asks for one.";
+        _info.Text = "Loading the connected servers ...";
 
         Controls.Add(body);
         Controls.Add(footer);
@@ -418,12 +427,8 @@ public sealed class TransferDialog : Form
         AppTheme.Style(this);
 
         _orgBox.SelectedIndexChanged += async (_, _) => { if (!_orgLoading) await LoadOrgAsync(_orgBox.SelectedIndex, null); };
-        Shown += async (_, _) =>
-        {
-            if (_orgs.Count == 0) return;
-            _orgLoading = true; _orgBox.SelectedIndex = _startOrg; _orgLoading = false;
-            await LoadOrgAsync(_startOrg, _preselect);
-        };
+        _refreshOrgs.Click += async (_, _) => { if (_busy) return; await ReloadAsync(CurrentKey(), null); };
+        Shown += async (_, _) => await ReloadAsync(_startKey, _preselect);
 
         _left.Changed += UpdateButtons;
         _right.Changed += UpdateButtons;
@@ -437,6 +442,29 @@ public sealed class TransferDialog : Form
             _cts?.Cancel();
         };
         UpdateButtons();
+    }
+
+    string? CurrentKey() => _orgBox.SelectedIndex >= 0 && _orgBox.SelectedIndex < _orgs.Count ? _orgs[_orgBox.SelectedIndex].Key : null;
+
+    /// <summary>Lists only the servers that are enabled and connected on the dashboard right now.</summary>
+    async Task ReloadAsync(string? keepKey, TunnelConfig? pick)
+    {
+        _orgs = _all.Select(o => new Org(o.Key, o.Label, o.Servers.Where(s => s.Enabled && _isUp(s.LocalPort)).ToList())).Where(o => o.Servers.Count > 0).ToList();
+        _orgLoading = true;
+        _orgBox.Items.Clear();
+        foreach (var o in _orgs) _orgBox.Items.Add($"{o.Label}   ({o.Servers.Count} connected)");
+        var idx = Math.Max(0, _orgs.FindIndex(o => o.Key == keepKey));
+        if (_orgs.Count > 0) _orgBox.SelectedIndex = idx;
+        _orgLoading = false;
+        if (_orgs.Count == 0)
+        {
+            await _left.SetServersAsync(new List<TunnelConfig>(), null);
+            await _right.SetServersAsync(new List<TunnelConfig>(), null);
+            _info.Text = "No servers are connected right now. Start connections on the dashboard, wait for the servers to turn green, then click Refresh.";
+            return;
+        }
+        _info.Text = "Tip: Switch user uses sudo, like Ubuntu does. Leave the password blank unless sudo asks for one. root is not allowed.";
+        await LoadOrgAsync(idx, pick);
     }
 
     async Task LoadOrgAsync(int index, TunnelConfig? pick)
