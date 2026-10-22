@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.44
+- **MobaXterm button on the dashboard.** Each server card now has a MobaXterm button next to PuTTY and WinSCP, and it opens the saved session straight away.
+- **Tools are found as soon as SSMConnect starts.** PuTTY, WinSCP and MobaXterm are all checked at launch, so the right buttons show up immediately. They are checked again when the window opens, and every two minutes after that.
+- **Setup wizard and dashboard agree.** The "SSH tools found on this PC" line now uses the same check as everything else.
+
 ## 1.0.43
 - **MobaXterm is found wherever it is installed.** SSMConnect now also checks the Windows installed-programs list, not only the usual folders, and the setup wizard uses the same check as the rest of the app.
 - **A clearer message when MobaXterm has never been opened.** If it is installed but has not created its settings file yet, the log tells you to open it once, close it, and run Apply again.
