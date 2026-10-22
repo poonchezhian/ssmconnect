@@ -14,6 +14,9 @@ Apache License 2.0 terms, the AWS CLI v2 installer and the AWS Session Manager
 plugin installer (c) Amazon.com, Inc. or its affiliates. They are installed
 separately and are not removed when SSMConnect is uninstalled.
 
+SSMConnect uses the SSH.NET library (https://github.com/sshnet/SSH.NET, MIT licence)
+and BouncyCastle.Cryptography (MIT licence) for its file transfer window.
+
 SSMConnect does not bundle or redistribute PuTTY, WinSCP or MobaXterm. It only
 configures copies that the user has installed separately, under each product's
 own licence.

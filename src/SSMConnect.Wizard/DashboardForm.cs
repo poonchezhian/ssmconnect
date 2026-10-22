@@ -400,9 +400,8 @@ public sealed class DashboardForm : Form
     void OpenTransfer(TunnelConfig? preselect = null)
     {
         var ssh = _cfg.Tunnels.Where(x => !x.IsRdp && x.Enabled).ToList();
-        if (ssh.Count < 2) { MessageBox.Show(this, "Copying between servers needs at least two Linux servers set up in SSMConnect.", "SSMConnect"); return; }
-        var live = ActiveListeners();
-        using var dlg = new TransferDialog(ssh, p => live.Contains(p), preselect);
+        if (ssh.Count == 0) { MessageBox.Show(this, "Set up at least one Linux server in SSMConnect first.", "SSMConnect"); return; }
+        using var dlg = new TransferDialog(ssh, p => ActiveListeners().Contains(p), preselect);
         dlg.ShowDialog(this);
     }
 
@@ -433,7 +432,7 @@ public sealed class DashboardForm : Form
         servers.DropDownItems.Add(Item("Scan for &new or changed servers", async (_, _) => await ScanForChangesAsync(force: true, interactive: true)));
         servers.DropDownItems.Add(Item("What &changed since the last scan...", (_, _) => ShowServerChanges()));
         servers.DropDownItems.Add(new ToolStripSeparator());
-        servers.DropDownItems.Add(Item("&Copy files between servers...", (_, _) => OpenTransfer(SelectedTunnel())));
+        servers.DropDownItems.Add(Item("&File transfer: browse and copy files...", (_, _) => OpenTransfer(SelectedTunnel())));
 
         var help = new ToolStripMenuItem("&Help");
         help.DropDownItems.Add(Item("&About SSMConnect", (_, _) => ShowAbout()));

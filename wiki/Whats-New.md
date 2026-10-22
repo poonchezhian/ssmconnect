@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.46
+- **A proper file browser: Servers > File transfer.** Two side-by-side panes. Each pane is a server or **This PC**. Pick the login user on each side (type any user and click Connect to switch), open folders, select files or folders, and press Copy in either direction. Progress, Stop, and a warning before anything is replaced.
+- **Server to server and to or from your PC** with the same window. The data passes through your PC, so the servers never need to reach each other. No extra tools needed.
+- Replaces the 1.0.45 copy window, which needed Windows OpenSSH and a prompt window.
+
 ## 1.0.45
 - **Copy files between servers.** New menu item **Servers > Copy files between servers...**. Pick a file or folder on one server and a folder on another, and SSMConnect copies it through your SSM connections. A window shows progress. Needs the OpenSSH Client that comes with Windows and a `.pem` key.
 - **MobaXterm button now creates the sessions for you.** Click MobaXterm on a server card and SSMConnect saves your servers into MobaXterm first, then opens the right one. If MobaXterm is already open, the server opens in a new tab instead.
