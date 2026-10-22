@@ -28,7 +28,7 @@ sealed class FilePane : Panel
 
     List<TunnelConfig> _servers;
     readonly Func<int, bool> _isUp;
-    readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 230 };
+    readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300, DropDownWidth = 480 };
     bool _loadingServers;
     readonly ComboBox _user = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 120 };
     readonly TextBox _pass = new() { Width = 130, UseSystemPasswordChar = true, PlaceholderText = "password" };
@@ -40,16 +40,20 @@ sealed class FilePane : Panel
     readonly ListView _list = new() { Dock = DockStyle.Fill, View = View.Details, FullRowSelect = true, MultiSelect = true, HideSelection = false, BorderStyle = BorderStyle.None, BackColor = Color.White };
     readonly Label _status = new() { Dock = DockStyle.Bottom, Height = 26, ForeColor = Color.FromArgb(94, 110, 114), TextAlign = ContentAlignment.MiddleLeft, Padding = new Padding(4, 0, 0, 0) };
     readonly List<FsEntry> _entries = new();
+    readonly ToolTip _tip = new();
 
     public FsBase? Fs { get; private set; }
     public TunnelConfig? Server => _server.SelectedIndex >= 0 && _server.SelectedIndex < _servers.Count ? _servers[_server.SelectedIndex] : null;
     public string CurrentPath { get; private set; } = "";
     public event Action? Changed;
 
-    public FilePane(Func<int, bool> isUp)
+    readonly Func<TunnelConfig, string> _label;
+
+    public FilePane(Func<int, bool> isUp, Func<TunnelConfig, string> label)
     {
         _servers = new List<TunnelConfig>();
         _isUp = isUp;
+        _label = label;
         Dock = DockStyle.Fill;
         BackColor = Color.White;
         Padding = new Padding(8);
@@ -113,7 +117,7 @@ sealed class FilePane : Panel
         CloseFs();
         _servers = servers.ToList();
         _server.Items.Clear();
-        foreach (var s in _servers) _server.Items.Add(s.Name);
+        foreach (var s in _servers) _server.Items.Add(_label(s));
         _server.SelectedIndex = pick != null && _servers.Contains(pick) ? _servers.IndexOf(pick) : (_servers.Count > 0 ? 0 : -1);
         _loadingServers = false;
         OnServerChosen();
@@ -227,7 +231,9 @@ sealed class FilePane : Panel
         catch (Exception ex)
         {
             CloseFs();
-            _status.Text = "Could not sign in.";
+            var first = ex.Message.Split('\n')[0];
+            _status.Text = "Could not sign in: " + first;
+            _tip.SetToolTip(_status, ex.Message);
             var msg = ex.Message;
             var def = string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal);
             if (ex is Renci.SshNet.Common.SshAuthenticationException)
@@ -237,7 +243,7 @@ sealed class FilePane : Panel
             else if (ex is System.Net.Sockets.SocketException || ex is Renci.SshNet.Common.SshConnectionException)
                 msg = "Could not reach the server through its connection. Make sure it shows Connected on the dashboard.\n\n" + ex.Message;
             AppLog.Warn("File browser sign-in failed: " + ex.Message);
-            if (!(auto && ex is InvalidOperationException)) MessageBox.Show(FindForm(), msg, "Copy files");
+            if (!auto) MessageBox.Show(FindForm(), msg, "Copy files");
         }
         finally { _connect.Enabled = true; UpdateUserState(); SetEnabledState(); }
     }
@@ -354,7 +360,7 @@ public sealed class TransferDialog : Form
     readonly ComboBox _orgBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
     bool _orgLoading;
 
-    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, TunnelConfig? preselect = null)
+    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, Func<TunnelConfig, string> serverLabel, TunnelConfig? preselect = null, string? startOrgKey = null)
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -367,10 +373,11 @@ public sealed class TransferDialog : Form
         BackColor = AppTheme.Page;
 
         _orgs = orgs.Where(o => o.Servers.Count > 0).ToList();
-        _left = new FilePane(isUp);
-        _right = new FilePane(isUp);
+        _left = new FilePane(isUp, serverLabel);
+        _right = new FilePane(isUp, serverLabel);
         foreach (var o in _orgs) _orgBox.Items.Add($"{o.Label}   ({o.Servers.Count} server{(o.Servers.Count == 1 ? "" : "s")})");
-        var startOrg = preselect != null ? Math.Max(0, _orgs.FindIndex(o => o.Servers.Contains(preselect))) : 0;
+        var startOrg = preselect != null ? Math.Max(0, _orgs.FindIndex(o => o.Servers.Contains(preselect)))
+            : Math.Max(0, _orgs.FindIndex(o => o.Key == startOrgKey));
         _preselect = preselect;
         _startOrg = startOrg;
 
@@ -410,8 +417,6 @@ public sealed class TransferDialog : Form
         Controls.Add(footer);
         Controls.Add(orgBar);
         Controls.Add(hdr);
-        orgBar.BringToFront();
-        hdr.BringToFront();
         AppTheme.Style(this);
 
         _orgBox.SelectedIndexChanged += async (_, _) => { if (!_orgLoading) await LoadOrgAsync(_orgBox.SelectedIndex, null); };

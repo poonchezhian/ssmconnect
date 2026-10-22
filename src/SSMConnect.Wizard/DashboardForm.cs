@@ -405,7 +405,13 @@ public sealed class DashboardForm : Form
         var orgs = ssh.GroupBy(x => PKey(x.Profile))
             .Select(g => new TransferDialog.Org(g.Key, PLabel(g.First().Profile), g.ToList()))
             .OrderBy(o => o.Label, StringComparer.OrdinalIgnoreCase).ToList();
-        using var dlg = new TransferDialog(orgs, p => ActiveListeners().Contains(p), preselect);
+        // Each server is listed with the AWS account it lives in, like the dashboard's account sections.
+        string Label(TunnelConfig t)
+        {
+            var acct = _cfg.AliasOr(t.Profile, t.Profile);
+            return string.IsNullOrWhiteSpace(acct) ? t.Name : $"{t.Name}    -  {acct}";
+        }
+        using var dlg = new TransferDialog(orgs, p => ActiveListeners().Contains(p), Label, preselect, _view);
         dlg.ShowDialog(this);
     }
 
