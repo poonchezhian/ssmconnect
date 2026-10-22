@@ -6,6 +6,9 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.49
+- **Switch user now uses sudo.** In the file transfer window, pick another user and click **Switch user**. SSMConnect stays signed in as the server's default user with its saved key and runs the file work through `sudo -u <user>`, the way Ubuntu lets its default user become someone else. No password sign-in has to be switched on. If sudo asks for a password, type the default user's sudo password in the box; otherwise leave it blank.
+
 ## 1.0.48
 - **File transfer window layout fixed.** The server lists on each side were hidden behind the title bar in 1.0.47. Each side now shows its server drop-down, user and password boxes, as intended.
 - **Servers listed under the organization.** The organization starts on the one you are viewing on the dashboard. Each server in the drop-down shows the AWS account it lives in, and picking one signs in as its default user with the saved key.

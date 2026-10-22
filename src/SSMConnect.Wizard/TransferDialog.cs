@@ -20,7 +20,7 @@ namespace SSMConnect.Wizard;
 
 /// <summary>
 /// One side of the file browser: pick a server (signed in as its default user with the saved key), optionally switch to
-/// another user with a password, then browse its folders.
+/// another user with sudo, then browse its folders.
 /// </summary>
 sealed class FilePane : Panel
 {
@@ -31,7 +31,7 @@ sealed class FilePane : Panel
     readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300, DropDownWidth = 480 };
     bool _loadingServers;
     readonly ComboBox _user = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 120 };
-    readonly TextBox _pass = new() { Width = 130, UseSystemPasswordChar = true, PlaceholderText = "password" };
+    readonly TextBox _pass = new() { Width = 170, UseSystemPasswordChar = true, PlaceholderText = "sudo password (if asked)" };
     readonly Button _connect = new() { Text = "Switch user", AutoSize = true, MinimumSize = new Size(110, 30), Tag = "primary" };
     readonly Button _up = new() { Text = "Up", AutoSize = true, MinimumSize = new Size(52, 30) };
     readonly Button _refresh = new() { Text = "Refresh", AutoSize = true, MinimumSize = new Size(76, 30) };
@@ -220,9 +220,9 @@ sealed class FilePane : Panel
                 return;
             }
             var def = string.Equals(user, t.UserName, StringComparison.Ordinal);
-            _status.Text = def ? $"Signing in as {user} with the saved key ..." : $"Signing in as {user} with the password ...";
+            _status.Text = def ? $"Signing in as {user} with the saved key ..." : $"Switching to {user} with sudo ...";
             var pw = _pass.Text;
-            var fs = await Task.Run(() => SftpFs.Open(t, user, pw));
+            FsBase fs = def ? await Task.Run(() => (FsBase)SftpFs.Open(t)) : await Task.Run(() => (FsBase)SudoFs.Open(t, user, pw));
             Fs = fs;
             _status.Text = $"Signed in as {user}";
             SetEnabledState();
@@ -237,9 +237,7 @@ sealed class FilePane : Panel
             var msg = ex.Message;
             var def = string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal);
             if (ex is Renci.SshNet.Common.SshAuthenticationException)
-                msg = def
-                    ? "The server did not accept the saved key for this user. Check the user name and key in the server's settings.\n\n" + ex.Message
-                    : "The server refused this user and password. Check them. Some servers switch password sign-in off (PasswordAuthentication no); in that case only the default user can be used here.\n\n" + ex.Message;
+                msg = "The server did not accept the saved key for the default user. Check the user name and key in the server's settings.\n\n" + ex.Message;
             else if (ex is System.Net.Sockets.SocketException || ex is Renci.SshNet.Common.SshConnectionException)
                 msg = "Could not reach the server through its connection. Make sure it shows Connected on the dashboard.\n\n" + ex.Message;
             AppLog.Warn("File browser sign-in failed: " + ex.Message);
@@ -336,7 +334,7 @@ static class Prompt
 
 /// <summary>
 /// Two-pane file browser between servers of ONE organization (the top-level AWS sign-in). Each side signs in as the
-/// server's default user with its saved key; a different user can be switched to with a password. Select files or
+/// server's default user with its saved key; a different user can be switched to with sudo. Select files or
 /// folders on one side and copy them to the folder open on the other. The data travels through this PC.
 /// </summary>
 public sealed class TransferDialog : Form
@@ -382,7 +380,7 @@ public sealed class TransferDialog : Form
         _startOrg = startOrg;
 
         var hdr = new HeaderBand { Dock = DockStyle.Top, Height = 84 };
-        hdr.Set("Copy files between servers", "Servers sign in with their saved key. Pick another user with a password if you need one. Only servers of the same organization can be linked.");
+        hdr.Set("Copy files between servers", "Servers sign in with their saved key. To act as another user, pick it and click Switch user (done with sudo). Only servers of the same organization can be linked.");
 
         var orgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(22, 8, 14, 0), BackColor = AppTheme.Page };
         orgBar.Controls.Add(new Label { Text = "Organization:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
@@ -411,7 +409,7 @@ public sealed class TransferDialog : Form
         footer.Controls.Add(_cancel, 2, 0);
         footer.Controls.Add(_close, 3, 0);
         _bar.Margin = new Padding(8, 10, 8, 10);
-        _info.Text = "Tip: to switch to another user, type or pick the user, enter its password and click Switch user.";
+        _info.Text = "Tip: Switch user uses sudo, like Ubuntu does. Leave the password blank unless sudo asks for one.";
 
         Controls.Add(body);
         Controls.Add(footer);
@@ -579,7 +577,7 @@ public sealed class TransferDialog : Form
         {
             AppLog.Warn("File copy problems: " + string.Join(" | ", failures.Take(20)));
             var shown = string.Join("\n", failures.Take(8)) + (failures.Count > 8 ? $"\n... and {failures.Count - 8} more (see the log file)" : "");
-            MessageBox.Show(this, "Some items could not be copied:\n\n" + shown + "\n\nA \"permission denied\" usually means the signed-in user cannot read the source or write to the destination folder. Switch the user on that side and try again.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, "Some items could not be copied:\n\n" + shown + "\n\nA \"permission denied\" usually means the signed-in user cannot read the source or write to the destination folder. Switch the user on that side (it uses sudo) and try again.", Text, MessageBoxButtons.OK, MessageBoxIcon.Warning);
         }
         await to.GoAsync(to.CurrentPath);
     }
