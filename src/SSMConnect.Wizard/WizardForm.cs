@@ -1050,38 +1050,14 @@ public sealed class WizardForm : Form
             var live = StatusStore.Load();
             if (live == null || DateTime.UtcNow - live.UpdatedUtc > TimeSpan.FromSeconds(15))
             {
-                Log("Connections are stopped. Start them from the tray icon or the dashboard's Connections menu, then open your session.");
+                Log("Connections are switched off. Switch them on from the tray icon or the dashboard's Connections menu, then click a tool on the server's card.");
                 Log("Done.");
                 return true;
             }
 
-            Log("Waiting for tunnels to come up...");
-            var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(45);
-            var reported = new HashSet<string>();
-            while (DateTime.UtcNow < deadline && reported.Count < tunnels.Count && !ct.IsCancellationRequested)
-            {
-                var st = StatusStore.Load();
-                foreach (var t in tunnels)
-                {
-                    if (reported.Contains(t.Name)) continue;
-                    var ts = st?.Tunnels.FirstOrDefault(x => x.Name == t.Name);
-                    if (ts == null) continue;
-                    if (ts.State == TunnelStates.Connected && IsListening(t.LocalPort))
-                    {
-                        Log(t.IsRdp ? $"  [UP]    {t.Name}  ->  open it from the dashboard: Open Remote Desktop" : $"  [UP]    {t.Name}  ->  open saved session '{ToolConfigurator.SessionName(t)}'");
-                        reported.Add(t.Name);
-                    }
-                    else if (ts.State == TunnelStates.Error)
-                    {
-                        Log($"  [ERROR] {t.Name}: {ts.Message}");
-                        reported.Add(t.Name);
-                    }
-                }
-                if (reported.Count < tunnels.Count) { try { await Task.Delay(1000, ct); } catch (OperationCanceledException) { } }
-            }
-            foreach (var t in tunnels.Where(t => !reported.Contains(t.Name)))
-                Log($"  [WAIT]  {t.Name}: still connecting. The dashboard turns green when it is ready.");
-            Log(ct.IsCancellationRequested ? "Stopped waiting. The connections keep starting in the background." : "Done.");
+            Log("Connections now open on demand: every server shows Ready on the dashboard, and clicking PuTTY, WinSCP, MobaXterm or Remote Desktop on its card opens the secure connection by itself (about 3 seconds).");
+            foreach (var t in tunnels) Log(t.IsRdp ? $"  [READY] {t.Name}  ->  click Remote Desktop on its card" : $"  [READY] {t.Name}  ->  click a tool on its card (saved session '{ToolConfigurator.SessionName(t)}')");
+            Log("Done.");
             return true;
         }
         catch (Exception ex)

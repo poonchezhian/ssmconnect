@@ -20,3 +20,8 @@ and BouncyCastle.Cryptography (MIT licence) for its file transfer window.
 SSMConnect does not bundle or redistribute PuTTY, WinSCP or MobaXterm. It only
 configures copies that the user has installed separately, under each product's
 own licence.
+
+The operating-system logos on the server cards (Ubuntu, Debian, Red Hat, Amazon
+Linux, CentOS, Rocky Linux, AlmaLinux, Fedora, SUSE, Alpine, Linux, Windows) are
+trademarks of their respective owners. They are used only to show which operating
+system a server runs, and do not imply any endorsement.

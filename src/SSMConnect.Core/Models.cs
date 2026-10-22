@@ -47,6 +47,11 @@ public sealed class AppConfig
     /// <summary>Friendly names the person gave to accounts. Key: the primary account key or a profile name.</summary>
     public Dictionary<string, string> Aliases { get; set; } = new();
 
+    /// <summary>Minutes a connection stays open after the last tool closed and no data moves (15, 30 or 60).</summary>
+    public int IdleMinutes { get; set; } = 15;
+    /// <summary>Browser used for company sign-in: "chrome", "edge", "firefox", "brave", or empty for the PC's default.</summary>
+    public string PreferredBrowser { get; set; } = "";
+
     /// <summary>The friendly name for an account key (or the given fallback when none was set).</summary>
     public string AliasOr(string key, string fallback) =>
         Aliases != null && Aliases.TryGetValue(key, out var a) && !string.IsNullOrWhiteSpace(a) ? a : fallback;
@@ -92,6 +97,10 @@ public sealed class DiscoveredServer
 
 public static class TunnelStates
 {
+    /// <summary>Signed in and nothing open yet: the connection opens by itself when a tool is clicked.</summary>
+    public const string Ready = "Ready";
+    /// <summary>Gave up after 3 tries. Stays down until the person signs in again.</summary>
+    public const string Stopped = "Stopped";
     public const string Starting = "Starting";
     public const string Connected = "Connected";
     public const string Retrying = "Retrying";
@@ -108,6 +117,12 @@ public sealed class TunnelStatus
     public string State { get; set; } = TunnelStates.Starting;
     public string Message { get; set; } = "";
     public DateTime SinceUtc { get; set; } = DateTime.UtcNow;
+    /// <summary>Tools currently attached to the tunnel (established connections on its local port).</summary>
+    public int Clients { get; set; }
+    /// <summary>Seconds until an unused connection closes; -1 while a tool is attached or nothing is open.</summary>
+    public int IdleLeftSeconds { get; set; } = -1;
+    /// <summary>Which try the manager is on while connecting (1 to 3).</summary>
+    public int Attempt { get; set; }
 }
 
 public sealed class StatusFile

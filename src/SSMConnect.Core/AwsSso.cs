@@ -31,6 +31,71 @@ public static class AwsSso
     public static Task<CliResult> LoginAsync(string session, CancellationToken ct = default) =>
         AwsCli.RunAsync(new AppConfig { Profile = "", Region = "" }, new[] { "sso", "login", "--sso-session", session }, TimeSpan.FromMinutes(3), ct);
 
+    /// <summary>
+    /// Company sign-in without the CLI opening a browser: the sign-in page address is handed to <paramref name="onUrl"/> (so the
+    /// app can open it in the person's own browser) and the call returns when the CLI finishes (signed in, failed or timed out).
+    /// <paramref name="onCode"/> receives the short confirmation code the page may ask for.
+    /// </summary>
+    public static async Task<CliResult> LoginInAppAsync(string session, Action<string> onUrl, Action<string>? onCode = null, CancellationToken ct = default)
+    {
+        var psi = AwsCli.BuildStartInfo(new AppConfig { Profile = "", Region = "" }, new[] { "sso", "login", "--sso-session", session, "--no-browser" });
+        var output = new StringBuilder();
+        var urls = new List<string>();
+        var gate = new object();
+        var picked = false;
+        using var p = new System.Diagnostics.Process { StartInfo = psi, EnableRaisingEvents = true };
+
+        void Pick()
+        {
+            string? url;
+            lock (gate)
+            {
+                if (picked || urls.Count == 0) return;
+                picked = true;
+                url = urls.FirstOrDefault(u => u.Contains("user_code", StringComparison.OrdinalIgnoreCase)) ?? urls[0];
+            }
+            try { onUrl(url); } catch { }
+        }
+
+        void OnLine(string? line)
+        {
+            if (string.IsNullOrWhiteSpace(line)) return;
+            lock (gate) output.AppendLine(line);
+            var m = System.Text.RegularExpressions.Regex.Match(line, @"https://\S+");
+            if (m.Success)
+            {
+                bool first;
+                lock (gate) { urls.Add(m.Value.TrimEnd('.', ',', ')')); first = urls.Count == 1; }
+                if (first) _ = Task.Delay(700).ContinueWith(_ => Pick());
+            }
+            var c = System.Text.RegularExpressions.Regex.Match(line, @"\b[A-Z0-9]{4}-[A-Z0-9]{4}\b");
+            if (c.Success && onCode != null) { try { onCode(c.Value); } catch { } }
+        }
+
+        p.OutputDataReceived += (_, e) => OnLine(e.Data);
+        p.ErrorDataReceived += (_, e) => OnLine(e.Data);
+        try
+        {
+            p.Start();
+            ChildProcessJob.Add(p);
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
+        }
+        catch (Exception ex) { return new CliResult(-1, "", ex.Message); }
+
+        using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(TimeSpan.FromMinutes(3));
+        try { await p.WaitForExitAsync(timeout.Token); }
+        catch (OperationCanceledException)
+        {
+            try { p.Kill(entireProcessTree: true); } catch { }
+            return new CliResult(-2, "", ct.IsCancellationRequested ? "Sign-in was cancelled." : "The sign-in was not finished within 3 minutes.");
+        }
+        string text;
+        lock (gate) text = output.ToString();
+        return p.ExitCode == 0 ? new CliResult(0, text, "") : new CliResult(p.ExitCode, text, text);
+    }
+
     /// <summary>Reads the access token the AWS CLI cached after sign-in (file name = SHA-1 of the session name).</summary>
     public static string? ReadAccessToken(string session)
     {
@@ -43,6 +108,21 @@ public static class AwsSso
             var root = doc.RootElement;
             if (root.TryGetProperty("expiresAt", out var exp) && DateTimeOffset.TryParse(exp.GetString(), out var when) && when < DateTimeOffset.UtcNow) return null;
             return root.TryGetProperty("accessToken", out var t) ? t.GetString() : null;
+        }
+        catch { return null; }
+    }
+
+    /// <summary>When the cached company sign-in runs out (null when not signed in).</summary>
+    public static DateTimeOffset? TokenExpiry(string session)
+    {
+        try
+        {
+            var hash = Convert.ToHexString(SHA1.HashData(Encoding.UTF8.GetBytes(session))).ToLowerInvariant();
+            var file = Path.Combine(AwsProfiles.AwsDir, "sso", "cache", hash + ".json");
+            if (!File.Exists(file)) return null;
+            using var doc = JsonDocument.Parse(File.ReadAllText(file));
+            if (doc.RootElement.TryGetProperty("expiresAt", out var exp) && DateTimeOffset.TryParse(exp.GetString(), out var when) && when > DateTimeOffset.UtcNow) return when;
+            return null;
         }
         catch { return null; }
     }

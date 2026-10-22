@@ -6,6 +6,15 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.0
+A new dashboard and a new way of connecting.
+- **Sign in once per organization.** One company sign-in covers every AWS account under it. The sign-in opens in your own browser (the one Windows uses for web links: Chrome, Edge, Firefox or Brave) as a small window; SSMConnect waits for it and comes back to the front. You can pick another browser in the sign-in window.
+- **Connections open on demand.** After sign-in every server shows **Ready**. Clicking PuTTY, WinSCP, MobaXterm or Remote Desktop opens the secure connection (about 3 seconds) and starts the tool. A connection stays open while a tool is attached or data is moving. When the last tool closes, a countdown starts (15 minutes by default; 30 or 60 under **Connections**) and the card goes back to Ready. SSMConnect adds no maximum length. An idle limit set by your AWS administrators still applies.
+- **Three tries, then it stays down.** If a server does not connect after 3 tries it shows **Stopped** and stays down until you click **Sign in again**.
+- **New look.** Organizations and filters (All, Connected, Ready, Needs attention, PROD only) on the left, a search box on top, and a colour key at the bottom. Each card is tinted and lit by its status: green connected, blue ready, amber connecting, red stopped, grey off. All tool buttons are always visible and dimmed when they cannot be used.
+- **Operating-system logos and size.** Each card shows the server's OS logo, its OS, vCPU, memory and disk size, and three small rings for CPU, memory and disk use (green under 60%, amber 60 to 85%, red over 85%). Servers in use refresh about every 5 minutes; **Refresh usage** reads all of them now. Usage needs permission to run commands through SSM; without it the rings stay dashed.
+- File transfer opens the connections it needs by itself.
+
 ## 1.0.50
 - **No root in file transfer.** The file transfer window never works as root. Typing `root` is refused, and any account that turns out to have root rights (uid 0) is refused too. Use a normal user such as `ubuntu` or `ec2-user`.
 - **Only connected servers are listed.** The server lists show only servers that are enabled and showing Connected on the dashboard right now. The organization list shows how many are connected. If servers connect later, click **Refresh**.

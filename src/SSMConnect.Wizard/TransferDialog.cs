@@ -28,6 +28,7 @@ sealed class FilePane : Panel
 
     List<TunnelConfig> _servers;
     readonly Func<int, bool> _isUp;
+    readonly Func<TunnelConfig, Task<bool>>? _ensure;
     readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300, DropDownWidth = 480 };
     bool _loadingServers;
     readonly ComboBox _user = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 120 };
@@ -49,10 +50,11 @@ sealed class FilePane : Panel
 
     readonly Func<TunnelConfig, string> _label;
 
-    public FilePane(Func<int, bool> isUp, Func<TunnelConfig, string> label)
+    public FilePane(Func<int, bool> isUp, Func<TunnelConfig, string> label, Func<TunnelConfig, Task<bool>>? ensure = null)
     {
         _servers = new List<TunnelConfig>();
         _isUp = isUp;
+        _ensure = ensure;
         _label = label;
         Dock = DockStyle.Fill;
         BackColor = Color.White;
@@ -221,9 +223,19 @@ sealed class FilePane : Panel
             }
             if (!_isUp(t.LocalPort))
             {
-                _status.Text = "Not connected yet. Start connections on the dashboard, then click Reconnect.";
-                if (!auto) MessageBox.Show(FindForm(), $"\"{t.Name}\" is not connected yet. Click \"Start connections\" on the dashboard and wait until it turns green.", "Copy files");
+                _status.Text = "This server is not available. Sign in again on the dashboard, then click Reconnect.";
+                if (!auto) MessageBox.Show(FindForm(), $"\"{t.Name}\" is not available right now. Use Sign in again on the dashboard, then try again.", "Copy files");
                 return;
+            }
+            if (_ensure != null)
+            {
+                _status.Text = "Opening the secure connection (a few seconds) ...";
+                if (!await _ensure(t))
+                {
+                    _status.Text = "Could not open the connection to this server.";
+                    if (!auto) MessageBox.Show(FindForm(), $"The secure connection to \"{t.Name}\" did not open. Check the card on the dashboard for the reason.", "Copy files");
+                    return;
+                }
             }
             var def = string.Equals(user, t.UserName, StringComparison.Ordinal);
             _status.Text = def ? $"Signing in as {user} with the saved key ..." : $"Switching to {user} with sudo ...";
@@ -367,7 +379,7 @@ public sealed class TransferDialog : Form
     readonly ComboBox _orgBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
     bool _orgLoading;
 
-    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, Func<TunnelConfig, string> serverLabel, TunnelConfig? preselect = null, string? startOrgKey = null)
+    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, Func<TunnelConfig, string> serverLabel, TunnelConfig? preselect = null, string? startOrgKey = null, Func<TunnelConfig, Task<bool>>? ensureOpen = null)
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -381,8 +393,8 @@ public sealed class TransferDialog : Form
 
         _all = orgs.Where(o => o.Servers.Count > 0).ToList();
         _isUp = isUp;
-        _left = new FilePane(isUp, serverLabel);
-        _right = new FilePane(isUp, serverLabel);
+        _left = new FilePane(isUp, serverLabel, ensureOpen);
+        _right = new FilePane(isUp, serverLabel, ensureOpen);
         _preselect = preselect;
         _startKey = preselect != null ? _all.FirstOrDefault(o => o.Servers.Contains(preselect))?.Key : startOrgKey;
 
@@ -446,13 +458,13 @@ public sealed class TransferDialog : Form
 
     string? CurrentKey() => _orgBox.SelectedIndex >= 0 && _orgBox.SelectedIndex < _orgs.Count ? _orgs[_orgBox.SelectedIndex].Key : null;
 
-    /// <summary>Lists only the servers that are enabled and connected on the dashboard right now.</summary>
+    /// <summary>Lists only the servers that are enabled and available (Ready or Connected) on the dashboard right now.</summary>
     async Task ReloadAsync(string? keepKey, TunnelConfig? pick)
     {
         _orgs = _all.Select(o => new Org(o.Key, o.Label, o.Servers.Where(s => s.Enabled && _isUp(s.LocalPort)).ToList())).Where(o => o.Servers.Count > 0).ToList();
         _orgLoading = true;
         _orgBox.Items.Clear();
-        foreach (var o in _orgs) _orgBox.Items.Add($"{o.Label}   ({o.Servers.Count} connected)");
+        foreach (var o in _orgs) _orgBox.Items.Add($"{o.Label}   ({o.Servers.Count} available)");
         var idx = Math.Max(0, _orgs.FindIndex(o => o.Key == keepKey));
         if (_orgs.Count > 0) _orgBox.SelectedIndex = idx;
         _orgLoading = false;
@@ -460,7 +472,7 @@ public sealed class TransferDialog : Form
         {
             await _left.SetServersAsync(new List<TunnelConfig>(), null);
             await _right.SetServersAsync(new List<TunnelConfig>(), null);
-            _info.Text = "No servers are connected right now. Start connections on the dashboard, wait for the servers to turn green, then click Refresh.";
+            _info.Text = "No servers are available right now. Sign in on the dashboard so the cards show Ready, then click Refresh.";
             return;
         }
         _info.Text = "Tip: Switch user uses sudo, like Ubuntu does. Leave the password blank unless sudo asks for one. root is not allowed.";

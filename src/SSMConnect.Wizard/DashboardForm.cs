@@ -20,15 +20,15 @@ using SSMConnect.Core;
 namespace SSMConnect.Wizard;
 
 /// <summary>
-/// Main window and tray icon. Shows every configured connection live (green = connected, amber = connecting,
-/// red = problem with the reason, grey = off), and offers start/stop of the connections, shortcuts, setup and uninstall.
-/// The window hides to the system tray when closed; the tunnels keep running while SSMConnect is open (tray icon).
+/// Main window and tray icon. Sign in once per organization, then every server is Ready; a click on a tool opens its secure
+/// connection on demand (green = connected, blue = ready, amber = connecting, red = stopped after 3 tries, grey = off).
+/// The window hides to the system tray when closed; connections open and close by themselves while SSMConnect runs.
 /// </summary>
 public sealed class DashboardForm : Form
 {
-    enum Level { Grey, Red, Amber, Green }
+    enum Level { Grey, Red, Amber, Green, Blue }
 
-    sealed record Row(string Name, string InstanceId, int Port, string StatusText, string Message, DateTime? Since, Level Level);
+    sealed record Row(string Name, string InstanceId, int Port, string StatusText, string Message, DateTime? Since, Level Level, string Detail = "");
 
     sealed class BufferedListView : ListView
     {
@@ -43,7 +43,6 @@ public sealed class DashboardForm : Form
     static readonly Color BadBg = Color.FromArgb(250, 214, 214), BadFg = Color.FromArgb(145, 0, 20);
     static readonly Color GreyBg = Color.FromArgb(228, 228, 228), GreyFg = Color.FromArgb(55, 55, 55);
 
-    readonly HeaderBand _hdr = new() { Dock = DockStyle.Top, Height = 84 };
     readonly bool _startHidden;
     bool _allowShow, _reallyExit, _hintShown;
     readonly TunnelManager _mgr = new();
@@ -53,15 +52,31 @@ public sealed class DashboardForm : Form
 
     // UI
     readonly Pill _svcPill = NewPill(), _authPill = NewPill(), _reqPill = NewPill();
-    // chips naming the organization accounts under the current sign-in, with how many servers each has
-    readonly FlowLayoutPanel _orgStrip = new() { AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, FlowDirection = FlowDirection.LeftToRight, WrapContents = true, Dock = DockStyle.Fill, Visible = false, Margin = new Padding(0, 0, 0, 2), Padding = Padding.Empty };
-    string _orgSig = "";
+    readonly SideList _side = new() { Dock = DockStyle.Fill };
+    readonly Label _orgTitle = new() { AutoSize = false, AutoEllipsis = true, Font = new Font("Segoe UI Semibold", 16f), ForeColor = AppTheme.Ink };
+    readonly Label _orgSub = new() { AutoSize = false, AutoEllipsis = true, ForeColor = Color.FromArgb(84, 100, 106) };
+    readonly TextBox _search = new() { PlaceholderText = "Search servers" };
+    readonly Button _btnSignIn = new() { Text = "Sign in again" }, _btnUsage = new() { Text = "Refresh usage" };
+    readonly Button _btnDisconnect = new() { Text = "Disconnect all" }, _btnAdd = new() { Text = "Add / change servers..." };
+    readonly LegendBar _legend = new() { Dock = DockStyle.Bottom, Height = 38 };
+    string _filter = "all";
+    bool _signInIsPrimary;
+    HashSet<string> _signedOut = new();      // organizations (top-level sign-ins) whose sign-in has expired
+    bool _authChecked;
+    readonly Dictionary<string, (DateTimeOffset? When, DateTime Checked)> _expiry = new();
+    // server size and usage (cached in usage.json)
+    readonly Dictionary<string, UsageInfo> _usage = UsageProbe.Load();
+    readonly HashSet<string> _usageBusy = new();
+    readonly SemaphoreSlim _usageGate = new(3);
+    DateTime _nextUsageCheck = DateTime.MinValue, _nextSpecCheck = DateTime.MinValue;
+    readonly HashSet<string> _launching = new();
+    Dictionary<string, string> _osMap = new();
     readonly Dictionary<Control, string> _tipText = new();
     sealed class CardFlow : FlowLayoutPanel
     {
         public CardFlow() { DoubleBuffered = true; }
     }
-    readonly CardFlow _cardHost = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, FlowDirection = FlowDirection.LeftToRight, BackColor = AppTheme.Page, Padding = new Padding(0, 4, 0, 0) };
+    readonly CardFlow _cardHost = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, FlowDirection = FlowDirection.LeftToRight, BackColor = AppTheme.Page, Padding = new Padding(14, 6, 4, 0) };
     readonly List<ServerCard> _cards = new();
     readonly List<Label> _groupHeads = new();
     // account switcher (top right of the header)
@@ -73,7 +88,6 @@ public sealed class DashboardForm : Form
     DateTime _profStamp = DateTime.MinValue;
     List<string> _rowGroups = new();   // account (profile) of each row, same order as _rows
     int _selected = -1;
-    readonly ActionButton _btnStart = new() { Text = "Start", Glyph = "play" }, _btnStop = new() { Text = "Stop", Glyph = "stop" }, _btnRestart = new() { Text = "Restart", Glyph = "restart" }, _btnAdd = new() { Text = "Add / change servers...", Glyph = "plus" };
     // update banner
     readonly Panel _updateBar = new() { Dock = DockStyle.Top, Height = 46, Visible = false, BackColor = Color.FromArgb(224, 242, 241), Padding = new Padding(14, 0, 14, 0) };
     readonly Label _updateText = new() { AutoSize = false, TextAlign = ContentAlignment.MiddleLeft, Dock = DockStyle.Fill, ForeColor = Color.FromArgb(4, 70, 66) };
@@ -83,7 +97,6 @@ public sealed class DashboardForm : Form
     readonly System.Windows.Forms.Timer _updateTimer = new() { Interval = 60 * 60 * 1000 };
     string? _puttyPath, _winscpPath, _mobaPath;
     DateTime _toolsChecked = DateTime.MinValue;
-    readonly Label _summary = new() { AutoSize = true, Font = new Font("Segoe UI Semibold", 11f), Margin = new Padding(0, 0, 0, 8) };
     readonly Label _detail = new() { AutoSize = true, MaximumSize = new Size(900, 0), Margin = new Padding(0, 8, 0, 0), ForeColor = Color.FromArgb(40, 40, 40) };
     readonly ToolTip _tips = new() { AutoPopDelay = 15000, InitialDelay = 250, ReshowDelay = 100, ShowAlways = true };
     readonly System.Windows.Forms.Timer _timer = new() { Interval = 1000 };
@@ -104,7 +117,6 @@ public sealed class DashboardForm : Form
     string _authTip = "";
     Level _authLevel = Level.Grey;
     bool _authBusy, _busy;
-    List<string> _authFailed = new();
     DateTime _nextAuthCheck = DateTime.MinValue;
 
     public DashboardForm(bool startHidden)
@@ -118,8 +130,8 @@ public sealed class DashboardForm : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = "SSMConnect Dashboard";
         Font = AppTheme.Body();
-        ClientSize = new Size(980, 640);
-        MinimumSize = new Size(760, 440);
+        ClientSize = new Size(1200, 740);
+        MinimumSize = new Size(960, 560);
         StartPosition = FormStartPosition.CenterScreen;
         try { Icon = Icon.ExtractAssociatedIcon(Application.ExecutablePath) ?? SystemIcons.Application; } catch { }
 
@@ -212,41 +224,70 @@ public sealed class DashboardForm : Form
 
     void BuildLayout()
     {
-        // three equal status pills across the full width, then the summary line, then the organization chips
-        var pills = new TableLayoutPanel { Dock = DockStyle.Fill, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 3, RowCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 0, 0, 10) };
-        for (var i = 0; i < 3; i++) pills.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f / 3));
-        pills.RowStyles.Add(new RowStyle(SizeType.AutoSize));
-        _reqPill.Margin = Padding.Empty;
-        pills.Controls.Add(_svcPill, 0, 0);
-        pills.Controls.Add(_authPill, 1, 0);
-        pills.Controls.Add(_reqPill, 2, 0);
+        BackColor = AppTheme.Page;
 
-        var top = new TableLayoutPanel { Dock = DockStyle.Top, AutoSize = true, AutoSizeMode = AutoSizeMode.GrowAndShrink, ColumnCount = 1, Margin = Padding.Empty, Padding = new Padding(0, 4, 0, 0) };
-        top.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100f));
-        top.Controls.Add(pills, 0, 0);
-        top.Controls.Add(_summary, 0, 1);
-        top.Controls.Add(_orgStrip, 0, 2);
+        // ---- left: organizations, filters and the three status pills
+        var sidebar = new Panel { Dock = DockStyle.Left, Width = 252, BackColor = Color.FromArgb(228, 238, 240) };
+        var pillHost = new Panel { Dock = DockStyle.Bottom, Height = 124, BackColor = Color.FromArgb(228, 238, 240) };
+        foreach (var p in new[] { _svcPill, _authPill, _reqPill }) { p.Dock = DockStyle.None; p.Margin = Padding.Empty; pillHost.Controls.Add(p); }
+        void LayoutPills()
+        {
+            var f = DeviceDpi / 96f;
+            int x = (int)(14 * f), w = Math.Max(60, pillHost.ClientSize.Width - 2 * x), h = (int)(32 * f), gap = (int)(6 * f);
+            var y = (int)(6 * f);
+            foreach (var p in new[] { _svcPill, _authPill, _reqPill }) { p.SetBounds(x, y, w, h); y += h + gap; }
+        }
+        pillHost.Resize += (_, _) => LayoutPills();
+        pillHost.HandleCreated += (_, _) => LayoutPills();
+        sidebar.Controls.Add(_side);       // Fill first, then the edge-docked panel
+        sidebar.Controls.Add(pillHost);
+        _side.OrgPicked += key => { if (key != _view) SwitchAccount(key); };
+        _side.FilterPicked += id => { _filter = id; _selected = -1; RefreshAll(); };
 
-        var detailHost = new Panel { Dock = DockStyle.Bottom, Height = 30, BackColor = AppTheme.Page };
+        // ---- right: toolbar, cards, notes, bottom bar, colour key
+        var right = new Panel { Dock = DockStyle.Fill, BackColor = AppTheme.Page };
+        var toolbar = new Panel { Dock = DockStyle.Top, Height = 86, BackColor = Color.FromArgb(249, 252, 252) };
+        toolbar.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, toolbar.Height - 1, toolbar.Width, toolbar.Height - 1); };
+        foreach (Control c in new Control[] { _orgTitle, _orgSub, _search, _btnUsage, _btnSignIn }) toolbar.Controls.Add(c);
+        void LayoutToolbar()
+        {
+            var f = DeviceDpi / 96f;
+            int m = (int)(22 * f), bh = (int)(34 * f), top = (int)(14 * f), gap = (int)(10 * f);
+            var x = toolbar.ClientSize.Width - m;
+            _btnSignIn.SetBounds(x - (int)(190 * f), top, (int)(190 * f), bh); x = _btnSignIn.Left - gap;
+            _btnUsage.SetBounds(x - (int)(130 * f), top, (int)(130 * f), bh); x = _btnUsage.Left - gap;
+            var sw = Math.Min((int)(220 * f), Math.Max((int)(120 * f), x - m - (int)(240 * f)));
+            _search.SetBounds(x - sw, top + (bh - _search.Height) / 2, sw, _search.Height); x = _search.Left - gap;
+            var tw = Math.Max((int)(120 * f), x - m);
+            _orgTitle.SetBounds(m, (int)(10 * f), tw, (int)(34 * f));
+            _orgSub.SetBounds(m, (int)(48 * f), Math.Max((int)(200 * f), toolbar.ClientSize.Width - 2 * m), (int)(24 * f));
+        }
+        toolbar.Resize += (_, _) => LayoutToolbar();
+        toolbar.HandleCreated += (_, _) => LayoutToolbar();
+        _search.TextChanged += (_, _) => { _selected = -1; RefreshAll(); };
+        _btnSignIn.Click += async (_, _) => await SignInOrgAsync(_view);
+        _btnUsage.Click += (_, _) => RefreshUsageNow();
+        SetTip(_btnUsage, "Read CPU, memory and disk use of every reachable server in this organization now. Servers in use refresh by themselves about every 5 minutes.");
+        SetTip(_btnSignIn, "Sign in to this organization again in your own browser. One sign-in covers all of its AWS accounts.");
+
+        var detailHost = new Panel { Dock = DockStyle.Bottom, Height = 28, BackColor = AppTheme.Page, Padding = new Padding(22, 0, 14, 0) };
         _detail.AutoSize = false; _detail.Dock = DockStyle.Fill; _detail.TextAlign = ContentAlignment.MiddleLeft; _detail.MaximumSize = Size.Empty; _detail.Margin = Padding.Empty;
         detailHost.Controls.Add(_detail);
 
-        // one bottom bar: the three connection controls share one size, the main action sits on the right
-        var bar = new Panel { Dock = DockStyle.Bottom, Height = 64, BackColor = Color.White };
+        var bar = new Panel { Dock = DockStyle.Bottom, Height = 60, BackColor = Color.White };
         bar.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, 0, bar.Width, 0); };
-        foreach (var b in new[] { _btnStart, _btnStop, _btnRestart, _btnAdd }) { b.AutoSize = false; b.Height = 40; bar.Controls.Add(b); }
-        _btnStart.Width = _btnStop.Width = _btnRestart.Width = 124; _btnAdd.Width = 250;
-        SetTip(_btnAdd, "Open the setup wizard to find servers in your AWS accounts and choose which ones to connect to.");
-        _btnStart.Click += async (_, _) => await ServiceActionAsync("start");
-        _btnStop.Click += async (_, _) => await ServiceActionAsync("stop");
-        _btnRestart.Click += async (_, _) => await ServiceActionAsync("restart");
-        _btnAdd.Click += (_, _) => OpenSetup();
+        foreach (var b in new[] { _btnDisconnect, _btnAdd }) { b.AutoSize = false; b.Height = 38; bar.Controls.Add(b); }
+        _btnDisconnect.Width = 150; _btnAdd.Width = 250;
         _btnAdd.Tag = "primary";
+        SetTip(_btnAdd, "Open the setup wizard to find servers in your AWS accounts and choose which ones to connect to.");
+        SetTip(_btnDisconnect, "Close every open connection now. Servers go back to Ready and open again when you click a tool. Your servers in AWS are not touched.");
+        _btnAdd.Click += (_, _) => OpenSetup();
+        _btnDisconnect.Click += (_, _) => { _mgr.CloseAll(); RefreshAll(); };
         void LayoutBar()
         {
             var f = DeviceDpi / 96f;
-            int y = (bar.Height - _btnStart.Height) / 2, gap = (int)(10 * f), x = (int)(22 * f);
-            foreach (var b in new[] { _btnStart, _btnStop, _btnRestart }) { b.Location = new Point(x, y); x += b.Width + gap; }
+            int y = (bar.Height - _btnAdd.Height) / 2;
+            _btnDisconnect.Location = new Point((int)(22 * f), y);
             _btnAdd.Location = new Point(bar.Width - (int)(22 * f) - _btnAdd.Width, y);
         }
         bar.Resize += (_, _) => LayoutBar();
@@ -262,37 +303,27 @@ public sealed class DashboardForm : Form
         _updateNotes.Click += (_, _) => { if (_update != null) OpenUrl(_update.PageUrl); };
         _updateLater.Click += (_, _) => _updateBar.Visible = false;
 
-        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(22, 12, 22, 4) };
-        host.Controls.Add(_cardHost);   // Fill first (back), then edge-docked panels
-        host.Controls.Add(detailHost);
-        host.Controls.Add(top);
-        BackColor = AppTheme.Page;
-        host.BackColor = AppTheme.Page;
-        Controls.Add(host);
-        Controls.Add(bar);
+        right.Controls.Add(_cardHost);   // Fill first (front of the stack), then the edge-docked panels
+        right.Controls.Add(toolbar);
+        right.Controls.Add(detailHost);
+        right.Controls.Add(bar);
+        right.Controls.Add(_legend);
+        Controls.Add(right);
+        Controls.Add(sidebar);
         Controls.Add(_updateBar);
-        Controls.Add(_hdr);
-        host.BringToFront();
-        _cardHost.BringToFront();
-        _hdr.Controls.Add(_chip);
-        void PlaceAcct() { var f = DeviceDpi / 96f; _chip.Width = (int)(290 * f); _chip.Height = (int)(46 * f); _chip.Left = _hdr.Width - _chip.Width - (int)(24 * f); _chip.Top = (_hdr.Height - _chip.Height) / 2; }
-        _hdr.Resize += (_, _) => PlaceAcct();
-        _hdr.HandleCreated += (_, _) => PlaceAcct();
-        _chip.Click += (_, _) => ShowAccountMenu();
-        _hdr.Set("SSMConnect", "Your AWS servers, one click away. Secure SSH and Remote Desktop through SSM, with no open ports.");
         _cardHost.SizeChanged += (_, _) => LayoutCards();
     }
 
     void LayoutCards()
     {
         var f = DeviceDpi / 96f;
-        var avail = _cardHost.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 2;
-        var gap = (int)(12 * f);
-        var cols = Math.Max(1, avail / (int)(330 * f));
-        var w = Math.Max((int)(300 * f), (avail - gap * (cols - 1)) / cols);
+        var avail = _cardHost.ClientSize.Width - _cardHost.Padding.Horizontal - 2;
+        var gap = (int)(4 * f);
+        var cols = Math.Max(1, avail / (int)(360 * f));
+        var w = Math.Max((int)(330 * f), (avail - gap * (cols - 1)) / cols);
         _cardHost.SuspendLayout();
-        foreach (var c in _cards) { c.Width = w; c.Height = ServerCard.HeightFor(f); c.Margin = new Padding(0, 0, gap, gap); }
-        foreach (var h in _groupHeads) { h.Width = Math.Max(avail, 200); h.Height = (int)(26 * f); h.Margin = new Padding(0, (int)(6 * f), 0, (int)(2 * f)); }
+        foreach (var c in _cards) { c.Width = w; c.Height = ServerCard.HeightFor(f); c.Margin = new Padding(0, 0, gap, 0); }
+        foreach (var h in _groupHeads) { h.Width = Math.Max(avail, 200); h.Height = (int)(26 * f); h.Margin = new Padding(0, (int)(8 * f), 0, (int)(2 * f)); }
         _cardHost.ResumeLayout();
     }
 
@@ -311,7 +342,7 @@ public sealed class DashboardForm : Form
     List<CardAction> ActionsFor(TunnelConfig? t, bool up)
     {
         if (t == null) return new();
-        if (t.IsRdp) return new() { new("rdp", "Remote Desktop", up), new("pwd", "Get password", true) };
+        if (t.IsRdp) return new() { new("rdp", "Remote Desktop", up), new("pwd", "Get password", up) };
         var list = new List<CardAction>();
         if (_puttyPath != null) list.Add(new("putty", "PuTTY", up));
         if (_winscpPath != null) list.Add(new("winscp", "WinSCP", up));
@@ -327,7 +358,7 @@ public sealed class DashboardForm : Form
         ShowDetail();
     }
 
-    void OnCardAction(ServerCard card, string id)
+    async void OnCardAction(ServerCard card, string id)
     {
         var i = _cards.IndexOf(card);
         if (i < 0) return;
@@ -337,6 +368,22 @@ public sealed class DashboardForm : Form
         var session = ToolConfigurator.SessionName(t);
         try
         {
+            if (id == "signin") { await SignInOrgAsync(PKey(t.Profile)); return; }
+            if (id is "putty" or "winscp" or "moba" or "rdp")
+            {
+                var guard = t.InstanceId + "|" + t.LocalPort;
+                if (!_launching.Add(guard)) return;   // already opening this one
+                try
+                {
+                    if (!await EnsureOpenAsync(t))
+                    {
+                        _mgr.StateOf(t, out var why);
+                        MessageBox.Show(this, $"The secure connection to \"{t.Name}\" did not open.\n\n{why}", "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                        return;
+                    }
+                }
+                finally { _launching.Remove(guard); }
+            }
             switch (id)
             {
                 case "rdp": OpenRdp(); break;
@@ -352,6 +399,22 @@ public sealed class DashboardForm : Form
             }
         }
         catch (Exception ex) { MessageBox.Show(this, "Could not open the tool: " + ex.Message, "SSMConnect"); }
+    }
+
+    /// <summary>Opens the server's secure connection if it is not open yet and waits (up to about a minute) until its local port answers.</summary>
+    async Task<bool> EnsureOpenAsync(TunnelConfig t)
+    {
+        if (!_mgr.IsRunning) _mgr.Start();
+        _mgr.Open(t);
+        var until = DateTime.UtcNow.AddSeconds(60);
+        while (DateTime.UtcNow < until)
+        {
+            var st = _mgr.StateOf(t, out _);
+            if (st == TunnelStates.Connected && _mgr.IsOpen(t)) return true;
+            if (st == TunnelStates.Stopped) return false;
+            await Task.Delay(400);
+        }
+        return false;
     }
 
     /// <summary>
@@ -401,9 +464,15 @@ public sealed class DashboardForm : Form
     {
         var ssh = _cfg.Tunnels.Where(x => !x.IsRdp && x.Enabled).ToList();
         if (ssh.Count == 0) { MessageBox.Show(this, "Set up at least one Linux server in SSMConnect first.", "SSMConnect"); return; }
-        var live = ActiveListeners();
-        if (!ssh.Any(x => live.Contains(x.LocalPort)))
-        { MessageBox.Show(this, "No servers are connected right now. Click \"Start connections\", wait until your servers turn green, then try again.", "SSMConnect"); return; }
+        bool Avail(int port)
+        {
+            var t = ssh.FirstOrDefault(x => x.LocalPort == port);
+            if (t == null || _signedOut.Contains(PKey(t.Profile))) return false;
+            var st = _mgr.StateOf(t, out _);
+            return st == TunnelStates.Ready || st == TunnelStates.Connected;
+        }
+        if (!ssh.Any(x => Avail(x.LocalPort)))
+        { MessageBox.Show(this, "No servers are available right now. Sign in (Sign in again) until the cards show Ready, then try again.", "SSMConnect"); return; }
         // Servers are grouped by their top-level organization (the company sign-in), and only one group is linked at a time.
         var orgs = ssh.GroupBy(x => PKey(x.Profile))
             .Select(g => new TransferDialog.Org(g.Key, PLabel(g.First().Profile), g.ToList()))
@@ -414,7 +483,7 @@ public sealed class DashboardForm : Form
             var acct = _cfg.AliasOr(t.Profile, t.Profile);
             return string.IsNullOrWhiteSpace(acct) ? t.Name : $"{t.Name}    -  {acct}";
         }
-        using var dlg = new TransferDialog(orgs, p => ActiveListeners().Contains(p), Label, preselect, _view);
+        using var dlg = new TransferDialog(orgs, Avail, Label, preselect, _view, EnsureOpenAsync);
         dlg.ShowDialog(this);
     }
 
@@ -441,6 +510,24 @@ public sealed class DashboardForm : Form
         aws.DropDownItems.Add(Item("&Manage accounts (rename, remove)...", (_, _) => ManageAccounts()));
         aws.DropDownItems.Add(Item("&Sign in again", async (_, _) => await SignInAsync()));
 
+        var conns = new ToolStripMenuItem("&Connections");
+        conns.DropDownItems.Add(Item("&Disconnect all now", (_, _) => { _mgr.CloseAll(); RefreshAll(); }));
+        var idle = new ToolStripMenuItem("Close &unused connections after");
+        foreach (var m in new[] { 15, 30, 60 })
+        {
+            var mins = m;
+            var it = new ToolStripMenuItem($"{mins} minutes") { Tag = mins };
+            it.Click += (_, _) => SetIdleMinutes(mins);
+            idle.DropDownItems.Add(it);
+        }
+        idle.DropDownOpening += (_, _) => { foreach (ToolStripMenuItem it in idle.DropDownItems) it.Checked = it.Tag is int v && v == (_cfg.IdleMinutes <= 0 ? 15 : _cfg.IdleMinutes); };
+        conns.DropDownItems.Add(idle);
+        conns.DropDownItems.Add(new ToolStripSeparator());
+        conns.DropDownItems.AddRange(new ToolStripItem[] { _mStart, _mStop, _mRestart });
+        _mStart.Click += async (_, _) => await ServiceActionAsync("start");
+        _mStop.Click += async (_, _) => await ServiceActionAsync("stop");
+        _mRestart.Click += async (_, _) => await ServiceActionAsync("restart");
+
         var servers = new ToolStripMenuItem("&Servers");
         servers.DropDownItems.Add(Item("Scan for &new or changed servers", async (_, _) => await ScanForChangesAsync(force: true, interactive: true)));
         servers.DropDownItems.Add(Item("What &changed since the last scan...", (_, _) => ShowServerChanges()));
@@ -454,9 +541,15 @@ public sealed class DashboardForm : Form
         help.DropDownItems.Add(new ToolStripSeparator());
         help.DropDownItems.Add(Item("&Uninstall SSMConnect...", (_, _) => UninstallClicked()));
 
-        menu.Items.AddRange(new ToolStripItem[] { file, aws, servers, help });
+        menu.Items.AddRange(new ToolStripItem[] { file, aws, conns, servers, help });
         MainMenuStrip = menu;
         Controls.Add(menu);
+    }
+
+    void SetIdleMinutes(int minutes)
+    {
+        try { var c = ConfigStore.Load() ?? _cfg; c.IdleMinutes = minutes; ConfigStore.Save(c); _cfg.IdleMinutes = minutes; _cfgStamp = DateTime.MinValue; }
+        catch (Exception ex) { MessageBox.Show(this, "Could not save the setting: " + ex.Message, "SSMConnect"); }
     }
 
     static ToolStripMenuItem Item(string text, EventHandler click)
@@ -473,6 +566,7 @@ public sealed class DashboardForm : Form
         _icons[Level.Amber] = MakeStatusIcon(Color.FromArgb(240, 170, 20));
         _icons[Level.Red] = MakeStatusIcon(Color.FromArgb(205, 40, 50));
         _icons[Level.Grey] = MakeStatusIcon(Color.FromArgb(130, 130, 130));
+        _icons[Level.Blue] = MakeStatusIcon(Color.FromArgb(60, 130, 230));
 
         var menu = new ContextMenuStrip();
         _trayStart.Click += async (_, _) => await ServiceActionAsync("start");
@@ -616,21 +710,17 @@ public sealed class DashboardForm : Form
         var stale = !running || status == null || DateTime.UtcNow - status.UpdatedUtc > TimeSpan.FromSeconds(20);
         var listeners = ActiveListeners();
 
-        // connections pill
-        if (running) SetPill(_svcPill, "Connections: running", Level.Green, "SSMConnect is keeping your tunnels open.");
-        else SetPill(_svcPill, "Connections: stopped", Level.Red, "Connections are down. Use Connections > Start connections.");
-
-        // requirements pill
+        // pills at the bottom of the sidebar
+        if (running) SetPill(_svcPill, "Connections: on demand", Level.Green, "SSMConnect opens a secure connection when you click a tool, and closes it when it is no longer used.");
+        else SetPill(_svcPill, "Connections: switched off", Level.Red, "Use Connections > Start connections (or the tray menu) to switch them on.");
         var haveAws = AwsCli.FindAws() != null;
         var havePlugin = AwsCli.FindPlugin() != null;
         if (haveAws && havePlugin) SetPill(_reqPill, "AWS tools: installed", Level.Green, "AWS CLI and the Session Manager plugin are installed.");
         else SetPill(_reqPill, "AWS tools: missing " + (haveAws ? "plugin" : havePlugin ? "CLI" : "CLI + plugin"), Level.Red, "Click Add / change servers to install them automatically.");
-
-        // auth pill (updated by background check)
         SetPill(_authPill, _authText, _authLevel, _authTip);
         if (!_authBusy && DateTime.UtcNow >= _nextAuthCheck) _ = CheckAuthAsync();
 
-        // rows: servers of one primary account sit together, with their member accounts (organizations) under quiet headings
+        // one row per server (every organization), then the window shows the chosen organization with the chosen filter
         var rows = new List<Row>();
         FillAccounts();
         var order = _cfg.Tunnels.Select(x => x.Profile).Distinct().ToList();
@@ -641,34 +731,57 @@ public sealed class DashboardForm : Form
             var s = status?.Tunnels.FirstOrDefault(x => x.InstanceId == t.InstanceId && x.LocalPort == t.LocalPort);
             Row row;
             if (!t.Enabled) row = new Row(label, t.InstanceId, t.LocalPort, "Off", "This connection is turned off.", null, Level.Grey);
-            else if (!running) row = new Row(label, t.InstanceId, t.LocalPort, "Stopped", "Connections are stopped. Use the Connections menu or the tray icon to start them.", null, Level.Grey);
-            else if (stale || s == null) row = new Row(label, t.InstanceId, t.LocalPort, "Starting", "Starting this connection...", null, Level.Amber);
+            else if (_signedOut.Contains(PKey(t.Profile))) row = new Row(label, t.InstanceId, t.LocalPort, "Signed out", "Your company sign-in has expired. Click Sign in again.", null, Level.Red, "sign in needed");
+            else if (!running) row = new Row(label, t.InstanceId, t.LocalPort, "Paused", "Connections are switched off. Use Connections > Start connections.", null, Level.Grey);
+            else if (stale || s == null) row = new Row(label, t.InstanceId, t.LocalPort, "Ready", "Ready. Click a tool to connect.", null, Level.Blue);
             else row = s.State switch
             {
                 TunnelStates.Connected when listeners.Contains(t.LocalPort) =>
-                    new Row(label, t.InstanceId, t.LocalPort, "Connected", $"Ready. Open the saved session '{ToolConfigurator.SessionName(t)}' in PuTTY / WinSCP / MobaXterm.", s.SinceUtc, Level.Green),
+                    new Row(label, t.InstanceId, t.LocalPort, "Connected", s.Message, s.SinceUtc, Level.Green,
+                        s.Clients > 0 ? (s.Clients == 1 ? "1 tool attached" : s.Clients + " tools attached")
+                        : s.IdleLeftSeconds >= 0 ? $"closes in {(s.IdleLeftSeconds + 59) / 60} min if unused" : ""),
                 TunnelStates.Connected =>
                     new Row(label, t.InstanceId, t.LocalPort, "Checking", "Tunnel reported connected; confirming the local port is open...", s.SinceUtc, Level.Amber),
-                TunnelStates.Error => new Row(label, t.InstanceId, t.LocalPort, "Problem", s.Message, s.SinceUtc, Level.Red),
-                TunnelStates.Retrying => new Row(label, t.InstanceId, t.LocalPort, "Reconnecting", s.Message, s.SinceUtc, Level.Amber),
+                TunnelStates.Ready => new Row(label, t.InstanceId, t.LocalPort, "Ready", s.Message, null, Level.Blue),
+                TunnelStates.Stopped => new Row(label, t.InstanceId, t.LocalPort, "Stopped", s.Message, s.SinceUtc, Level.Red, "stopped after 3 tries"),
+                TunnelStates.Error => new Row(label, t.InstanceId, t.LocalPort, "Problem", s.Message, s.SinceUtc, Level.Red, s.Message),
+                TunnelStates.Retrying => new Row(label, t.InstanceId, t.LocalPort, "Connecting", s.Message, s.SinceUtc, Level.Amber, $"try {Math.Max(1, s.Attempt)} of 3"),
                 TunnelStates.Disabled => new Row(label, t.InstanceId, t.LocalPort, "Off", s.Message, null, Level.Grey),
-                _ => new Row(label, t.InstanceId, t.LocalPort, "Connecting", s.Message, s.SinceUtc, Level.Amber),
+                _ => new Row(label, t.InstanceId, t.LocalPort, "Connecting", s.Message, s.SinceUtc, Level.Amber, "opening the secure session"),
             };
             rows.Add(row);
         }
-        // the window shows one primary account at a time; the summary and tray cover every connection
-        var viewIdx = Enumerable.Range(0, ordered.Count).Where(i => PKey(ordered[i].Profile) == _view).ToList();
-        var viewProfiles = viewIdx.Select(i => ordered[i].Profile).ToList();
-        // organizations (member accounts) are shown as headings whenever the sign-in has more than one, even for accounts found before this view existed
-        var memberCount = ViewMembers().Count;
-        _rowGroups = viewProfiles.Distinct().Count() > 1 || memberCount > 1 ? viewProfiles : new List<string>();
-        UpdateGrid(viewIdx.Select(i => rows[i]).ToList());
-        UpdateOrgStrip();
 
-        // overall
-        var enabled = rows.Where(r => r.Level != Level.Grey || r.StatusText != "Off").ToList();
-        var up = rows.Count(r => r.Level == Level.Green);
+        // the chosen organization, then the filter and the search box
+        var inOrg = Enumerable.Range(0, ordered.Count).Where(i => PKey(ordered[i].Profile) == _view).ToList();
+        var search = _search.Text.Trim();
+        bool Passes(int i)
+        {
+            var r = rows[i];
+            var ok = _filter switch
+            {
+                "connected" => r.Level == Level.Green,
+                "ready" => r.Level == Level.Blue,
+                "attn" => r.Level == Level.Red || r.Level == Level.Amber,
+                "prod" => EnvironmentClassifier.IsProd(EnvOf(ordered[i])),
+                _ => true,
+            };
+            if (!ok) return false;
+            return search.Length == 0 || r.Name.Contains(search, StringComparison.OrdinalIgnoreCase) || r.InstanceId.Contains(search, StringComparison.OrdinalIgnoreCase);
+        }
+        var shown = inOrg.Where(Passes).ToList();
+        var viewProfiles = shown.Select(i => ordered[i].Profile).ToList();
+        var memberCount = ViewMembers().Count;
+        _rowGroups = viewProfiles.Distinct().Count() > 1 || (memberCount > 1 && _filter == "all" && search.Length == 0) ? viewProfiles : new List<string>();
+        UpdateGrid(shown.Select(i => rows[i]).ToList());
+        UpdateSide(ordered, rows, inOrg);
+        UpdateToolbar(ordered, rows, inOrg);
+        AutoUsage(ordered, rows);
+
+        // overall (tray icon and tooltip cover every server)
+        var up = rows.Count(r => r.Level == Level.Green || r.Level == Level.Blue);
         var total = rows.Count(r => r.StatusText != "Off");
+        var connected = rows.Count(r => r.Level == Level.Green);
         Level overall;
         if (!running) overall = Level.Grey;
         else if (total == 0) overall = Level.Amber;
@@ -676,29 +789,105 @@ public sealed class DashboardForm : Form
         else if (up == total) overall = Level.Green;
         else overall = Level.Amber;
 
-        string tip, summary;
-        switch (overall)
+        string tip = overall switch
         {
-            case Level.Green: tip = $"SSMConnect: all {total} connection(s) up"; summary = $"All {total} connection(s) are up."; break;
-            case Level.Red: tip = $"SSMConnect: problem ({up} of {total} up)"; summary = $"{up} of {total} connection(s) up. Red cards show the reason."; break;
-            case Level.Grey: tip = "SSMConnect: connections stopped"; summary = "Connections are stopped, so nothing is connected."; break;
-            default: tip = total == 0 ? "SSMConnect: no connections set up" : $"SSMConnect: {up} of {total} up, connecting..."; summary = total == 0 ? "No connections are set up yet. Click \"Add / change servers...\"." : $"{up} of {total} connection(s) up. The rest are connecting..."; break;
-        }
-        _summary.Text = summary;
-        _summary.ForeColor = overall switch { Level.Green => GoodFg, Level.Red => BadFg, Level.Amber => WarnFg, _ => GreyFg };
+            Level.Green => $"SSMConnect: {connected} connected, {up - connected} ready",
+            Level.Red => $"SSMConnect: attention needed ({up} of {total} available)",
+            Level.Grey => "SSMConnect: connections switched off",
+            _ => total == 0 ? "SSMConnect: no servers set up" : $"SSMConnect: {up} of {total} available, connecting...",
+        };
         _tray.Icon = _icons[overall];
         _tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip;
         _trayHeader.Text = tip;
-        Text = overall == Level.Green ? "SSMConnect Dashboard - all connected" : "SSMConnect Dashboard";
+        Text = connected > 0 ? $"SSMConnect Dashboard - {connected} connected" : "SSMConnect Dashboard";
 
         foreach (var m in new[] { _mStart, _trayStart }) m.Enabled = !_busy && !running;
         foreach (var m in new[] { _mStop, _trayStop }) m.Enabled = !_busy && running;
         foreach (var m in new[] { _mRestart, _trayRestart }) m.Enabled = !_busy;
-        UpdateServiceButtons(running);
+        _btnDisconnect.Enabled = connected > 0;
 
         NotifyOnChange(overall, rows);
         _overall = overall;
-        _ = enabled;
+    }
+
+    /// <summary>Colour of an organization's dot in the sidebar: the most important thing going on among its servers.</summary>
+    CardLevel OrgDot(string key, List<TunnelConfig> ordered, List<Row> rows)
+    {
+        if (_signedOut.Contains(key)) return CardLevel.Red;
+        var mine = Enumerable.Range(0, ordered.Count).Where(i => PKey(ordered[i].Profile) == key).Select(i => rows[i]).Where(r => r.StatusText != "Off").ToList();
+        if (mine.Any(r => r.Level == Level.Red)) return CardLevel.Red;
+        if (mine.Any(r => r.Level == Level.Amber)) return CardLevel.Amber;
+        if (mine.Any(r => r.Level == Level.Green)) return CardLevel.Green;
+        if (mine.Any(r => r.Level == Level.Blue)) return CardLevel.Blue;
+        return CardLevel.Grey;
+    }
+
+    void UpdateSide(List<TunnelConfig> ordered, List<Row> rows, List<int> inOrg)
+    {
+        var orgs = _prim.Select(p => new SideList.Org(p.Key, p.Label, p.Count, OrgDot(p.Key, ordered, rows))).ToList();
+        var mine = inOrg.Select(i => (T: ordered[i], R: rows[i])).ToList();
+        var filters = new List<SideList.Filt>
+        {
+            new("all", "All servers", mine.Count, null),
+            new("connected", "Connected", mine.Count(x => x.R.Level == Level.Green), CardLevel.Green),
+            new("ready", "Ready", mine.Count(x => x.R.Level == Level.Blue), CardLevel.Blue),
+            new("attn", "Needs attention", mine.Count(x => x.R.Level == Level.Red || x.R.Level == Level.Amber), CardLevel.Amber),
+            new("prod", "PROD only", mine.Count(x => EnvironmentClassifier.IsProd(EnvOf(x.T))), CardLevel.Red),
+        };
+        _side.Set(orgs, _view, filters, _filter);
+    }
+
+    DateTimeOffset? OrgExpiry(string? key)
+    {
+        if (key == null) return null;
+        if (_expiry.TryGetValue(key, out var c) && DateTime.UtcNow - c.Checked < TimeSpan.FromSeconds(30)) return c.When;
+        DateTimeOffset? when = null;
+        try
+        {
+            var session = Profiles().Where(p => AwsProfiles.PrimaryKey(p) == key).Select(p => p.SsoSession).FirstOrDefault(x => !string.IsNullOrEmpty(x));
+            if (session != null) when = AwsSso.TokenExpiry(session);
+        }
+        catch { }
+        _expiry[key] = (when, DateTime.UtcNow);
+        return when;
+    }
+
+    static string Span(TimeSpan t)
+    {
+        if (t.TotalMinutes < 1) return "less than a minute";
+        if (t.TotalHours < 1) return (int)t.TotalMinutes + " min";
+        return (int)t.TotalHours + " h " + t.Minutes + " min";
+    }
+
+    void UpdateToolbar(List<TunnelConfig> ordered, List<Row> rows, List<int> inOrg)
+    {
+        var label = _prim.FirstOrDefault(x => x.Key == _view).Label ?? "No organization yet";
+        if (_orgTitle.Text != label) _orgTitle.Text = label;
+        var out_ = _view != null && _signedOut.Contains(_view);
+        var servers = inOrg.Count;
+        var connected = inOrg.Count(i => rows[i].Level == Level.Green);
+        var ready = inOrg.Count(i => rows[i].Level == Level.Blue);
+        string sub;
+        if (_cfg.Tunnels.Count == 0) sub = "No servers yet. Click \"Add / change servers...\" to find your servers.";
+        else if (out_) sub = $"Signed out  \u00B7  sign in to connect  \u00B7  {servers} server{(servers == 1 ? "" : "s")}";
+        else
+        {
+            var exp = OrgExpiry(_view);
+            var left = exp.HasValue ? "  \u00B7  " + Span(exp.Value - DateTimeOffset.UtcNow) + " left" : "";
+            var used = inOrg.Select(i => UsageOf(ordered[i])?.UsageUtc ?? DateTime.MinValue).DefaultIfEmpty(DateTime.MinValue).Max();
+            sub = $"Signed in{left}  \u00B7  {servers} server{(servers == 1 ? "" : "s")}  \u00B7  {connected} connected  \u00B7  {ready} ready  \u00B7  " +
+                  (used > DateTime.MinValue ? "usage updated " + Ago(used) + " ago" : "usage not read yet");
+        }
+        if (_orgSub.Text != sub) _orgSub.Text = sub;
+
+        var text = out_ ? "Sign in to " + label : "Sign in again";
+        if (_btnSignIn.Text != text) _btnSignIn.Text = text;
+        if (_signInIsPrimary != out_) { _signInIsPrimary = out_; ButtonLook.Attach(_btnSignIn, out_); _btnSignIn.Font = out_ ? AppTheme.Semi() : AppTheme.Body(); }
+        _btnSignIn.Enabled = _view != null;
+        int busy; lock (_usageBusy) busy = _usageBusy.Count;
+        var usageText = busy > 0 ? "Reading usage..." : "Refresh usage";
+        if (_btnUsage.Text != usageText) _btnUsage.Text = usageText;
+        _btnUsage.Enabled = busy == 0 && !out_ && inOrg.Count > 0;
     }
 
     void NotifyOnChange(Level overall, List<Row> rows)
@@ -723,6 +912,7 @@ public sealed class DashboardForm : Form
             Level.Green => (GoodBg, GoodFg),
             Level.Amber => (WarnBg, WarnFg),
             Level.Red => (BadBg, BadFg),
+            Level.Blue => (Color.FromArgb(214, 230, 250), Color.FromArgb(14, 70, 150)),
             _ => (GreyBg, GreyFg),
         };
         if (pill.Text != text) pill.Text = text;
@@ -748,6 +938,7 @@ public sealed class DashboardForm : Form
     {
         _rows = rows;
         RefreshToolPaths();
+        RefreshDiscoMaps();
         var f = DeviceDpi / 96f;
         _cardHost.SuspendLayout();
         try
@@ -755,7 +946,7 @@ public sealed class DashboardForm : Form
             while (_cards.Count > rows.Count) { var c = _cards[^1]; _cards.RemoveAt(_cards.Count - 1); _cardHost.Controls.Remove(c); c.Dispose(); }
             while (_cards.Count < rows.Count)
             {
-                var c = new ServerCard { Width = (int)(340 * f), Height = ServerCard.HeightFor(f) };
+                var c = new ServerCard { Width = (int)(360 * f), Height = ServerCard.HeightFor(f) };
                 c.ActionClicked += OnCardAction;
                 c.Picked += card => SelectCard(_cards.IndexOf(card));
                 c.Activated += OnCardActivated;
@@ -767,14 +958,21 @@ public sealed class DashboardForm : Form
             {
                 var r = rows[i];
                 var tun = _cfg.Tunnels.FirstOrDefault(t => t.InstanceId == r.InstanceId && t.LocalPort == r.Port);
-                var up = r.Level == Level.Green;
+                var available = r.Level == Level.Green || r.Level == Level.Blue;
+                var info = tun == null ? null : UsageOf(tun);
+                var os = info != null && info.OsName.Length > 0 ? info.OsName : OsOf(tun);
+                var spec = info?.SpecLine() ?? "";
+                if (spec.Length == 0 && os.Length > 0) spec = os;
                 _cards[i].Data = new CardData
                 {
-                    Name = r.Name, InstanceId = r.InstanceId, Port = r.Port.ToString(), StatusText = r.StatusText, Message = r.Message,
+                    Name = r.Name, InstanceId = r.InstanceId, Port = r.Port.ToString(), StatusText = r.StatusText, Detail = r.Detail, Message = r.Message,
                     Since = r.Since.HasValue ? Ago(r.Since.Value) : "", KnownType = tun != null, IsWindows = tun?.IsRdp ?? false,
                     Environment = EnvOf(tun), IsProd = EnvironmentClassifier.IsProd(EnvOf(tun)),
-                    Level = r.Level switch { Level.Green => CardLevel.Green, Level.Amber => CardLevel.Amber, Level.Red => CardLevel.Red, _ => CardLevel.Grey },
-                    Actions = ActionsFor(tun, up),
+                    Spec = spec, OsKey = OsIcons.KeyFor(os, tun?.IsRdp ?? false),
+                    Cpu = info?.CpuPct ?? -1, Ram = info?.RamPct ?? -1, Disk = info?.DiskPct ?? -1,
+                    UsageTip = info == null ? "Click Refresh usage to read it." : info.Note,
+                    Level = r.Level switch { Level.Green => CardLevel.Green, Level.Blue => CardLevel.Blue, Level.Amber => CardLevel.Amber, Level.Red => CardLevel.Red, _ => CardLevel.Grey },
+                    Actions = ActionsFor(tun, available),
                 };
             }
             ArrangeGroups(f);
@@ -853,56 +1051,6 @@ public sealed class DashboardForm : Form
         _tips.SetToolTip(c, text);
     }
 
-    /// <summary>Start / Stop / Restart: dimmed when they have nothing to do, with a hover note that says what each one does (or why it is dimmed).</summary>
-    void UpdateServiceButtons(bool running)
-    {
-        _btnStart.Available = !_busy && !running;
-        _btnStop.Available = !_busy && running;
-        _btnRestart.Available = !_busy;
-        SetTip(_btnStart, _busy ? "Working... one moment."
-            : running ? "Already running: your connections are open. Use Restart to reconnect them all."
-            : "Open all your secure connections now. Each server gets a local port that PuTTY, WinSCP or Remote Desktop connects through.");
-        SetTip(_btnStop, _busy ? "Working... one moment."
-            : running ? "Close every secure connection. Open PuTTY, WinSCP and Remote Desktop sessions will drop. Your servers in AWS are not touched."
-            : "Nothing is running, so there is nothing to stop.");
-        SetTip(_btnRestart, _busy ? "Working... one moment."
-            : "Close and reopen every connection. Use this after your PC wakes from sleep, or when a server card shows a problem.");
-    }
-
-    /// <summary>Shows each organization account under the current sign-in as a chip with its server count; accounts without servers are greyed.</summary>
-    void UpdateOrgStrip()
-    {
-        var items = ViewMembers()
-            .Select(m => (Name: _cfg.AliasOr(m.Name, m.Name), Count: ServersIn(m), Id: m.AccountId ?? ""))
-            .OrderByDescending(x => x.Count).ThenBy(x => x.Name, StringComparer.OrdinalIgnoreCase).ToList();
-        var sig = string.Join("|", items.Select(i => i.Name + ":" + i.Count));
-        if (sig == _orgSig) return;
-        _orgSig = sig;
-        _orgStrip.SuspendLayout();
-        foreach (var c in _orgStrip.Controls.Cast<Control>().ToList()) { _orgStrip.Controls.Remove(c); c.Dispose(); }
-        if (items.Count > 1)
-        {
-            _orgStrip.Controls.Add(new Label { Text = "Organization accounts", AutoSize = true, ForeColor = Color.FromArgb(94, 110, 114), Margin = new Padding(0, 6, 10, 0) });
-            foreach (var it in items)
-            {
-                var text = it.Count > 0 ? $"{it.Name}    {it.Count}" : it.Name;
-                var font = AppTheme.Body(8.5f);
-                var chip = new Pill
-                {
-                    ShowDot = false, Text = text, Font = font, Height = 26, Margin = new Padding(0, 0, 8, 6),
-                    Width = TextRenderer.MeasureText(text, font, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width + 28,
-                    BackColor = it.Count > 0 ? Color.FromArgb(214, 238, 234) : Color.FromArgb(234, 240, 240),
-                    ForeColor = it.Count > 0 ? Color.FromArgb(4, 70, 66) : Color.FromArgb(105, 122, 126),
-                };
-                _tips.SetToolTip(chip, (it.Id.Length > 0 ? "AWS account " + it.Id + ". " : "") + (it.Count > 0 ? $"{it.Count} server{(it.Count == 1 ? "" : "s")} added." : "No servers added yet. Use Add / change servers to include this account."));
-                _orgStrip.Controls.Add(chip);
-            }
-        }
-        _orgStrip.Visible = items.Count > 1;
-        _orgStrip.ResumeLayout(true);
-        LayoutCards();
-    }
-
     /// <summary>Keeps the account switcher in step with the saved servers. It lists primary accounts only; the current one is the default.</summary>
     void FillAccounts()
     {
@@ -917,29 +1065,6 @@ public sealed class DashboardForm : Form
         _prim.Clear();
         _prim.AddRange(prim);
         _chip.Title = prim.FirstOrDefault(x => x.Key == _view).Label ?? "";
-    }
-
-    void ShowAccountMenu()
-    {
-        var menu = new ContextMenuStrip { Renderer = new AccountMenuRenderer(), ShowImageMargin = true, Font = AppTheme.Body(10f), BackColor = Color.White, Padding = new Padding(0, 6, 0, 6), MinimumSize = new Size(_chip.Width, 0) };
-        menu.Disposed += (_, _) => { foreach (ToolStripItem i in menu.Items) i.Image?.Dispose(); };
-        void Add(string text, EventHandler click, Image? img, bool accent = false, string? shortcut = null, bool bold = false)
-        {
-            var it = new ToolStripMenuItem(text, img, click) { Padding = new Padding(2, 9, 2, 9), ImageScaling = ToolStripItemImageScaling.None, Tag = accent ? "accent" : null };
-            if (shortcut != null) it.ShortcutKeyDisplayString = shortcut;
-            if (bold) it.Font = AppTheme.Semi(10f);
-            menu.Items.Add(it);
-        }
-        foreach (var a in _prim)
-        {
-            var key = a.Key;
-            var cur = key == _view;
-            Add($"{a.Label}    ({a.Count})", (_, _) => SwitchAccount(key), AccountChip.Avatar(a.Label, 28, cur ? AppTheme.Accent : Color.FromArgb(214, 232, 230), cur ? Color.White : AppTheme.Teal900), shortcut: cur ? "current" : null, bold: cur);
-        }
-        if (_prim.Count > 0) menu.Items.Add(new ToolStripSeparator());
-        Add("Add AWS account...", (_, _) => OpenSetup(addAccount: true), AccountChip.Avatar("+", 28, Color.White, AppTheme.Accent), accent: true);
-        if (_prim.Count > 0 || Profiles().Count > 0) Add("Manage accounts...", (_, _) => ManageAccounts(), null);
-        menu.Show(_chip, new Point(_chip.Width - menu.PreferredSize.Width, _chip.Height + 4));
     }
 
     void SwitchAccount(string key)
@@ -976,22 +1101,37 @@ public sealed class DashboardForm : Form
     Dictionary<string, string> _envMap = new();
     DateTime _envStamp = DateTime.MinValue;
 
+    void RefreshDiscoMaps()
+    {
+        try
+        {
+            var st = File.Exists(DiscoveryCache.Path) ? File.GetLastWriteTimeUtc(DiscoveryCache.Path) : DateTime.MinValue;
+            if (st == _envStamp) return;
+            _envStamp = st;
+            _envMap = new Dictionary<string, string>(StringComparer.Ordinal);
+            _osMap = new Dictionary<string, string>(StringComparer.Ordinal);
+            foreach (var rec in DiscoveryCache.Load().Scans)
+                foreach (var sv in rec.Servers)
+                {
+                    if (!string.IsNullOrWhiteSpace(sv.Environment)) _envMap[rec.Profile + "|" + sv.InstanceId] = sv.Environment;
+                    if (!string.IsNullOrWhiteSpace(sv.OsName)) _osMap[rec.Profile + "|" + sv.InstanceId] = sv.OsName;
+                }
+        }
+        catch { }
+    }
+
+    string OsOf(TunnelConfig? t)
+    {
+        if (t == null) return "";
+        RefreshDiscoMaps();
+        return _osMap.TryGetValue(t.Profile + "|" + t.InstanceId, out var o) ? o : "";
+    }
+
     string EnvOf(TunnelConfig? t)
     {
         if (t == null) return "";
         if (!string.IsNullOrWhiteSpace(t.Environment)) return EnvironmentClassifier.Normalise(t.Environment);
-        try
-        {
-            var st = File.Exists(DiscoveryCache.Path) ? File.GetLastWriteTimeUtc(DiscoveryCache.Path) : DateTime.MinValue;
-            if (st != _envStamp)
-            {
-                _envStamp = st;
-                _envMap = new Dictionary<string, string>(StringComparer.Ordinal);
-                foreach (var rec in DiscoveryCache.Load().Scans)
-                    foreach (var sv in rec.Servers) if (!string.IsNullOrWhiteSpace(sv.Environment)) _envMap[rec.Profile + "|" + sv.InstanceId] = sv.Environment;
-            }
-        }
-        catch { }
+        RefreshDiscoMaps();
         return _envMap.TryGetValue(t.Profile + "|" + t.InstanceId, out var e) ? e : EnvironmentClassifier.Classify(Array.Empty<KeyValuePair<string, string>>(), t.Name);
     }
 
@@ -1020,32 +1160,110 @@ public sealed class DashboardForm : Form
         {
             if (AwsCli.FindAws() == null) { _authText = "AWS sign-in: install AWS CLI first"; _authLevel = Level.Red; _authTip = "The AWS CLI is not installed."; return; }
             if (_cfg.Tunnels.Count == 0) { _authText = "AWS sign-in: not set up yet"; _authLevel = Level.Grey; _authTip = "Set up your connections to choose an AWS profile."; return; }
-            var accounts = _cfg.Tunnels.Where(t => t.Enabled && !string.IsNullOrWhiteSpace(t.Profile))
-                                       .Select(t => t.Profile).Distinct().ToList();
-            if (accounts.Count == 0) { _authText = "AWS sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Click Add / change servers to choose an AWS account."; return; }
-            var failed = new List<string>();
-            string firstProblem = "";
-            foreach (var acct in accounts)
+            // one check per organization: one company sign-in covers all of its AWS accounts
+            var orgs = _cfg.Tunnels.Where(t => t.Enabled && !string.IsNullOrWhiteSpace(t.Profile)).GroupBy(t => PKey(t.Profile)).ToList();
+            if (orgs.Count == 0) { _authText = "AWS sign-in: no account chosen"; _authLevel = Level.Amber; _authTip = "Click Add / change servers to choose an AWS account."; return; }
+            var failed = new HashSet<string>();
+            var names = new List<string>();
+            var firstProblem = "";
+            foreach (var g in orgs)
             {
-                var r = await AwsCli.WhoAmIAsync(new AppConfig { Profile = acct, Region = _cfg.Tunnels.First(t => t.Profile == acct).Region });
-                if (!r.Ok) { failed.Add(acct); if (firstProblem.Length == 0) firstProblem = AwsCli.FriendlyError(r.Error); }
+                var first = g.First();
+                var r = await AwsCli.WhoAmIAsync(new AppConfig { Profile = first.Profile, Region = first.Region });
+                if (!r.Ok) { failed.Add(g.Key); names.Add(PLabel(first.Profile)); if (firstProblem.Length == 0) firstProblem = AwsCli.FriendlyError(r.Error); }
             }
-            _authFailed = failed;
+            _signedOut = failed;
+            _authChecked = true;
             if (failed.Count == 0)
             {
-                _authText = accounts.Count == 1 ? "AWS sign-in: OK" : $"AWS sign-in: OK ({accounts.Count} accounts)";
+                _authText = orgs.Count == 1 ? "AWS sign-in: OK" : $"AWS sign-in: OK ({orgs.Count} organizations)";
                 _authLevel = Level.Green;
-                _authTip = "Signed in: " + string.Join(", ", accounts);
+                _authTip = "Signed in: " + string.Join(", ", orgs.Select(o => PLabel(o.First().Profile)));
             }
             else
             {
-                _authText = "AWS sign-in needed: " + string.Join(", ", failed);
+                _authText = "Sign-in needed: " + string.Join(", ", names);
                 _authLevel = Level.Red;
-                _authTip = firstProblem + " Use AWS > Sign in again.";
+                _authTip = firstProblem + " Click Sign in again.";
             }
         }
         catch (Exception ex) { _authText = "AWS sign-in: unknown"; _authLevel = Level.Amber; _authTip = ex.Message; }
         finally { _authBusy = false; _nextAuthCheck = DateTime.UtcNow.AddSeconds(45); }
+    }
+
+    // ---- server size and usage ---------------------------------------------------------------
+    UsageInfo? UsageOf(TunnelConfig t)
+    {
+        lock (_usage) return _usage.TryGetValue(UsageProbe.KeyOf(t), out var u) ? u : null;
+    }
+
+    /// <summary>Reads usage on its own for servers that are in use (a tool attached): right away when one connects, then about every 5 minutes. Sizes are read once a day.</summary>
+    void AutoUsage(List<TunnelConfig> ordered, List<Row> rows)
+    {
+        if (!_authChecked || DateTime.UtcNow < _nextUsageCheck) return;
+        _nextUsageCheck = DateTime.UtcNow.AddSeconds(30);
+        var inUse = new List<TunnelConfig>();
+        for (var i = 0; i < ordered.Count && i < rows.Count; i++)
+        {
+            var t = ordered[i];
+            if (!t.Enabled || _signedOut.Contains(PKey(t.Profile)) || rows[i].Level != Level.Green) continue;
+            var info = UsageOf(t);
+            if (info == null || DateTime.UtcNow - info.UsageUtc > TimeSpan.FromMinutes(5)) inUse.Add(t);
+        }
+        if (inUse.Count > 0) QueueUsage(inUse, wantUsage: true);
+        if (DateTime.UtcNow >= _nextSpecCheck)
+        {
+            _nextSpecCheck = DateTime.UtcNow.AddMinutes(10);
+            var need = new List<TunnelConfig>();
+            foreach (var t in ordered)
+            {
+                if (!t.Enabled || _signedOut.Contains(PKey(t.Profile))) continue;
+                var info = UsageOf(t);
+                if (info == null || DateTime.UtcNow - info.SpecUtc > TimeSpan.FromHours(24)) need.Add(t);
+            }
+            if (need.Count > 0) QueueUsage(need, wantUsage: false);
+        }
+    }
+
+    /// <summary>The Refresh usage button: reads every reachable server of the organization being shown.</summary>
+    void RefreshUsageNow()
+    {
+        if (_view == null) return;
+        var list = _cfg.Tunnels.Where(t => t.Enabled && PKey(t.Profile) == _view && !_signedOut.Contains(PKey(t.Profile))).ToList();
+        if (list.Count == 0) return;
+        QueueUsage(list, wantUsage: true);
+        RefreshAll();
+    }
+
+    void QueueUsage(List<TunnelConfig> list, bool wantUsage)
+    {
+        foreach (var t in list)
+        {
+            var key = UsageProbe.KeyOf(t);
+            lock (_usageBusy) { if (!_usageBusy.Add(key)) continue; }
+            _ = Task.Run(async () =>
+            {
+                await _usageGate.WaitAsync();
+                try
+                {
+                    UsageInfo? prior;
+                    lock (_usage) _usage.TryGetValue(key, out prior);
+                    var copy = prior?.Clone() ?? new UsageInfo();
+                    if (prior == null || DateTime.UtcNow - prior.SpecUtc > TimeSpan.FromHours(24)) copy = await UsageProbe.ReadSpecAsync(t, copy);
+                    if (wantUsage) copy = await UsageProbe.ReadUsageAsync(t, copy);
+                    Dictionary<string, UsageInfo> snapshot;
+                    lock (_usage) { _usage[key] = copy; snapshot = new Dictionary<string, UsageInfo>(_usage); }
+                    UsageProbe.Save(snapshot);
+                }
+                catch (Exception ex) { AppLog.Warn("Usage read failed for " + t.Name + ": " + ex.Message); }
+                finally
+                {
+                    lock (_usageBusy) _usageBusy.Remove(key);
+                    _usageGate.Release();
+                    try { BeginInvoke(RefreshAll); } catch { }
+                }
+            });
+        }
     }
 
     // ---- actions -----------------------------------------------------------------------------
@@ -1053,7 +1271,7 @@ public sealed class DashboardForm : Form
     {
         if (_busy) return;
         _busy = true;
-        _summary.Text = verb == "start" ? "Starting connections..." : verb == "stop" ? "Stopping connections..." : "Restarting connections...";
+        _orgSub.Text = verb == "start" ? "Switching connections on..." : verb == "stop" ? "Switching connections off..." : "Restarting connections...";
         try
         {
             await Task.Run(() =>
@@ -1152,28 +1370,47 @@ public sealed class DashboardForm : Form
         RefreshAll();
     }
 
+    /// <summary>Menu / tray entry: signs in the organization that needs it (the one being shown first).</summary>
     async Task SignInAsync()
     {
-        if (AwsCli.FindAws() == null) { MessageBox.Show(this, "The AWS CLI is not installed yet. Click Add / change servers.", "SSMConnect"); return; }
-        var used = _cfg.Tunnels.Select(t => t.Profile).Where(x => !string.IsNullOrWhiteSpace(x)).Distinct().ToList();
-        var targets = (_authFailed.Count > 0 ? _authFailed : used).ToList();
-        if (targets.Count == 0) { MessageBox.Show(this, "No AWS account is set up yet. Click Add / change servers.", "SSMConnect"); return; }
+        string? key = _view != null && _signedOut.Contains(_view) ? _view : (_signedOut.Count > 0 ? _signedOut.First() : _view);
+        ShowDashboard();
+        await SignInOrgAsync(key);
+    }
 
-        foreach (var name in targets)
+    /// <summary>
+    /// Signs in one organization (top-level company sign-in) through the person's own browser. One sign-in covers every AWS
+    /// account under it. Afterwards servers that had given up get another 3 tries.
+    /// </summary>
+    async Task SignInOrgAsync(string? key)
+    {
+        if (key == null) { MessageBox.Show(this, "No AWS account is set up yet. Click Add / change servers.", "SSMConnect"); return; }
+        if (AwsCli.FindAws() == null) { MessageBox.Show(this, "The AWS CLI is not installed yet. Click Add / change servers.", "SSMConnect"); return; }
+        var members = Profiles().Where(p => AwsProfiles.PrimaryKey(p) == key).ToList();
+        var sso = members.FirstOrDefault(p => p.Kind == ProfileKind.Sso);
+        if (sso == null)
         {
-            var info = AwsProfiles.Find(name);
-            if (info == null) { MessageBox.Show(this, $"The AWS profile \"{name}\" no longer exists on this PC. Use AWS > Add AWS account to add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning); continue; }
-            if (info.Kind != ProfileKind.Sso)
-            {
-                MessageBox.Show(this, $"\"{name}\" uses access keys, so there is nothing to sign in to. If it fails, remove the account in AWS > Manage accounts and add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Information);
-                continue;
-            }
-            Balloon(4000, "SSMConnect", $"A browser window will open. Sign in to AWS account \"{name}\" there.", ToolTipIcon.Info);
-            var r = await AwsCli.SsoLoginAsync(new AppConfig { Profile = name });
-            if (!r.Ok) MessageBox.Show(this, $"{name}: {AwsCli.FriendlyError(r.Error)}", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            MessageBox.Show(this, "This organization uses access keys, so there is nothing to sign in to. If it fails, remove the account in AWS > Manage accounts and add it again.", "AWS sign-in", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return;
         }
-        _nextAuthCheck = DateTime.MinValue;
+        var session = members.Select(p => p.SsoSession).FirstOrDefault(x => !string.IsNullOrEmpty(x)) ?? "";
+        using var dlg = new SignInDialog(PLabel(sso.Name), session, sso.Name, _cfg.PreferredBrowser);
+        var result = dlg.ShowDialog(this);
+        if (result == DialogResult.OK)
+        {
+            if (dlg.ChosenBrowserId != (_cfg.PreferredBrowser ?? ""))
+            {
+                try { var c = ConfigStore.Load() ?? _cfg; c.PreferredBrowser = dlg.ChosenBrowserId; ConfigStore.Save(c); _cfg.PreferredBrowser = dlg.ChosenBrowserId; _cfgStamp = DateTime.MinValue; } catch { }
+            }
+            _signedOut.Remove(key);
+            _expiry.Remove(key);
+            _mgr.ResetAll();
+            _nextAuthCheck = DateTime.MinValue;
+            _nextSpecCheck = DateTime.MinValue;
+            _nextUsageCheck = DateTime.MinValue;
+        }
         _mgr.Poke();
+        Activate();
         RefreshAll();
     }
 
@@ -1260,7 +1497,7 @@ public sealed class DashboardForm : Form
         if (t == null || !t.IsRdp) { MessageBox.Show(this, "Use the Remote Desktop button on a Windows server card. Windows servers are added with \"Add / change servers...\".", "Remote Desktop"); return; }
         if (!ActiveListeners().Contains(t.LocalPort))
         {
-            MessageBox.Show(this, "This connection is not up yet. Click \"Start connections\", wait until its status turns green, then try again.", "Remote Desktop");
+            MessageBox.Show(this, "This connection is not open yet. Click Remote Desktop on the server card and wait a few seconds.", "Remote Desktop");
             return;
         }
         try { RdpLauncher.Open(t); }

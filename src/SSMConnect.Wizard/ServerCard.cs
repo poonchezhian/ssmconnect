@@ -17,34 +17,45 @@ using System.Drawing.Text;
 
 namespace SSMConnect.Wizard;
 
-public enum CardLevel { Grey, Red, Amber, Green }
+/// <summary>Grey = off, Red = stopped, Amber = connecting, Green = connected, Blue = ready (signed in, nothing open yet).</summary>
+public enum CardLevel { Grey, Red, Amber, Green, Blue }
 
 public sealed record CardAction(string Id, string Text, bool Enabled);
 
 public sealed class CardData
 {
-    public string Name = "", StatusText = "", Message = "", Port = "", InstanceId = "", Since = "";
-    public string Environment = "";
+    public string Name = "", StatusText = "", Detail = "", Message = "", Port = "", InstanceId = "", Since = "";
+    public string Environment = "", Spec = "", OsKey = "", UsageTip = "";
     public bool IsWindows, IsProd, KnownType;
     public CardLevel Level;
+    /// <summary>CPU, memory and disk usage in percent; -1 when there is no reading.</summary>
+    public int Cpu = -1, Ram = -1, Disk = -1;
     public List<CardAction> Actions = new();
 }
 
-/// <summary>One server as a card: operating system, status, port and the buttons that open it.</summary>
+/// <summary>One server as a glass card: OS logo, name, size, usage rings, status and the buttons that open the tools. The whole card is tinted and lit from behind by its status.</summary>
 public sealed class ServerCard : Control
 {
-    static readonly Color GoodBg = Color.FromArgb(206, 238, 214), GoodFg = Color.FromArgb(0, 85, 35);
-    static readonly Color WarnBg = Color.FromArgb(255, 234, 186), WarnFg = Color.FromArgb(115, 65, 0);
-    static readonly Color BadBg = Color.FromArgb(250, 214, 214), BadFg = Color.FromArgb(145, 0, 20);
-    static readonly Color GreyBg = Color.FromArgb(228, 228, 228), GreyFg = Color.FromArgb(55, 55, 55);
+    static readonly Color BadFg = Color.FromArgb(145, 0, 20);
+    static readonly Color BadBg = Color.FromArgb(250, 214, 214);
+
+    static (Color Top, Color Bot, Color Edge, Color Glow, Color Text) Palette(CardLevel l) => l switch
+    {
+        CardLevel.Green => (Color.FromArgb(232, 247, 237), Color.FromArgb(208, 238, 219), Color.FromArgb(70, 176, 108), Color.FromArgb(46, 190, 100), Color.FromArgb(0, 96, 44)),
+        CardLevel.Blue => (Color.FromArgb(234, 244, 254), Color.FromArgb(211, 229, 249), Color.FromArgb(84, 140, 224), Color.FromArgb(60, 130, 230), Color.FromArgb(14, 70, 150)),
+        CardLevel.Amber => (Color.FromArgb(255, 246, 222), Color.FromArgb(252, 232, 190), Color.FromArgb(232, 164, 24), Color.FromArgb(242, 172, 30), Color.FromArgb(125, 70, 0)),
+        CardLevel.Red => (Color.FromArgb(254, 232, 232), Color.FromArgb(250, 210, 210), Color.FromArgb(208, 66, 66), Color.FromArgb(228, 64, 64), BadFg),
+        _ => (Color.FromArgb(244, 246, 247), Color.FromArgb(230, 233, 235), Color.FromArgb(166, 174, 178), Color.Empty, Color.FromArgb(70, 78, 82)),
+    };
 
     CardData _d = new();
     readonly ToolTip _tip = new() { AutoPopDelay = 20000 };
     readonly List<(RectangleF Rect, string Id, bool Enabled)> _hits = new();
-    int _hover = -1;
+    readonly List<(RectangleF Rect, string Tip)> _ringHits = new();
+    int _hover = -1, _down = -1, _ringHover = -1;
     float _t, _target;          // hover glow of the button under the pointer, eased in and out
     int _fadeIdx = -1;
-    System.Windows.Forms.Timer? _anim;
+    System.Windows.Forms.Timer? _anim, _pulse;
     bool _selected;
 
     public event Action<ServerCard, string>? ActionClicked;
@@ -69,37 +80,57 @@ public sealed class ServerCard : Control
             _d = value;
             if (changed)
             {
-                _tip.SetToolTip(this, value.Name + "\n" + (value.KnownType ? (value.IsWindows ? "Windows, Remote Desktop" : "Linux, SSH") : "Server") + ", local port " + value.Port + "\n" + value.InstanceId + "\n\n" + value.Message);
+                SetTip(BaseTip());
+                UpdatePulse();
                 Invalidate();
             }
         }
     }
 
+    string _tipShown = "\u0001";
+    void SetTip(string text)
+    {
+        if (_tipShown == text) return;
+        _tipShown = text;
+        _tip.SetToolTip(this, text);
+    }
+
+    string BaseTip() => _d.Name + "\n" + (_d.KnownType ? (_d.IsWindows ? "Windows, Remote Desktop" : "Linux, SSH") : "Server") + ", local port " + _d.Port + "\n" + _d.InstanceId + "\n\n" + _d.Message;
+
     static bool SameAs(CardData a, CardData b) =>
-        a.Name == b.Name && a.StatusText == b.StatusText && a.Message == b.Message && a.Port == b.Port && a.Level == b.Level && a.Since == b.Since &&
+        a.Name == b.Name && a.StatusText == b.StatusText && a.Detail == b.Detail && a.Message == b.Message && a.Port == b.Port && a.Level == b.Level && a.Since == b.Since &&
         a.IsWindows == b.IsWindows && a.IsProd == b.IsProd && a.Environment == b.Environment && a.KnownType == b.KnownType && a.InstanceId == b.InstanceId &&
+        a.Spec == b.Spec && a.OsKey == b.OsKey && a.UsageTip == b.UsageTip && a.Cpu == b.Cpu && a.Ram == b.Ram && a.Disk == b.Disk &&
         a.Actions.Count == b.Actions.Count && a.Actions.Zip(b.Actions).All(p => p.First == p.Second);
 
-    public static int HeightFor(float scale) => (int)(104 * scale);
+    public static int HeightFor(float scale) => (int)(150 * scale);
 
-    protected override void Dispose(bool disposing) { if (disposing) { _tip.Dispose(); _anim?.Dispose(); } base.Dispose(disposing); }
-
-    static (Color Bg, Color Fg, Color Bar) Palette(CardLevel l) => l switch
+    void UpdatePulse()
     {
-        CardLevel.Green => (GoodBg, GoodFg, Color.FromArgb(34, 170, 80)),
-        CardLevel.Amber => (WarnBg, WarnFg, Color.FromArgb(240, 170, 20)),
-        CardLevel.Red => (BadBg, BadFg, Color.FromArgb(205, 40, 50)),
-        _ => (GreyBg, GreyFg, Color.FromArgb(150, 150, 150)),
-    };
+        if (_d.Level == CardLevel.Amber)
+        {
+            if (_pulse == null)
+            {
+                _pulse = new System.Windows.Forms.Timer { Interval = 90 };
+                _pulse.Tick += (_, _) => { if (Visible) Invalidate(); };
+            }
+            _pulse.Start();
+        }
+        else _pulse?.Stop();
+    }
+
+    protected override void Dispose(bool disposing) { if (disposing) { _tip.Dispose(); _anim?.Dispose(); _pulse?.Dispose(); } base.Dispose(disposing); }
 
     static GraphicsPath Round(RectangleF r, float rad)
     {
         var p = new GraphicsPath();
-        var d = rad * 2;
+        var d = Math.Max(1f, rad * 2);
         p.AddArc(r.X, r.Y, d, d, 180, 90); p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
         p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90); p.AddArc(r.X, r.Bottom - d, d, d, 90, 90); p.CloseFigure();
         return p;
     }
+
+    static Color RingColor(int pct) => pct > 85 ? Color.FromArgb(214, 64, 60) : pct >= 60 ? Color.FromArgb(232, 160, 20) : Color.FromArgb(46, 160, 90);
 
     protected override void OnPaint(PaintEventArgs e)
     {
@@ -108,105 +139,162 @@ public sealed class ServerCard : Control
         g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
         g.Clear(Parent?.BackColor ?? AppTheme.Page);
         var s = DeviceDpi / 96f;
-        var (bg, fg, bar) = Palette(_d.Level);
-        var card = new RectangleF(1, 1, Width - 3, Height - 3);
+        var pal = Palette(_d.Level);
+        float pad = 8 * s;
+        var card = new RectangleF(pad, pad, Width - 2 * pad - 1, Height - 2 * pad - 1);
 
-        using (var path = Round(card, 10 * s))
+        // light from behind the card (status colour), or a soft shadow when the server is off
+        if (pal.Glow != Color.Empty)
         {
-            using (var b = new SolidBrush(Color.White)) g.FillPath(b, path);
-            // status strip on the left edge
-            var state = g.Save();
+            var pulse = _d.Level == CardLevel.Amber ? 0.55f + 0.45f * (0.5f + 0.5f * (float)Math.Sin(Environment.TickCount64 / 320.0)) : 1f;
+            for (var k = 6; k >= 1; k--)
+            {
+                using var gp = Round(RectangleF.Inflate(card, k * s, k * s), (14 + k) * s);
+                var a = (int)(86 * pulse * (7 - k) / 7f * 0.55f);
+                using var gb = new SolidBrush(Color.FromArgb(Math.Clamp(a, 0, 255), pal.Glow));
+                g.FillPath(gb, gp);
+            }
+        }
+        else
+        {
+            using var sp = Round(new RectangleF(card.X, card.Y + 2 * s, card.Width, card.Height), 14 * s);
+            using var sb = new SolidBrush(Color.FromArgb(18, 0, 0, 0));
+            g.FillPath(sb, sp);
+        }
+
+        using (var path = Round(card, 14 * s))
+        {
+            using (var br = new LinearGradientBrush(new RectangleF(card.X, card.Y - 1, card.Width, card.Height + 2), pal.Top, pal.Bot, 90f)) g.FillPath(br, path);
+            // glossy upper edge
+            var st = g.Save();
             g.SetClip(path, CombineMode.Intersect);
-            using (var b = new SolidBrush(bar)) g.FillRectangle(b, card.X, card.Y, 6 * s, card.Height);
-            g.Restore(state);
-            using var pen = new Pen(_selected ? AppTheme.Accent : AppTheme.Line, _selected ? 2f : 1f);
+            using (var gl = new LinearGradientBrush(new RectangleF(card.X, card.Y - 1, card.Width, card.Height * 0.42f + 2), Color.FromArgb(110, 255, 255, 255), Color.FromArgb(0, 255, 255, 255), 90f))
+                g.FillRectangle(gl, card.X, card.Y, card.Width, card.Height * 0.42f);
+            g.Restore(st);
+            using var pen = new Pen(_selected ? AppTheme.Accent : Color.FromArgb(150, pal.Edge), _selected ? 2f : 1f);
             g.DrawPath(pen, path);
         }
 
-        float x0 = 22 * s;
-        // operating-system avatar
-        var av = new RectangleF(x0, 16 * s, 38 * s, 38 * s);
-        var avBg = !_d.KnownType ? GreyBg : _d.IsWindows ? AppTheme.WinBg : AppTheme.LinuxBg;
-        var avFg = !_d.KnownType ? GreyFg : _d.IsWindows ? AppTheme.WinFg : AppTheme.LinuxFg;
-        using (var b = new SolidBrush(avBg)) g.FillEllipse(b, av);
-        DrawOsGlyph(g, av, avFg, _d.IsWindows, _d.KnownType, s);
+        float left = card.X + 14 * s, right = card.Right - 14 * s;
 
-        float tx = x0 + 50 * s;
-        float right = Width - 16 * s;
-        using var nameFont = AppTheme.Semi(10f);
+        // operating-system logo in a pressed-in round well
+        var well = new RectangleF(left, card.Y + 14 * s, 48 * s, 48 * s);
+        DrawWell(g, well, s);
+
+        float tx = well.Right + 12 * s;
+        using var nameFont = AppTheme.Semi(10.5f);
         using var small = AppTheme.Body(8.5f);
+        using var smallBold = AppTheme.Semi(8.5f);
         using var tiny = AppTheme.Body(8f);
 
-        // environment tag (from the server's AWS tags): red for production, a quiet grey for everything else
+        // environment tag: red for production, quiet grey for the rest
+        float tagRight = right;
         if (!string.IsNullOrWhiteSpace(_d.Environment))
         {
             var envText = _d.IsProd ? "PROD" : _d.Environment.ToUpperInvariant();
             if (envText.Length > 12) envText = envText.Substring(0, 12);
             var w = TextRenderer.MeasureText(envText, tiny).Width + 14 * s;
-            var r = new RectangleF(right - w, 17 * s, w, 20 * s);
+            var r = new RectangleF(right - w, card.Y + 14 * s, w, 20 * s);
             using (var p = Round(r, 10 * s)) using (var b = new SolidBrush(_d.IsProd ? BadBg : Color.FromArgb(232, 240, 240))) g.FillPath(b, p);
             TextRenderer.DrawText(g, envText, tiny, Rectangle.Round(r), _d.IsProd ? BadFg : Color.FromArgb(70, 96, 100), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
-            right -= w + 8 * s;
+            tagRight = right - w - 8 * s;
         }
-        TextRenderer.DrawText(g, _d.Name, nameFont, new Rectangle((int)tx, (int)(16 * s), (int)(right - tx), (int)(22 * s)), AppTheme.Ink,
+        TextRenderer.DrawText(g, _d.Name, nameFont, new Rectangle((int)tx, (int)(card.Y + 12 * s), (int)(tagRight - tx), (int)(22 * s)), AppTheme.Ink,
             TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
-        // second line: the operating system, or - when something is not right - what is wrong
-        var osText = (!_d.KnownType ? "Server" : _d.IsWindows ? "Windows" : "Linux") + (string.IsNullOrEmpty(_d.Port) ? "" : "  -  local port " + _d.Port);
-        var problem = _d.Level != CardLevel.Green;
-        TextRenderer.DrawText(g, problem && !string.IsNullOrEmpty(_d.Message) ? _d.Message : osText, small,
-            new Rectangle((int)tx, (int)(38 * s), (int)(Width - tx - 14 * s), (int)(18 * s)),
-            problem && _d.Level == CardLevel.Red ? BadFg : Color.FromArgb(94, 110, 114), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding);
 
-        // bottom row: status pill on the left, action buttons on the right
-        float rowY = Height - 38 * s, rowH = 26 * s;
-        var pillText = "●  " + _d.StatusText;
-        var pw = TextRenderer.MeasureText(pillText, small).Width + 20 * s;
-        var pill = new RectangleF(x0, rowY, pw, rowH);
-        using (var p = Round(pill, rowH / 2)) using (var b = new SolidBrush(bg)) g.FillPath(b, p);
-        TextRenderer.DrawText(g, pillText, small, Rectangle.Round(pill), fg, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        // one line: system, size
+        var spec = string.IsNullOrEmpty(_d.Spec) ? (_d.KnownType ? (_d.IsWindows ? "Windows" : "Linux") : "Server") : _d.Spec;
+        TextRenderer.DrawText(g, spec, small, new Rectangle((int)tx, (int)(card.Y + 35 * s), (int)(right - tx), (int)(18 * s)),
+            Color.FromArgb(84, 100, 106), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
 
+        // status text and the three usage rings
+        float ringD = 20 * s, ringGap = 6 * s;
+        float ringsW = 3 * ringD + 2 * ringGap;
+        float rowY = card.Y + 55 * s;
+        var textRect = new Rectangle((int)tx, (int)rowY, (int)(right - tx - ringsW - 10 * s), (int)(20 * s));
+        var stateText = _d.StatusText + (string.IsNullOrEmpty(_d.Detail) ? "" : "  ·  " + _d.Detail);
+        TextRenderer.DrawText(g, stateText, smallBold, textRect, pal.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
+
+        _ringHits.Clear();
+        var rx = right - ringsW;
+        var ry = rowY + (20 * s - ringD) / 2f;
+        DrawRing(g, new RectangleF(rx, ry, ringD, ringD), _d.Cpu, "C", s, "CPU", _d.UsageTip);
+        DrawRing(g, new RectangleF(rx + ringD + ringGap, ry, ringD, ringD), _d.Ram, "R", s, "Memory", _d.UsageTip);
+        DrawRing(g, new RectangleF(rx + 2 * (ringD + ringGap), ry, ringD, ringD), _d.Disk, "D", s, "Disk", _d.UsageTip);
+
+        // tool buttons: one row, equal columns, always visible
         _hits.Clear();
-        float bx = Width - 14 * s;
-        for (int i = _d.Actions.Count - 1; i >= 0; i--)
+        var n = _d.Actions.Count;
+        float bh = 30 * s, by = card.Bottom - 14 * s - bh, gap = 8 * s;
+        if (n > 0)
         {
-            var a = _d.Actions[i];
-            var w = Math.Max(72 * s, TextRenderer.MeasureText(a.Text, small).Width + 24 * s);
-            var r = new RectangleF(bx - w, rowY, w, rowH);
-            bx -= w + 8 * s;
-            _hits.Insert(0, (r, a.Id, a.Enabled));
+            var bw = (card.Right - 14 * s - left - gap * (n - 1)) / n;
+            for (var i = 0; i < n; i++) _hits.Add((new RectangleF(left + i * (bw + gap), by, bw, bh), _d.Actions[i].Id, _d.Actions[i].Enabled));
         }
-        for (int i = 0; i < _hits.Count; i++)
+        for (var i = 0; i < _hits.Count; i++)
         {
             var (r, id, en) = _hits[i];
             var a = _d.Actions[i];
             var hot = en && i == _fadeIdx ? _t : 0f;
-            var baseC = id == "signin" ? ButtonLook.ToneColor(ButtonTone.Warning) : AppTheme.Accent;
-            var surf = new RectangleF(r.X, r.Y - 1 * s, r.Width, r.Height);
-            var (cell, text, shadow) = ButtonLook.PaintSurface(g, surf, 7 * s, baseC, hot, en && i == _down, !en, s);
-            var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding;
+            var baseC = id == "signin" ? ButtonLook.ToneColor(ButtonTone.Warning) : i == 0 ? AppTheme.Accent : Color.FromArgb(214, 236, 233);
+            var (cell, text, shadow) = ButtonLook.PaintSurface(g, r, 9 * s, baseC, hot, en && i == _down, !en, s);
+            var flags = TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding | TextFormatFlags.EndEllipsis;
             var tr = Rectangle.Round(cell);
-            TextRenderer.DrawText(g, a.Text, small, new Rectangle(tr.X, tr.Y + 1, tr.Width, tr.Height), shadow, flags);
-            TextRenderer.DrawText(g, a.Text, small, tr, text, flags);
+            TextRenderer.DrawText(g, a.Text, smallBold, new Rectangle(tr.X, tr.Y + 1, tr.Width, tr.Height), shadow, flags);
+            TextRenderer.DrawText(g, a.Text, smallBold, tr, text, flags);
         }
     }
 
-    static void DrawOsGlyph(Graphics g, RectangleF av, Color fg, bool windows, bool known, float s)
+    /// <summary>A round white recess (darker rim at the top, light lip at the bottom) holding the operating-system logo.</summary>
+    void DrawWell(Graphics g, RectangleF well, float s)
     {
-        var cx = av.X + av.Width / 2; var cy = av.Y + av.Height / 2;
-        using var b = new SolidBrush(fg);
-        if (known && windows)
+        // light lip underneath makes it look sunk into the card
+        using (var lip = new SolidBrush(Color.FromArgb(150, 255, 255, 255))) g.FillEllipse(lip, well.X, well.Y + 1.5f * s, well.Width, well.Height);
+        using (var rim = new LinearGradientBrush(new RectangleF(well.X, well.Y - 1, well.Width, well.Height + 2), Color.FromArgb(150, 158, 162), Color.FromArgb(226, 231, 233), 90f))
+            g.FillEllipse(rim, well);
+        var inner = RectangleF.Inflate(well, -2.2f * s, -2.2f * s);
+        inner.Offset(0, 0.8f * s);
+        using (var fill = new LinearGradientBrush(new RectangleF(inner.X, inner.Y - 1, inner.Width, inner.Height + 2), Color.FromArgb(244, 246, 247), Color.White, 90f))
+            g.FillEllipse(fill, inner);
+        var img = OsIcons.Get(_d.OsKey);
+        if (img != null)
         {
-            float q = 7 * s, gap = 2 * s;
-            g.FillRectangle(b, cx - q - gap / 2, cy - q - gap / 2, q, q); g.FillRectangle(b, cx + gap / 2, cy - q - gap / 2, q, q);
-            g.FillRectangle(b, cx - q - gap / 2, cy + gap / 2, q, q); g.FillRectangle(b, cx + gap / 2, cy + gap / 2, q, q);
-            return;
+            var sz = 28 * s;
+            var old = g.InterpolationMode;
+            g.InterpolationMode = InterpolationMode.HighQualityBicubic;
+            g.DrawImage(img, new RectangleF(well.X + (well.Width - sz) / 2f, well.Y + (well.Height - sz) / 2f + 0.8f * s, sz, sz));
+            g.InterpolationMode = old;
         }
-        using var pen = new Pen(fg, 2.2f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round, LineJoin = LineJoin.Round };
-        g.DrawLines(pen, new[] { new PointF(cx - 8 * s, cy - 6 * s), new PointF(cx - 2 * s, cy), new PointF(cx - 8 * s, cy + 6 * s) });
-        g.DrawLine(pen, cx + 1 * s, cy + 6.5f * s, cx + 8 * s, cy + 6.5f * s);
+        else
+        {
+            using var f = AppTheme.Semi(11f);
+            TextRenderer.DrawText(g, ">_", f, Rectangle.Round(well), Color.FromArgb(90, 104, 110), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        }
     }
 
-    int _down = -1;
+    void DrawRing(Graphics g, RectangleF r, int pct, string letter, float s, string name, string note)
+    {
+        var track = Color.FromArgb(206, 214, 216);
+        var inner = RectangleF.Inflate(r, -2f * s, -2f * s);
+        if (pct < 0)
+        {
+            using var dash = new Pen(Color.FromArgb(168, 178, 182), 1.6f * s) { DashStyle = DashStyle.Dot };
+            g.DrawEllipse(dash, inner);
+        }
+        else
+        {
+            using (var tp = new Pen(track, 2.6f * s)) g.DrawEllipse(tp, inner);
+            if (pct > 0)
+            {
+                using var ap = new Pen(RingColor(pct), 2.8f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+                g.DrawArc(ap, inner, -90f, Math.Min(359.5f, 360f * pct / 100f));
+            }
+        }
+        using var f = AppTheme.Body(6.5f);
+        TextRenderer.DrawText(g, letter, f, Rectangle.Round(r), pct < 0 ? Color.FromArgb(150, 160, 164) : Color.FromArgb(60, 72, 78), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        var tip = pct >= 0 ? $"{name}: {pct}% in use" : name + ": no reading yet" + (string.IsNullOrEmpty(note) ? "" : "\n" + note);
+        _ringHits.Add((r, tip));
+    }
 
     void FadeTo(float target)
     {
@@ -236,6 +324,13 @@ public sealed class ServerCard : Control
         var i = HitIndex(e.Location);
         if (i != _hover) { _hover = i; if (i >= 0) _fadeIdx = i; FadeTo(i >= 0 && _hits[i].Enabled ? 1f : 0f); Invalidate(); }
         Cursor = i >= 0 && _hits[i].Enabled ? Cursors.Hand : Cursors.Default;
+        var ring = -1;
+        for (var k = 0; k < _ringHits.Count; k++) if (_ringHits[k].Rect.Contains(e.Location)) { ring = k; break; }
+        if (ring != _ringHover)
+        {
+            _ringHover = ring;
+            SetTip(ring >= 0 ? _ringHits[ring].Tip : BaseTip());
+        }
     }
 
     protected override void OnMouseLeave(EventArgs e)
@@ -243,6 +338,7 @@ public sealed class ServerCard : Control
         base.OnMouseLeave(e);
         if (_hover != -1) { _hover = -1; FadeTo(0f); Invalidate(); }
         if (_down != -1) { _down = -1; Invalidate(); }
+        if (_ringHover != -1) { _ringHover = -1; SetTip(BaseTip()); }
     }
 
     protected override void OnMouseDown(MouseEventArgs e)
