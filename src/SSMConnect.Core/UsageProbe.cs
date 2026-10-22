@@ -93,6 +93,10 @@ public static class UsageProbe
         }
     }
 
+    /// <summary>Accounts whose role may not run SSM commands: not retried for an hour so the denials do not pile up in CloudTrail.</summary>
+    static readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> Denied = new();
+    const string DeniedNote = "Usage is not available: your AWS role is not allowed to run commands through SSM (ssm:SendCommand).";
+
     static AppConfig Acct(TunnelConfig t) => new() { Profile = t.Profile, Region = t.Region };
 
     static async Task<string?> Run(TunnelConfig t, string[] args, CancellationToken ct, int seconds = 40)
@@ -178,6 +182,8 @@ public static class UsageProbe
     {
         var info = prior ?? new UsageInfo();
         info.Key = KeyOf(t);
+        var acct = t.Profile + "|" + t.Region;
+        if (Denied.TryGetValue(acct, out var until) && DateTime.UtcNow < until) { info.Note = DeniedNote; info.UsageUtc = DateTime.UtcNow; return info; }
         var windows = t.IsRdp;
         var parameters = JsonSerializer.Serialize(new Dictionary<string, string[]> { ["commands"] = new[] { windows ? WindowsScript : LinuxScript } });
         try
@@ -190,9 +196,9 @@ public static class UsageProbe
             }, TimeSpan.FromSeconds(40), ct);
             if (!send.Ok)
             {
-                info.Note = send.Error.Contains("AccessDenied", StringComparison.OrdinalIgnoreCase) || send.Error.Contains("not authorized", StringComparison.OrdinalIgnoreCase)
-                    ? "Usage is not available: your AWS role is not allowed to run commands through SSM (ssm:SendCommand)."
-                    : "Usage could not be read right now.";
+                var denied = send.Error.Contains("AccessDenied", StringComparison.OrdinalIgnoreCase) || send.Error.Contains("not authorized", StringComparison.OrdinalIgnoreCase);
+                if (denied) Denied[acct] = DateTime.UtcNow.AddHours(1);
+                info.Note = denied ? DeniedNote : "Usage could not be read right now.";
                 info.UsageUtc = DateTime.UtcNow;
                 return info;
             }

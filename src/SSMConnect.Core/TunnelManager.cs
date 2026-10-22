@@ -44,6 +44,8 @@ public sealed class TunnelManager : IDisposable
         /// <summary>A healthy session ended and the next one is being opened quietly; the card keeps showing Connected.</summary>
         public bool Refreshing;
         public int PortWaits;
+        /// <summary>Sessions in a row that reached Connected but dropped within 30 seconds (flapping). Counts toward the 3-try cap.</summary>
+        public int ShortRuns;
         /// <summary>Last moment a tool was attached to the local port (or the connection was opened).</summary>
         public DateTime LastActive = DateTime.UtcNow;
         public int Clients;
@@ -274,7 +276,7 @@ public sealed class TunnelManager : IDisposable
                 if ((slot.State == TunnelStates.Starting || slot.Refreshing) && IsListening(tunnel.LocalPort))
                 {
                     slot.Refreshing = false;
-                    slot.Failures = 0;
+                    if (slot.ShortRuns == 0) slot.Failures = 0;
                     slot.LastActive = DateTime.UtcNow;
                     SetState(slot, TunnelStates.Connected, $"Connected. Local port {tunnel.LocalPort} is ready.");
                 }
@@ -295,6 +297,7 @@ public sealed class TunnelManager : IDisposable
                 {
                     slot.Clients = CountClients(tunnel.LocalPort);
                     slot.IdleLeft = -1;
+                    if (slot.ShortRuns > 0 && DateTime.UtcNow - slot.StartedAt > TimeSpan.FromSeconds(30)) { slot.ShortRuns = 0; slot.Failures = 0; }   // it stayed up: the flapping is over
                 }
                 continue;
             }
@@ -314,8 +317,18 @@ public sealed class TunnelManager : IDisposable
                     Fail(slot, slot.LastError);
                     continue;
                 }
+                if (wasUp && ranFor < TimeSpan.FromSeconds(30))
+                {
+                    // it connected but dropped almost at once: that is a failure, not a normal renewal, or it would loop forever
+                    slot.ShortRuns++;
+                    slot.Failures = slot.ShortRuns - 1;
+                    AppLog.Warn($"Tunnel {slot.Tunnel.Name} dropped after {(int)ranFor.TotalSeconds}s (code {code}); short run {slot.ShortRuns} of {MaxTries}.");
+                    Fail(slot, $"The connection dropped after {(int)ranFor.TotalSeconds} seconds. Check the server and your network.");
+                    continue;
+                }
                 if (wasUp)
                 {
+                    slot.ShortRuns = 0;
                     // AWS ended a healthy session (its own idle limit) or a tool closed it: open the next one quietly, keep showing Connected
                     slot.Refreshing = true;
                     slot.PortWaits = 0;

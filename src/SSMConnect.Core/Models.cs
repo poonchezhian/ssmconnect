@@ -49,6 +49,10 @@ public sealed class AppConfig
 
     /// <summary>Minutes a connection stays open after the last tool closed and no data moves (15, 30 or 60).</summary>
     public int IdleMinutes { get; set; } = 15;
+    /// <summary>Read CPU, memory and disk use of connected servers by itself (runs a short read-only command through SSM). Off = only when Refresh usage is clicked.</summary>
+    public bool ReadUsage { get; set; } = true;
+    /// <summary>Also read usage by itself on production servers. Off by default: production is only touched when asked.</summary>
+    public bool ReadUsageOnProd { get; set; } = false;
     /// <summary>Browser used for company sign-in: "chrome", "edge", "firefox", "brave", or empty for the PC's default.</summary>
     public string PreferredBrowser { get; set; } = "";
 

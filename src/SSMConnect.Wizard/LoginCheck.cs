@@ -12,6 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+using System.Drawing;
 using Renci.SshNet;
 using Renci.SshNet.Common;
 using SSMConnect.Core;
@@ -58,17 +59,18 @@ static class LoginCheck
         var list = new List<string>();
         string? saved = !string.IsNullOrWhiteSpace(t.KeyFile) && File.Exists(t.KeyFile) ? t.KeyFile : null;
         string? found = null;
-        if (d != null)
-        {
-            try { found = KeyFinder.Find(Keys(), d.KeyName, d.KeyFingerprint).Key?.Path; } catch { }
-        }
         // a saved key that is provably not this server's key goes after the one that is
         var savedWrong = false;
-        if (saved != null && found != null && !string.Equals(saved, found, StringComparison.OrdinalIgnoreCase) && d != null && !string.IsNullOrWhiteSpace(d.KeyFingerprint))
+        if (saved != null && d != null && !string.IsNullOrWhiteSpace(d.KeyFingerprint))
         {
             try { var pr = KeyFingerprint.Compute(saved); savedWrong = pr.Count > 0 && !pr.Contains(d.KeyFingerprint); } catch { }
         }
-        if (savedWrong) { list.Add(found!); list.Add(saved!); }
+        // the disk is only searched when no key is saved, or the saved one provably belongs to another server
+        if (d != null && (saved == null || savedWrong))
+        {
+            try { found = KeyFinder.Find(Keys(), d.KeyName, d.KeyFingerprint).Key?.Path; } catch { }
+        }
+        if (savedWrong && found != null && !string.Equals(saved, found, StringComparison.OrdinalIgnoreCase)) { list.Add(found!); list.Add(saved!); }
         else
         {
             if (saved != null) list.Add(saved);
@@ -83,8 +85,22 @@ static class LoginCheck
         void Add(string? x) { if (!string.IsNullOrWhiteSpace(x) && !x!.Equals("root", StringComparison.OrdinalIgnoreCase) && !u.Contains(x, StringComparer.OrdinalIgnoreCase)) u.Add(x); }
         Add(t.UserName);
         Add(d?.SuggestedUser);
-        foreach (var x in new[] { "ec2-user", "ubuntu", "admin", "rocky", "centos" }) Add(x);
+        // when the operating system is known, only its own default user is worth trying; guessing other names would only
+        // add failed logins to the server's log
+        if (d == null || string.IsNullOrWhiteSpace(d.OsName))
+            foreach (var x in new[] { "ec2-user", "ubuntu", "admin", "rocky", "centos" }) Add(x);
         return u.Take(5).ToList();
+    }
+
+    /// <summary>Instance|user|key combinations the server refused, so they are not tried again for 10 minutes.</summary>
+    static readonly Dictionary<string, DateTime> Refused = new();
+
+    static string RefKey(TunnelConfig t, string user, string key) => $"{t.InstanceId}|{user}|{key}|{File.GetLastWriteTimeUtc(key).Ticks}";
+
+    static bool WasRefused(TunnelConfig t, string user, string key)
+    {
+        try { lock (Gate) return Refused.TryGetValue(RefKey(t, user, key), out var at) && DateTime.UtcNow - at < TimeSpan.FromMinutes(10); }
+        catch { return false; }
     }
 
     static (bool Ok, bool Auth, string Err) Try(int port, string user, PrivateKeyFile pk)
@@ -119,10 +135,12 @@ static class LoginCheck
             {
                 foreach (var user in users)
                 {
+                    if (WasRefused(t, user, key)) { if (!tried.Contains(user)) tried.Add(user); continue; }
                     var r = Try(t.LocalPort, user, pk);
                     if (!r.Ok && !r.Auth) { Thread.Sleep(2000); r = Try(t.LocalPort, user, pk); }   // the tunnel may have only just opened
                     if (r.Ok) return new(Kind.Ok, user, key, "", tried);
                     if (!r.Auth) return new(Kind.Unreachable, t.UserName, key, r.Err, tried);
+                    try { lock (Gate) Refused[RefKey(t, user, key)] = DateTime.UtcNow; } catch { }
                     if (!tried.Contains(user)) tried.Add(user);
                 }
             }
@@ -134,6 +152,39 @@ static class LoginCheck
     static string? Sig(TunnelConfig t)
     {
         try { return string.IsNullOrWhiteSpace(t.KeyFile) || !File.Exists(t.KeyFile) ? null : $"{t.InstanceId}|{t.LocalPort}|{t.UserName}|{t.KeyFile}|{File.GetLastWriteTimeUtc(t.KeyFile).Ticks}"; }
+        catch { return null; }
+    }
+
+    /// <summary>Saves only this server's user and key into the config on disk, so nothing else changed meanwhile is overwritten.</summary>
+    static void SaveLogin(TunnelConfig t, AppConfig cfg)
+    {
+        try
+        {
+            var c = ConfigStore.Load() ?? cfg;
+            var m = c.Tunnels.FirstOrDefault(x => x.InstanceId == t.InstanceId && x.Profile == t.Profile) ?? c.Tunnels.FirstOrDefault(x => x.InstanceId == t.InstanceId && x.LocalPort == t.LocalPort);
+            if (m == null) { ConfigStore.Save(cfg); return; }
+            m.UserName = t.UserName;
+            m.KeyFile = t.KeyFile;
+            ConfigStore.Save(c);
+        }
+        catch (Exception ex) { AppLog.Warn("Could not save the corrected login: " + ex.Message); }
+    }
+
+    /// <summary>A small "Checking login..." window so the wait never looks like a freeze.</summary>
+    static Form? ShowBusy(IWin32Window? owner, string text)
+    {
+        try
+        {
+            var f = new Form
+            {
+                Text = "SSMConnect", FormBorderStyle = FormBorderStyle.FixedDialog, StartPosition = FormStartPosition.CenterParent,
+                ControlBox = false, MinimizeBox = false, MaximizeBox = false, ShowInTaskbar = false, ClientSize = new Size(380, 72),
+            };
+            f.Controls.Add(new Label { Text = text, Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter });
+            if (owner is Form of) f.Show(of); else f.Show();
+            f.Refresh();
+            return f;
+        }
         catch { return null; }
     }
 
@@ -152,7 +203,10 @@ static class LoginCheck
             var sig = Sig(t);
             if (sig != null && Verified.TryGetValue(sig, out var at) && DateTime.UtcNow - at < TimeSpan.FromMinutes(30)) { RefreshSessions(t); return true; }
 
-            var o = await Task.Run(() => Check(t));
+            var busy = ShowBusy(owner, $"Checking the login to \"{t.Name}\"...");
+            Outcome o;
+            try { o = await Task.Run(() => Check(t)); }
+            finally { try { busy?.Close(); busy?.Dispose(); } catch { } }
             switch (o.Kind)
             {
                 case Kind.Ok:
@@ -160,15 +214,14 @@ static class LoginCheck
                     var changed = false;
                     if (!string.Equals(o.User, t.UserName, StringComparison.Ordinal)) { AppLog.Info($"Login check: {t.Name} accepts user '{o.User}' (was '{t.UserName}'). Saved."); t.UserName = o.User; changed = true; }
                     if (!string.Equals(o.KeyPath, t.KeyFile, StringComparison.OrdinalIgnoreCase) && !string.IsNullOrEmpty(o.KeyPath)) { AppLog.Info($"Login check: {t.Name} uses key {o.KeyPath}. Saved."); t.KeyFile = o.KeyPath; changed = true; }
-                    if (changed) { try { ConfigStore.Save(cfg); } catch (Exception ex) { AppLog.Warn("Could not save the corrected login: " + ex.Message); } }
+                    if (changed) SaveLogin(t, cfg);
                     RefreshSessions(t);
                     if (o.Kind == Kind.Ok) { var s2 = Sig(t); if (s2 != null) Verified[s2] = DateTime.UtcNow; }
                     return true;
 
                 case Kind.Unreachable:
                     AppLog.Warn($"Login check: {t.Name} did not answer on its local port: {o.Detail}");
-                    MessageBox.Show(owner, $"The secure connection to \"{t.Name}\" is open, but the server did not answer the SSH login.\n\nCheck that the SSH service is running on the server and that its port 22 is not blocked on the server itself.\n\n{o.Detail}", "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
-                    return false;
+                    return MessageBox.Show(owner, $"The secure connection to \"{t.Name}\" is open, but the server did not answer the SSH login.\n\nCheck that the SSH service is running on the server and that its port 22 is not blocked on the server itself.\n\n{o.Detail}\n\nOpen the tool anyway?", "SSMConnect", MessageBoxButtons.YesNo, MessageBoxIcon.Warning) == DialogResult.Yes;
 
                 default:
                     var d = Known(t);
@@ -180,7 +233,7 @@ static class LoginCheck
                     var picked = PickKey(owner, t, d);
                     if (picked == null) return false;
                     t.KeyFile = picked;
-                    try { ConfigStore.Save(cfg); } catch { }
+                    SaveLogin(t, cfg);
                     break;
             }
         }

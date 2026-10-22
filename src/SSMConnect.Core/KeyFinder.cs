@@ -281,6 +281,28 @@ public static class KeyFingerprint
 public static class KeyConverter
 {
     /// <summary>Returns a .ppk path for the key (the key itself when it already is one), or null when it cannot be converted.</summary>
+    static bool _locked;
+
+    /// <summary>The converted keys are unencrypted: only the signed-in Windows user (not other local users) may read this folder.</summary>
+    static void LockDown(string dir)
+    {
+        if (_locked) return;
+        _locked = true;
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("icacls") { UseShellExecute = false, CreateNoWindow = true };
+            psi.ArgumentList.Add(dir);
+            psi.ArgumentList.Add("/inheritance:r");
+            psi.ArgumentList.Add("/grant:r");
+            psi.ArgumentList.Add(Environment.UserName + ":(OI)(CI)F");
+            psi.ArgumentList.Add("/T");
+            psi.ArgumentList.Add("/C");
+            using var p = System.Diagnostics.Process.Start(psi);
+            p?.WaitForExit(8000);
+        }
+        catch (Exception ex) { AppLog.Warn("Could not restrict the keys folder: " + ex.Message); }
+    }
+
     public static string? EnsurePpk(string keyPath)
     {
         try
@@ -289,6 +311,7 @@ public static class KeyConverter
             if (!File.Exists(keyPath)) return null;
             var dir = System.IO.Path.Combine(ConfigStore.DataDir, "keys");
             Directory.CreateDirectory(dir);
+            LockDown(dir);
             var safe = string.Concat(System.IO.Path.GetFileNameWithoutExtension(keyPath).Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'));
             // the folder is part of the name, so two different keys that share a file name never overwrite each other
             var tag = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(System.IO.Path.GetFullPath(keyPath).ToLowerInvariant())))[..8].ToLowerInvariant();

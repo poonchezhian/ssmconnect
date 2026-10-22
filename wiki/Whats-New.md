@@ -6,6 +6,13 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.4
+- **Quieter on your servers.** Automatic usage reading is now off for production servers (use **Refresh usage** when you want them), can be switched off completely under **Servers**, and stops for an hour when your AWS role is not allowed to run SSM commands.
+- **Fewer login guesses.** When SSMConnect knows the server's operating system it tries only that system's login user, remembers combinations the server refused, and searches your disk for a key only when none is saved.
+- **Login check feedback.** A "Checking the login..." window shows while the check runs. If the server does not answer, you can choose **Open the tool anyway**.
+- **Flapping connections stop.** A connection that comes up but drops within 30 seconds counts as a failed try, so it stops after three instead of reconnecting forever.
+- **Safer by default.** The converted PuTTY keys folder is restricted to your Windows user, only AWS sign-in links are opened in the browser, and saving a corrected login no longer overwrites other changes made to your settings.
+
 ## 2.0.3
 - **Server cards fixed.** The usage bars were hidden behind the tool buttons because the card was too short. Cards are taller and everything on them is fully visible.
 - **File transfer now matches the dashboard.** Rounded glass drop-downs, text boxes and list, a tinted selection, and a glossy progress bar replace the grey Windows controls.

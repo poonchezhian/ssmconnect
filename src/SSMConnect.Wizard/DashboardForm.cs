@@ -537,6 +537,13 @@ public sealed class DashboardForm : Form
         servers.DropDownItems.Add(Item("Scan for &new or changed servers", async (_, _) => await ScanForChangesAsync(force: true, interactive: true)));
         servers.DropDownItems.Add(Item("What &changed since the last scan...", (_, _) => ShowServerChanges()));
         servers.DropDownItems.Add(new ToolStripSeparator());
+        var mAuto = new ToolStripMenuItem("Read CPU, memory and disk use &automatically") { CheckOnClick = true, Checked = _cfg.ReadUsage };
+        var mProd = new ToolStripMenuItem("...also on &production servers") { CheckOnClick = true, Checked = _cfg.ReadUsageOnProd, Enabled = _cfg.ReadUsage };
+        mAuto.Click += (_, _) => { SaveUsageSetting(a => a.ReadUsage = mAuto.Checked); mProd.Enabled = mAuto.Checked; };
+        mProd.Click += (_, _) => SaveUsageSetting(a => a.ReadUsageOnProd = mProd.Checked);
+        servers.DropDownItems.Add(mAuto);
+        servers.DropDownItems.Add(mProd);
+        servers.DropDownItems.Add(new ToolStripSeparator());
         servers.DropDownItems.Add(Item("&File transfer: browse and copy files...", (_, _) => OpenTransfer(SelectedTunnel())));
 
         var help = new ToolStripMenuItem("&Help");
@@ -549,6 +556,12 @@ public sealed class DashboardForm : Form
         menu.Items.AddRange(new ToolStripItem[] { file, aws, conns, servers, help });
         MainMenuStrip = menu;
         Controls.Add(menu);
+    }
+
+    void SaveUsageSetting(Action<AppConfig> apply)
+    {
+        try { var c = ConfigStore.Load() ?? _cfg; apply(c); ConfigStore.Save(c); apply(_cfg); }
+        catch (Exception ex) { AppLog.Warn("Could not save the usage setting: " + ex.Message); }
     }
 
     static ToolStripMenuItem Item(string text, EventHandler click)
@@ -1204,6 +1217,7 @@ public sealed class DashboardForm : Form
         {
             var t = ordered[i];
             if (!t.Enabled || _signedOut.Contains(PKey(t.Profile)) || rows[i].Level != Level.Green) continue;
+            if (!_cfg.ReadUsage || (!_cfg.ReadUsageOnProd && EnvironmentClassifier.IsProd(t.Environment))) continue;   // production is only read when asked
             var info = UsageOf(t);
             if (info == null || DateTime.UtcNow - info.UsageUtc > TimeSpan.FromMinutes(5)) inUse.Add(t);
         }

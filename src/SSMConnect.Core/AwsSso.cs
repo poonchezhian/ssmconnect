@@ -65,7 +65,9 @@ public static class AwsSso
             if (m.Success)
             {
                 bool first;
-                lock (gate) { urls.Add(m.Value.TrimEnd('.', ',', ')')); first = urls.Count == 1; }
+                var candidate = m.Value.TrimEnd('.', ',', ')');
+                if (!IsAwsSignInUrl(candidate)) { AppLog.Warn("Ignored a sign-in link that is not an AWS address."); return; }
+                lock (gate) { urls.Add(candidate); first = urls.Count == 1; }
                 if (first) _ = Task.Delay(700).ContinueWith(_ => Pick());
             }
             var c = System.Text.RegularExpressions.Regex.Match(line, @"\b[A-Z0-9]{4}-[A-Z0-9]{4}\b");
@@ -94,6 +96,16 @@ public static class AwsSso
         string text;
         lock (gate) text = output.ToString();
         return p.ExitCode == 0 ? new CliResult(0, text, "") : new CliResult(p.ExitCode, text, text);
+    }
+
+    /// <summary>Only https links on AWS's own sign-in domains are opened in the browser.</summary>
+    static bool IsAwsSignInUrl(string url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps) return false;
+        var h = u.Host.ToLowerInvariant();
+        foreach (var d in new[] { "awsapps.com", "amazonaws.com", "amazon.com", "aws.amazon.com", "signin.aws" })
+            if (h == d || h.EndsWith("." + d, StringComparison.Ordinal)) return true;
+        return false;
     }
 
     /// <summary>Reads the access token the AWS CLI cached after sign-in (file name = SHA-1 of the session name).</summary>
