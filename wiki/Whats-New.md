@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.5
+- **Dashboard scrolls and tiles correctly.** With many servers (for example 11) the tiles no longer drop to three columns with the last rows cut off. The cards are now placed by SSMConnect itself, the columns always match the window width, and the list always scrolls to the last card.
+- **More compact tiles.** The CPU, memory and disk bars now sit on the same line as the status (for example Connected), right-aligned, which saves a line on every tile.
+- **Copy files window redesigned** to match the dashboard: a soft backdrop with glass cards for the organization bar, both file panes and the footer.
+
 ## 2.0.4
 - **Quieter on your servers.** Automatic usage reading is now off for production servers (use **Refresh usage** when you want them), can be switched off completely under **Servers**, and stops for an hour when your AWS role is not allowed to run SSM commands.
 - **Fewer login guesses.** When SSMConnect knows the server's operating system it tries only that system's login user, remembers combinations the server refused, and searches your disk for a key only when none is saved.

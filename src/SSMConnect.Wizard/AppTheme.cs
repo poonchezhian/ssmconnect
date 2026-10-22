@@ -178,7 +178,17 @@ public class GlassPanel : Panel
     {
         var g = e.Graphics;
         var s = DeviceDpi / 96f;
-        if (Parent is BackdropPanel) AppTheme.PaintBackdrop(g, ClientRectangle);
+        Control? anc = Parent;
+        while (anc != null && anc is not BackdropPanel) anc = anc.Parent;
+        if (anc != null)
+        {
+            // paint the part of the window's backdrop that lies behind this card, so the wash is seamless across cards
+            var o = PointToClient(anc.PointToScreen(Point.Empty));
+            var st = g.Save();
+            g.SetClip(ClientRectangle);
+            AppTheme.PaintBackdrop(g, new Rectangle(o, anc.ClientSize));
+            g.Restore(st);
+        }
         else using (var b = new SolidBrush(Parent?.BackColor ?? AppTheme.Page)) g.FillRectangle(b, ClientRectangle);
         g.SmoothingMode = SmoothingMode.AntiAlias;
         var r = new RectangleF(1.5f * s, 1f * s, Width - 3f * s, Height - 4f * s);

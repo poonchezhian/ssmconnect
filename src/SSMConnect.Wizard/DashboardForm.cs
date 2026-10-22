@@ -72,11 +72,13 @@ public sealed class DashboardForm : Form
     readonly HashSet<string> _launching = new();
     Dictionary<string, string> _osMap = new();
     readonly Dictionary<Control, string> _tipText = new();
-    sealed class CardFlow : FlowLayoutPanel
+    /// <summary>The scrolling area for the server cards. Cards are placed by <see cref="LayoutCards"/> (no flow layout), so the scroll height is always exact.</summary>
+    sealed class CardFlow : Panel
     {
         public CardFlow() { DoubleBuffered = true; }
     }
-    readonly CardFlow _cardHost = new() { Dock = DockStyle.Fill, AutoScroll = true, WrapContents = true, FlowDirection = FlowDirection.LeftToRight, BackColor = AppTheme.Page, Padding = new Padding(14, 6, 4, 0) };
+    readonly CardFlow _cardHost = new() { Dock = DockStyle.Fill, AutoScroll = true, BackColor = AppTheme.Page, Padding = new Padding(14, 6, 4, 0) };
+    bool _laying;
     readonly List<ServerCard> _cards = new();
     readonly List<Label> _groupHeads = new();
     // account switcher (top right of the header)
@@ -316,15 +318,56 @@ public sealed class DashboardForm : Form
 
     void LayoutCards()
     {
-        var f = DeviceDpi / 96f;
-        var avail = _cardHost.ClientSize.Width - _cardHost.Padding.Horizontal - 2;
-        var gap = (int)(4 * f);
-        var cols = Math.Max(1, avail / (int)(360 * f));
-        var w = Math.Max((int)(330 * f), (avail - gap * (cols - 1)) / cols);
-        _cardHost.SuspendLayout();
-        foreach (var c in _cards) { c.Width = w; c.Height = ServerCard.HeightFor(f); c.Margin = new Padding(0, 0, gap, 0); }
-        foreach (var h in _groupHeads) { h.Width = Math.Max(avail, 200); h.Height = (int)(26 * f); h.Margin = new Padding(0, (int)(8 * f), 0, (int)(2 * f)); }
-        _cardHost.ResumeLayout();
+        if (_laying) return;
+        _laying = true;
+        try
+        {
+            var f = DeviceDpi / 96f;
+            var gap = (int)(4 * f);
+            var rowGap = (int)(4 * f);
+            var cardH = ServerCard.HeightFor(f);
+            var headH = (int)(26 * f);
+            var headTop = (int)(8 * f);
+            var padL = _cardHost.Padding.Left;
+            var padT = _cardHost.Padding.Top;
+            var items = _cardHost.Controls.Cast<Control>().Where(c => c is ServerCard || (c is Label l && _groupHeads.Contains(l))).ToList();
+            var offY = _cardHost.AutoScrollPosition.Y;
+
+            int Run(int availW, bool apply)
+            {
+                var cols = Math.Max(1, availW / (int)(360 * f));
+                var w = Math.Max((int)(330 * f), (availW - gap * (cols - 1)) / cols);
+                int y = padT, col = 0;
+                foreach (var c in items)
+                {
+                    if (c is ServerCard)
+                    {
+                        if (apply) { c.SetBounds(padL + col * (w + gap), y + offY, w, cardH); }
+                        if (++col == cols) { col = 0; y += cardH + rowGap; }
+                    }
+                    else
+                    {
+                        if (col > 0) { col = 0; y += cardH + rowGap; }
+                        y += headTop;
+                        if (apply) c.SetBounds(padL, y + offY, Math.Max(availW, 200), headH);
+                        y += headH + (int)(2 * f);
+                    }
+                }
+                if (col > 0) y += cardH + rowGap;
+                return y + (int)(12 * f);
+            }
+
+            // reserve the scroll bar's width up front when the cards do not fit, so the column count never flips back and forth
+            var avail = _cardHost.Width - padL - _cardHost.Padding.Right - 2;
+            if (Run(avail, false) > _cardHost.ClientSize.Height) avail -= SystemInformation.VerticalScrollBarWidth;
+            var total = Run(avail, false);
+            _cardHost.SuspendLayout();
+            _cardHost.AutoScrollMinSize = new Size(0, total);
+            offY = _cardHost.AutoScrollPosition.Y;
+            Run(avail, true);
+            _cardHost.ResumeLayout();
+        }
+        finally { _laying = false; }
     }
 
     // ---- server cards ------------------------------------------------------------------------
@@ -1007,7 +1050,6 @@ public sealed class DashboardForm : Form
             var head = _groupHeads[g];
             head.Text = $"{_cfg.AliasOr(names[g], names[g]).ToUpperInvariant()}    {count} server{(count == 1 ? "" : "s")}";
             if (!_cardHost.Controls.Contains(head)) _cardHost.Controls.Add(head);
-            _cardHost.SetFlowBreak(head, true);
             _cardHost.Controls.SetChildIndex(head, idx++);
             for (var i = 0; i < _cards.Count; i++)
                 if (_rowGroups[i] == names[g]) _cardHost.Controls.SetChildIndex(_cards[i], idx++);

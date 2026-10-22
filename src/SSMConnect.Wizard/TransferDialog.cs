@@ -428,19 +428,22 @@ public sealed class TransferDialog : Form
         var hdr = new HeaderBand { Dock = DockStyle.Top, Height = 84 };
         hdr.Set("Copy files between servers", "Pick a server in each pane to sign in. To act as another user, pick it and click Switch user (done with sudo). Only servers of the same organization can be linked.");
 
-        var orgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(22, 8, 14, 0), BackColor = AppTheme.Page };
+        var root = new BackdropPanel { Dock = DockStyle.Fill, Padding = new Padding(18, 12, 18, 12) };
+        var orgCard = new GlassPanel { Dock = DockStyle.Top, Height = 54, Padding = new Padding(12, 8, 12, 8) };
+        var orgBar = new FlowLayoutPanel { Dock = DockStyle.Fill, Padding = new Padding(6, 3, 0, 0), BackColor = Color.Transparent };
+        orgCard.Controls.Add(orgBar);
         orgBar.Controls.Add(new Label { Text = "Organization:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
         _orgBox.Margin = new Padding(0, 2, 0, 0);
         orgBar.Controls.Add(_orgBox);
         _refreshOrgs.Margin = new Padding(8, 0, 0, 0);
         orgBar.Controls.Add(_refreshOrgs);
 
-        var mid = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 120, 0, 0), BackColor = AppTheme.Page };
+        var mid = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, WrapContents = false, Padding = new Padding(0, 120, 0, 0), BackColor = Color.Transparent };
         _toRight.Margin = new Padding(4, 0, 4, 14); _toLeft.Margin = new Padding(4, 0, 4, 14);
         mid.Controls.Add(_toRight);
         mid.Controls.Add(_toLeft);
 
-        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(18, 8, 18, 10), BackColor = AppTheme.Page };
+        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(0, 10, 0, 10), BackColor = Color.Transparent };
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
@@ -448,8 +451,9 @@ public sealed class TransferDialog : Form
         body.Controls.Add(mid, 1, 0);
         body.Controls.Add(_right, 2, 0);
 
-        var footer = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 70, ColumnCount = 4, Padding = new Padding(16, 10, 16, 10), BackColor = AppTheme.Page };
-        footer.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, 0, footer.Width, 0); };
+        var footerCard = new GlassPanel { Dock = DockStyle.Bottom, Height = 64, Padding = new Padding(10, 6, 10, 6) };
+        var footer = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 4, BackColor = Color.Transparent };
+        footerCard.Controls.Add(footer);
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -461,9 +465,10 @@ public sealed class TransferDialog : Form
         _bar.Margin = new Padding(8, 10, 8, 10);
         _info.Text = "Loading the connected servers ...";
 
-        Controls.Add(body);
-        Controls.Add(footer);
-        Controls.Add(orgBar);
+        root.Controls.Add(body);
+        root.Controls.Add(footerCard);
+        root.Controls.Add(orgCard);
+        Controls.Add(root);
         Controls.Add(hdr);
         AppTheme.Style(this);
 

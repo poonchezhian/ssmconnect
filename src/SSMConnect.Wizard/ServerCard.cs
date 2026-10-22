@@ -103,7 +103,7 @@ public sealed class ServerCard : Control
         a.Spec == b.Spec && a.OsKey == b.OsKey && a.UsageTip == b.UsageTip && a.Cpu == b.Cpu && a.Ram == b.Ram && a.Disk == b.Disk &&
         a.Actions.Count == b.Actions.Count && a.Actions.Zip(b.Actions).All(p => p.First == p.Second);
 
-    public static int HeightFor(float scale) => (int)(172 * scale);
+    public static int HeightFor(float scale) => (int)(148 * scale);
 
     void UpdatePulse()
     {
@@ -207,17 +207,18 @@ public sealed class ServerCard : Control
         TextRenderer.DrawText(g, spec, small, new Rectangle((int)tx, (int)(card.Y + 35 * s), (int)(right - tx), (int)(18 * s)),
             Color.FromArgb(84, 100, 106), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
 
-        // status text, then the CPU / RAM / disk usage bars on a row of their own
+        // status text on the left, the CPU / RAM / disk usage bars right-aligned on the same row
         float rowY = card.Y + 55 * s;
-        var textRect = new Rectangle((int)tx, (int)rowY, (int)(right - tx), (int)(20 * s));
+        float uw = 50 * s, uh = 20 * s, ugap = 4 * s;
+        float ux = right - (3 * uw + 2 * ugap);
+        var textRect = new Rectangle((int)tx, (int)rowY, Math.Max(10, (int)(ux - 6 * s - tx)), (int)(20 * s));
         var stateText = _d.StatusText + (string.IsNullOrEmpty(_d.Detail) ? "" : "  ·  " + _d.Detail);
         TextRenderer.DrawText(g, stateText, smallBold, textRect, pal.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
 
         _ringHits.Clear();
-        float uw = 58 * s, uh = 20 * s, ugap = 6 * s, uy = card.Y + 79 * s;
-        DrawUsage(g, new RectangleF(tx, uy, uw, uh), _d.Cpu, "cpu", s, "CPU", _d.UsageTip);
-        DrawUsage(g, new RectangleF(tx + uw + ugap, uy, uw, uh), _d.Ram, "ram", s, "Memory", _d.UsageTip);
-        DrawUsage(g, new RectangleF(tx + 2 * (uw + ugap), uy, uw, uh), _d.Disk, "disk", s, "Disk", _d.UsageTip);
+        DrawUsage(g, new RectangleF(ux, rowY, uw, uh), _d.Cpu, "cpu", s, "CPU", _d.UsageTip);
+        DrawUsage(g, new RectangleF(ux + uw + ugap, rowY, uw, uh), _d.Ram, "ram", s, "Memory", _d.UsageTip);
+        DrawUsage(g, new RectangleF(ux + 2 * (uw + ugap), rowY, uw, uh), _d.Disk, "disk", s, "Disk", _d.UsageTip);
 
         // tool buttons: one row, equal columns, always visible
         _hits.Clear();
