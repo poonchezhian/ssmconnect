@@ -56,7 +56,7 @@
 - All values reaching the AWS CLI are validated, and the CLI is started with an argument list, never a command string.
 - Sessions end when the app exits. No password or key is stored by the app; a copied Windows password leaves the clipboard after 60 seconds. Access keys go only to the user's own `~/.aws/credentials`.
 - Backups (`.ssmconnect.bak`) before editing AWS files or MobaXterm settings. User's own PuTTY and WinSCP sessions are never modified.
-- Runs as the user, never admin or SYSTEM. Known limit: another user on the same PC can reach local tunnel ports but still needs SSH credentials. MobaXterm configuration is best effort.
+- Runs as the user, never admin or SYSTEM. Known limit: another user on the same PC can reach local tunnel ports but still needs SSH credentials. MobaXterm configuration is best effort: since 1.0.43 it is found through the Windows installed-programs list as well as the usual folders, and if it has never been opened the log asks the user to open it once and run Apply again.
 - Updates: checked a few seconds after start and daily; download verified against a published SHA-256 before an in-place upgrade; settings preserved.
 
 ## 9. Installer and build
