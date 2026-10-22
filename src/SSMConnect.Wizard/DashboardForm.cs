@@ -343,7 +343,8 @@ public sealed class DashboardForm : Form
                 case "pwd": _ = CopyWindowsPasswordAsync(); break;
                 case "putty" when _puttyPath != null: Process.Start(new ProcessStartInfo(_puttyPath, $"-load \"{session}\"") { UseShellExecute = false }); break;
                 case "winscp" when _winscpPath != null: Process.Start(new ProcessStartInfo(_winscpPath, $"\"{session}\"") { UseShellExecute = false }); break;
-                case "moba" when _mobaPath != null: Process.Start(new ProcessStartInfo(_mobaPath, $"-bookmark \"{session}\"") { UseShellExecute = false }); break;
+                case "moba" when _mobaPath != null: _ = OpenMobaAsync(t, _mobaPath); break;
+                case "transfer": OpenTransfer(t); break;
                 case "copy":
                     Clipboard.SetText(session);
                     MessageBox.Show(this, $"The saved session name \"{session}\" is on your clipboard. Open PuTTY, WinSCP or MobaXterm and choose it from the list of saved sessions.", "Session name copied");
@@ -351,6 +352,58 @@ public sealed class DashboardForm : Form
             }
         }
         catch (Exception ex) { MessageBox.Show(this, "Could not open the tool: " + ex.Message, "SSMConnect"); }
+    }
+
+    /// <summary>
+    /// Opens the server in MobaXterm. When MobaXterm is closed, the saved sessions are (re)written first and the
+    /// session is opened by name; when it is already running its settings file cannot be edited safely, so the
+    /// connection is opened in a new tab with an ssh command instead.
+    /// </summary>
+    async Task OpenMobaAsync(TunnelConfig t, string exe)
+    {
+        var session = ToolConfigurator.SessionName(t);
+        try
+        {
+            var running = Process.GetProcessesByName("MobaXterm").Length > 0;
+            string args;
+            if (!running && ToolConfigurator.ConfigureMobaXterm(_cfg.Tunnels))
+                args = $"-bookmark \"{session}\"";
+            else
+            {
+                var key = "";
+                if (!string.IsNullOrWhiteSpace(t.KeyFile) && !t.KeyFile!.EndsWith(".ppk", StringComparison.OrdinalIgnoreCase))
+                {
+                    var k = t.KeyFile!.Replace('\\', '/');
+                    if (k.Length > 2 && k[1] == ':') k = "/drives/" + char.ToLowerInvariant(k[0]) + k.Substring(2);
+                    key = $" -i '{k}'";
+                }
+                args = $"-newtab \"ssh -p {t.LocalPort}{key} -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {t.UserName}@127.0.0.1\"";
+            }
+            AppLog.Info($"MobaXterm: {exe} {args}");
+            Process.Start(new ProcessStartInfo(exe, args) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! });
+            await Task.Delay(5000);
+            if (Process.GetProcessesByName("MobaXterm").Length == 0)
+            {
+                AppLog.Warn("MobaXterm did not start with those arguments; starting it plainly.");
+                Process.Start(new ProcessStartInfo(exe) { UseShellExecute = false, WorkingDirectory = Path.GetDirectoryName(exe)! });
+                try { Clipboard.SetText(session); } catch { }
+                MessageBox.Show(this, $"MobaXterm opened, but it did not take the connection. The session name \"{session}\" is on your clipboard.", "SSMConnect");
+            }
+        }
+        catch (Exception ex)
+        {
+            AppLog.Error("MobaXterm launch failed: " + ex);
+            MessageBox.Show(this, "Could not open MobaXterm: " + ex.Message, "SSMConnect");
+        }
+    }
+
+    void OpenTransfer(TunnelConfig? preselect = null)
+    {
+        var ssh = _cfg.Tunnels.Where(x => !x.IsRdp && x.Enabled).ToList();
+        if (ssh.Count < 2) { MessageBox.Show(this, "Copying between servers needs at least two Linux servers set up in SSMConnect.", "SSMConnect"); return; }
+        var live = ActiveListeners();
+        using var dlg = new TransferDialog(ssh, p => live.Contains(p), preselect);
+        dlg.ShowDialog(this);
     }
 
     void OnCardActivated(ServerCard card)
@@ -379,6 +432,8 @@ public sealed class DashboardForm : Form
         var servers = new ToolStripMenuItem("&Servers");
         servers.DropDownItems.Add(Item("Scan for &new or changed servers", async (_, _) => await ScanForChangesAsync(force: true, interactive: true)));
         servers.DropDownItems.Add(Item("What &changed since the last scan...", (_, _) => ShowServerChanges()));
+        servers.DropDownItems.Add(new ToolStripSeparator());
+        servers.DropDownItems.Add(Item("&Copy files between servers...", (_, _) => OpenTransfer(SelectedTunnel())));
 
         var help = new ToolStripMenuItem("&Help");
         help.DropDownItems.Add(Item("&About SSMConnect", (_, _) => ShowAbout()));

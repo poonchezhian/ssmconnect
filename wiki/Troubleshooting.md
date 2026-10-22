@@ -12,7 +12,8 @@
 | Servers show no PROD / UAT tag | The server has no `Environment` tag. See [Server Types and Tags](Server-Types-and-Tags). |
 | Tray icon missing | Check the hidden-icons arrow in the taskbar, or open SSMConnect from the Start menu. |
 | PuTTY sessions missing | Re-run the setup wizard's last step. PuTTY needs `.ppk` keys; install PuTTYgen so `.pem` files convert automatically. |
-| MobaXterm sessions missing | Close MobaXterm, then apply again. If the log says MobaXterm is installed but has not been opened yet, open it once, close it, and apply again. From version 1.0.43 SSMConnect finds MobaXterm wherever it was installed, and from 1.0.44 the dashboard shows a MobaXterm button on each server card. |
+| MobaXterm sessions missing | Close MobaXterm, then apply again. If the log says MobaXterm is installed but has not been opened yet, open it once, close it, and apply again. From version 1.0.43 SSMConnect finds MobaXterm wherever it was installed, and from 1.0.44 the dashboard shows a MobaXterm button on each server card. From 1.0.45 that button saves the sessions into MobaXterm for you; if MobaXterm is already open it opens a new tab instead. |
+| Copy between servers fails | Both servers must show Connected. Use absolute paths such as `/home/ubuntu/file.zip`. The copy needs Windows' OpenSSH Client (Settings > Apps > Optional features) and a `.pem` key, not `.ppk`. The window that opens shows the exact error. |
 | WinSCP transfers fail with parallel connections | SSM port forwarding can limit simultaneous connections. Set WinSCP to a single connection. |
 | Windows server will not open | The server needs the SSM Agent and RDP enabled; **Get password** needs the server's `.pem` key. |
 

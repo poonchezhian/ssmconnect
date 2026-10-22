@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 1.0.45
+- **Copy files between servers.** New menu item **Servers > Copy files between servers...**. Pick a file or folder on one server and a folder on another, and SSMConnect copies it through your SSM connections. A window shows progress. Needs the OpenSSH Client that comes with Windows and a `.pem` key.
+- **MobaXterm button now creates the sessions for you.** Click MobaXterm on a server card and SSMConnect saves your servers into MobaXterm first, then opens the right one. If MobaXterm is already open, the server opens in a new tab instead.
+- **A clear message when MobaXterm does not start.** The click is logged, and if MobaXterm does not open you are told and the session name is copied.
+
 ## 1.0.44
 - **MobaXterm button on the dashboard.** Each server card now has a MobaXterm button next to PuTTY and WinSCP, and it opens the saved session straight away.
 - **Tools are found as soon as SSMConnect starts.** PuTTY, WinSCP and MobaXterm are all checked at launch, so the right buttons show up immediately. They are checked again when the window opens, and every two minutes after that.
