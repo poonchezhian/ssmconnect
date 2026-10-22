@@ -1055,7 +1055,7 @@ public sealed class WizardForm : Form
                 return true;
             }
 
-            Log("Connections now open on demand: every server shows Ready on the dashboard, and clicking PuTTY, WinSCP, MobaXterm or Remote Desktop on its card opens the secure connection by itself (about 3 seconds).");
+            Log("All connections now open together and stay open: click PuTTY, WinSCP, MobaXterm or Remote Desktop on a server card once it turns green.");
             foreach (var t in tunnels) Log(t.IsRdp ? $"  [READY] {t.Name}  ->  click Remote Desktop on its card" : $"  [READY] {t.Name}  ->  click a tool on its card (saved session '{ToolConfigurator.SessionName(t)}')");
             Log("Done.");
             return true;

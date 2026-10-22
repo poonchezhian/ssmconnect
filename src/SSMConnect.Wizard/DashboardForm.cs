@@ -20,9 +20,9 @@ using SSMConnect.Core;
 namespace SSMConnect.Wizard;
 
 /// <summary>
-/// Main window and tray icon. Sign in once per organization, then every server is Ready; a click on a tool opens its secure
-/// connection on demand (green = connected, blue = ready, amber = connecting, red = stopped after 3 tries, grey = off).
-/// The window hides to the system tray when closed; connections open and close by themselves while SSMConnect runs.
+/// Main window and tray icon. Sign in once per organization; every server's secure connection opens together when SSMConnect
+/// starts and stays open until Stop connections or Exit (green = connected, amber = connecting, red = stopped after 3 tries, grey = off).
+/// The window hides to the system tray when closed; the connections keep running.
 /// </summary>
 public sealed class DashboardForm : Form
 {
@@ -57,7 +57,7 @@ public sealed class DashboardForm : Form
     readonly Label _orgSub = new() { AutoSize = false, AutoEllipsis = true, ForeColor = Color.FromArgb(84, 100, 106) };
     readonly TextBox _search = new() { PlaceholderText = "Search servers" };
     readonly Button _btnSignIn = new() { Text = "Sign in again" }, _btnUsage = new() { Text = "Refresh usage" };
-    readonly Button _btnDisconnect = new() { Text = "Disconnect all" }, _btnAdd = new() { Text = "Add / change servers..." };
+    readonly Button _btnDisconnect = new() { Text = "Stop connections" }, _btnAdd = new() { Text = "Add / change servers..." };
     readonly LegendBar _legend = new() { Dock = DockStyle.Bottom, Height = 38 };
     string _filter = "all";
     bool _signInIsPrimary;
@@ -280,9 +280,9 @@ public sealed class DashboardForm : Form
         _btnDisconnect.Width = 150; _btnAdd.Width = 250;
         _btnAdd.Tag = "primary";
         SetTip(_btnAdd, "Open the setup wizard to find servers in your AWS accounts and choose which ones to connect to.");
-        SetTip(_btnDisconnect, "Close every open connection now. Servers go back to Ready and open again when you click a tool. Your servers in AWS are not touched.");
+        SetTip(_btnDisconnect, "Switch every connection off, or back on. Connections open together when SSMConnect starts and stay open until you stop them or close the app. Your servers in AWS are not touched.");
         _btnAdd.Click += (_, _) => OpenSetup();
-        _btnDisconnect.Click += (_, _) => { _mgr.CloseAll(); RefreshAll(); };
+        _btnDisconnect.Click += async (_, _) => await ServiceActionAsync(_mgr.IsRunning ? "stop" : "start");
         void LayoutBar()
         {
             var f = DeviceDpi / 96f;
@@ -511,18 +511,6 @@ public sealed class DashboardForm : Form
         aws.DropDownItems.Add(Item("&Sign in again", async (_, _) => await SignInAsync()));
 
         var conns = new ToolStripMenuItem("&Connections");
-        conns.DropDownItems.Add(Item("&Disconnect all now", (_, _) => { _mgr.CloseAll(); RefreshAll(); }));
-        var idle = new ToolStripMenuItem("Close &unused connections after");
-        foreach (var m in new[] { 15, 30, 60 })
-        {
-            var mins = m;
-            var it = new ToolStripMenuItem($"{mins} minutes") { Tag = mins };
-            it.Click += (_, _) => SetIdleMinutes(mins);
-            idle.DropDownItems.Add(it);
-        }
-        idle.DropDownOpening += (_, _) => { foreach (ToolStripMenuItem it in idle.DropDownItems) it.Checked = it.Tag is int v && v == (_cfg.IdleMinutes <= 0 ? 15 : _cfg.IdleMinutes); };
-        conns.DropDownItems.Add(idle);
-        conns.DropDownItems.Add(new ToolStripSeparator());
         conns.DropDownItems.AddRange(new ToolStripItem[] { _mStart, _mStop, _mRestart });
         _mStart.Click += async (_, _) => await ServiceActionAsync("start");
         _mStop.Click += async (_, _) => await ServiceActionAsync("stop");
@@ -544,12 +532,6 @@ public sealed class DashboardForm : Form
         menu.Items.AddRange(new ToolStripItem[] { file, aws, conns, servers, help });
         MainMenuStrip = menu;
         Controls.Add(menu);
-    }
-
-    void SetIdleMinutes(int minutes)
-    {
-        try { var c = ConfigStore.Load() ?? _cfg; c.IdleMinutes = minutes; ConfigStore.Save(c); _cfg.IdleMinutes = minutes; _cfgStamp = DateTime.MinValue; }
-        catch (Exception ex) { MessageBox.Show(this, "Could not save the setting: " + ex.Message, "SSMConnect"); }
     }
 
     static ToolStripMenuItem Item(string text, EventHandler click)
@@ -711,8 +693,8 @@ public sealed class DashboardForm : Form
         var listeners = ActiveListeners();
 
         // pills at the bottom of the sidebar
-        if (running) SetPill(_svcPill, "Connections: on demand", Level.Green, "SSMConnect opens a secure connection when you click a tool, and closes it when it is no longer used.");
-        else SetPill(_svcPill, "Connections: switched off", Level.Red, "Use Connections > Start connections (or the tray menu) to switch them on.");
+        if (running) SetPill(_svcPill, "Connections: on", Level.Green, "Every connection opens when SSMConnect starts and stays open until you stop them or close the app.");
+        else SetPill(_svcPill, "Connections: switched off", Level.Red, "Click Start connections to switch them on.");
         var haveAws = AwsCli.FindAws() != null;
         var havePlugin = AwsCli.FindPlugin() != null;
         if (haveAws && havePlugin) SetPill(_reqPill, "AWS tools: installed", Level.Green, "AWS CLI and the Session Manager plugin are installed.");
@@ -732,14 +714,13 @@ public sealed class DashboardForm : Form
             Row row;
             if (!t.Enabled) row = new Row(label, t.InstanceId, t.LocalPort, "Off", "This connection is turned off.", null, Level.Grey);
             else if (_signedOut.Contains(PKey(t.Profile))) row = new Row(label, t.InstanceId, t.LocalPort, "Signed out", "Your company sign-in has expired. Click Sign in again.", null, Level.Red, "sign in needed");
-            else if (!running) row = new Row(label, t.InstanceId, t.LocalPort, "Paused", "Connections are switched off. Use Connections > Start connections.", null, Level.Grey);
-            else if (stale || s == null) row = new Row(label, t.InstanceId, t.LocalPort, "Ready", "Ready. Click a tool to connect.", null, Level.Blue);
+            else if (!running) row = new Row(label, t.InstanceId, t.LocalPort, "Paused", "Connections are switched off. Click Start connections.", null, Level.Grey);
+            else if (stale || s == null) row = new Row(label, t.InstanceId, t.LocalPort, "Connecting", "Opening secure session to the server...", null, Level.Amber, "starting up");
             else row = s.State switch
             {
                 TunnelStates.Connected when listeners.Contains(t.LocalPort) =>
                     new Row(label, t.InstanceId, t.LocalPort, "Connected", s.Message, s.SinceUtc, Level.Green,
-                        s.Clients > 0 ? (s.Clients == 1 ? "1 tool attached" : s.Clients + " tools attached")
-                        : s.IdleLeftSeconds >= 0 ? $"closes in {(s.IdleLeftSeconds + 59) / 60} min if unused" : ""),
+                        s.Clients > 0 ? (s.Clients == 1 ? "1 tool attached" : s.Clients + " tools attached") : ""),
                 TunnelStates.Connected =>
                     new Row(label, t.InstanceId, t.LocalPort, "Checking", "Tunnel reported connected; confirming the local port is open...", s.SinceUtc, Level.Amber),
                 TunnelStates.Ready => new Row(label, t.InstanceId, t.LocalPort, "Ready", s.Message, null, Level.Blue),
@@ -804,7 +785,8 @@ public sealed class DashboardForm : Form
         foreach (var m in new[] { _mStart, _trayStart }) m.Enabled = !_busy && !running;
         foreach (var m in new[] { _mStop, _trayStop }) m.Enabled = !_busy && running;
         foreach (var m in new[] { _mRestart, _trayRestart }) m.Enabled = !_busy;
-        _btnDisconnect.Enabled = connected > 0;
+        _btnDisconnect.Text = running ? "Stop connections" : "Start connections";
+        _btnDisconnect.Enabled = !_busy;
 
         NotifyOnChange(overall, rows);
         _overall = overall;

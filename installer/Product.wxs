@@ -33,7 +33,8 @@
              Description="SSH over AWS Systems Manager for PuTTY, WinSCP and MobaXterm"
              Comments="Licensed under the Apache License 2.0" />
 
-    <MajorUpgrade AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of SSMConnect is already installed." />
+    <!-- Install the new files before the old version is removed: the exe and shortcuts are replaced in place, never deleted, so a taskbar pin (Windows 10) survives an update -->
+    <MajorUpgrade Schedule="afterInstallExecute" AllowSameVersionUpgrades="yes" DowngradeErrorMessage="A newer version of SSMConnect is already installed." />
     <!-- Hide the inner MSI from Settings > Apps so only the single setup entry is listed -->
     <Property Id="ARPSYSTEMCOMPONENT" Value="1" />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
@@ -78,7 +79,9 @@
     <DirectoryRef Id="AppMenuDir">
       <Component Id="ShortcutComp" Guid="a3c1f6d2-7b54-4e0a-9d38-5f2b8c6e1a47">
         <Shortcut Id="DashboardShortcut" Name="SSMConnect" Description="Dashboard: see and control your SSM connections"
-                  Target="[INSTALLFOLDER]SSMConnect.Wizard.exe" WorkingDirectory="INSTALLFOLDER" />
+                  Target="[INSTALLFOLDER]SSMConnect.Wizard.exe" WorkingDirectory="INSTALLFOLDER">
+          <ShortcutProperty Key="System.AppUserModel.ID" Value="SSMConnect.Dashboard" />
+        </Shortcut>
         <Shortcut Id="UninstallShortcut" Name="Uninstall SSMConnect" Description="Remove SSMConnect from this PC"
                   Target="[INSTALLFOLDER]SSMConnect.Wizard.exe" Arguments="--uninstall" WorkingDirectory="INSTALLFOLDER" />
         <RemoveFolder Id="RemoveAppMenuDir" On="uninstall" />

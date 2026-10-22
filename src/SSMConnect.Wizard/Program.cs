@@ -18,6 +18,9 @@ namespace SSMConnect.Wizard;
 
 static class Program
 {
+    [System.Runtime.InteropServices.DllImport("shell32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern int SetCurrentProcessExplicitAppUserModelID(string appId);
+
     [STAThread]
     static int Main(string[] args)
     {
@@ -36,6 +39,8 @@ static class Program
             return 0;
         }
 
+        // Same identity as the Start-menu shortcut, so a taskbar pin keeps pointing at SSMConnect after every update
+        try { SetCurrentProcessExplicitAppUserModelID("SSMConnect.Dashboard"); } catch { }
         ApplicationConfiguration.Initialize();
 
         // One dashboard / tray icon per Windows session. A second launch just brings the first to the front.

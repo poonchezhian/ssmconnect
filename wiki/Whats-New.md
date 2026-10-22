@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.1
+- **All connections open together and stay open.** Back to the simple way: when SSMConnect starts (or after you sign in) every server connects at once and stays connected until you click **Stop connections** or exit the app. There is no Ready state and no idle countdown. If AWS ends a session, SSMConnect quietly opens the next one. The three-tries rule stays.
+- **Stop connections / Start connections** replaces Disconnect all, as one button at the bottom left.
+- **Windows 10 taskbar pin survives updates.** Updates now replace SSMConnect in place and the app carries a fixed Windows identity. If your current pin disappears on the update to 2.0.1, pin it once more and it will stay.
+
 ## 2.0.0
 A new dashboard and a new way of connecting.
 - **Sign in once per organization.** One company sign-in covers every AWS account under it. The sign-in opens in your own browser (the one Windows uses for web links: Chrome, Edge, Firefox or Brave) as a small window; SSMConnect waits for it and comes back to the front. You can pick another browser in the sign-in window.

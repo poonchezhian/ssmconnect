@@ -18,9 +18,9 @@ using System.Net.NetworkInformation;
 namespace SSMConnect.Core;
 
 /// <summary>
-/// Opens one "aws ssm start-session" port-forward per server, but only while a tool needs it (on demand).
-/// A connection stays open while a tool is attached to its local port; the idle countdown starts after the last tool
-/// closes. A server that fails 3 times in a row stays down until <see cref="ResetAll"/> (the person signed in again).
+/// Opens one "aws ssm start-session" port-forward per enabled server as soon as the manager starts and keeps every
+/// one alive (renewing sessions AWS ends) until the manager is stopped. A server that fails 3 times in a row stays
+/// down until <see cref="ResetAll"/> (the person signed in again).
 /// Hosted by the tray / dashboard app. Writes live state to status.json for other windows.
 /// </summary>
 public sealed class TunnelManager : IDisposable
@@ -33,14 +33,17 @@ public sealed class TunnelManager : IDisposable
         public Process? Proc;
         public DateTime NextStart = DateTime.MinValue;
         public DateTime StartedAt;
-        public string State = TunnelStates.Ready;
-        public string Message = "Ready. Click a tool to connect.";
+        public string State = TunnelStates.Starting;
+        public string Message = "Opening secure session to the server...";
         public DateTime Since = DateTime.UtcNow;
         public string LastError = "";
         /// <summary>Consecutive tries that ended without a working connection. Three in a row and the server stays down.</summary>
         public int Failures;
         /// <summary>True while somebody asked for this connection (clicked a tool). False = nothing should be open.</summary>
-        public bool Wanted;
+        public bool Wanted = true;
+        /// <summary>A healthy session ended and the next one is being opened quietly; the card keeps showing Connected.</summary>
+        public bool Refreshing;
+        public int PortWaits;
         /// <summary>Last moment a tool was attached to the local port (or the connection was opened).</summary>
         public DateTime LastActive = DateTime.UtcNow;
         public int Clients;
@@ -133,7 +136,12 @@ public sealed class TunnelManager : IDisposable
             {
                 slot.Failures = 0;
                 slot.LastError = "";
-                if (slot.State == TunnelStates.Stopped) CloseSlot(slot, "Ready. Click a tool to connect.");
+                if (slot.State == TunnelStates.Stopped)
+                {
+                    slot.Wanted = true;
+                    slot.NextStart = DateTime.UtcNow;
+                    SetState(slot, TunnelStates.Starting, "Opening secure session to the server...");
+                }
             }
         }
         Poke();
@@ -156,6 +164,7 @@ public sealed class TunnelManager : IDisposable
     void CloseSlot(Slot slot, string message)
     {
         slot.Wanted = false;
+        slot.Refreshing = false;
         slot.Failures = 0;
         slot.LastError = "";
         slot.Clients = 0;
@@ -221,7 +230,6 @@ public sealed class TunnelManager : IDisposable
     void Reconcile(AppConfig cfg)
     {
         _invalid.Clear();
-        var idleSeconds = Math.Clamp(cfg.IdleMinutes <= 0 ? 15 : cfg.IdleMinutes, 5, 240) * 60;
         var globalProblem = ConfigValidator.ValidateGlobal(cfg);
         var desired = new Dictionary<string, TunnelConfig>();
         foreach (var t in cfg.Tunnels.Where(t => t.Enabled))
@@ -263,11 +271,17 @@ public sealed class TunnelManager : IDisposable
                 }
 
                 // process alive and the local port is listening => the tunnel is up
-                if (slot.State == TunnelStates.Starting && IsListening(tunnel.LocalPort))
+                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && IsListening(tunnel.LocalPort))
                 {
+                    slot.Refreshing = false;
                     slot.Failures = 0;
                     slot.LastActive = DateTime.UtcNow;
                     SetState(slot, TunnelStates.Connected, $"Connected. Local port {tunnel.LocalPort} is ready.");
+                }
+                else if (slot.Refreshing && DateTime.UtcNow - slot.StartedAt > TimeSpan.FromSeconds(25))
+                {
+                    slot.Refreshing = false;
+                    SetState(slot, TunnelStates.Starting, "Reconnecting...");
                 }
                 else if (slot.State == TunnelStates.Starting && DateTime.UtcNow - slot.StartedAt > TimeSpan.FromSeconds(45))
                 {
@@ -279,23 +293,8 @@ public sealed class TunnelManager : IDisposable
 
                 if (slot.State == TunnelStates.Connected)
                 {
-                    // keep the connection while a tool is attached or data moves; count down only when nobody uses it
                     slot.Clients = CountClients(tunnel.LocalPort);
-                    if (slot.Clients > 0)
-                    {
-                        slot.LastActive = DateTime.UtcNow;
-                        slot.IdleLeft = -1;
-                    }
-                    else
-                    {
-                        var left = idleSeconds - (int)(DateTime.UtcNow - slot.LastActive).TotalSeconds;
-                        slot.IdleLeft = Math.Max(0, left);
-                        if (left <= 0)
-                        {
-                            AppLog.Info($"Tunnel {tunnel.Name}: closed after {idleSeconds / 60} idle minutes.");
-                            CloseSlot(slot, $"Closed after {idleSeconds / 60} minutes without use. Ready when you need it.");
-                        }
-                    }
+                    slot.IdleLeft = -1;
                 }
                 continue;
             }
@@ -317,20 +316,11 @@ public sealed class TunnelManager : IDisposable
                 }
                 if (wasUp)
                 {
-                    // AWS closed a healthy session (its own idle timeout) or the tool closed it
-                    if (DateTime.UtcNow - slot.LastActive < TimeSpan.FromSeconds(30) && ranFor > TimeSpan.FromSeconds(20))
-                    {
-                        // it was in use a moment ago: open the next session quietly
-                        slot.NextStart = DateTime.UtcNow;
-                        SetState(slot, TunnelStates.Starting, "Reconnecting...");
-                        AppLog.Info($"Tunnel {slot.Tunnel.Name}: session ended after {(int)ranFor.TotalMinutes} min (code {code}); renewing it.");
-                    }
-                    else
-                    {
-                        AppLog.Info($"Tunnel {slot.Tunnel.Name}: session ended while idle (code {code}).");
-                        CloseSlot(slot, "The session ended while idle. Ready when you need it.");
-                        continue;
-                    }
+                    // AWS ended a healthy session (its own idle limit) or a tool closed it: open the next one quietly, keep showing Connected
+                    slot.Refreshing = true;
+                    slot.PortWaits = 0;
+                    slot.NextStart = DateTime.UtcNow;
+                    AppLog.Info($"Tunnel {slot.Tunnel.Name}: session ended after {(int)ranFor.TotalMinutes} min (code {code}); renewing it.");
                 }
                 else
                 {
@@ -348,6 +338,7 @@ public sealed class TunnelManager : IDisposable
     void Fail(Slot slot, string why)
     {
         slot.Failures++;
+        slot.Refreshing = false;
         slot.LastError = "";
         if (slot.Failures >= MaxTries)
         {
@@ -396,6 +387,7 @@ public sealed class TunnelManager : IDisposable
         // dashboard would wrongly show "connected" (and SSH / RDP would send the login to it).
         if (IsListening(t.LocalPort))
         {
+            if (slot.Refreshing && slot.PortWaits < 5) { slot.PortWaits++; slot.NextStart = DateTime.UtcNow.AddSeconds(2); return; }   // the old session is still letting go of the port
             Fail(slot, AwsCli.FriendlyError("address already in use", t.LocalPort));
             return;
         }
@@ -419,7 +411,7 @@ public sealed class TunnelManager : IDisposable
             p.BeginErrorReadLine();
             slot.Proc = p;
             slot.StartedAt = DateTime.UtcNow;
-            if (slot.State != TunnelStates.Starting) SetState(slot, TunnelStates.Starting, "Opening secure session to the server...");
+            if (slot.State != TunnelStates.Starting && !slot.Refreshing) SetState(slot, TunnelStates.Starting, "Opening secure session to the server...");
             AppLog.Info($"Started tunnel {t.Name}: 127.0.0.1:{t.LocalPort} -> {t.InstanceId}:{t.RemotePort} (try {slot.Failures + 1} of {MaxTries})");
         }
         catch (Exception ex)
