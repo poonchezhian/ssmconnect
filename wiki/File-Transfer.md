@@ -1,10 +1,12 @@
 # Copy Files Between Servers
 
+> **An extra feature.** SSMConnect is mainly about connecting to your servers: see [Getting Started](Getting-Started). Once two servers are connected, this window lets you copy between them.
+
 **Move files from one AWS server to another with two panes and a Copy button, while port 22 stays closed on both.** No S3 bucket, no `scp` commands, no bastion host, and the two servers never have to reach each other.
 
 Open it from **Servers > File transfer: browse and copy files...** in the dashboard (it also opens from a server card's tools when you want to move files). The window is titled **Copy files between servers**.
 
-![Two panes, one server on each side, with Copy buttons in the middle (illustration with sample servers)](https://poonchezhian.github.io/assets/file-transfer-between-servers.png)
+![Two panes, one server on each side, with Copy buttons in the middle (illustration with sample servers)](https://raw.githubusercontent.com/poonchezhian/ssmconnect/main/docs/images/file-transfer-between-servers.png)
 
 ## Copy a file in four steps
 

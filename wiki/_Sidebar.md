@@ -1,15 +1,18 @@
 **[SSMConnect](Home)**
 
 - [Getting Started](Getting-Started)
-- [AWS Accounts and Organizations](AWS-Accounts-and-Organizations)
-- [Copy Files Between Servers](File-Transfer)
 - [Dashboard Guide](Dashboard-Guide)
+- [AWS Accounts and Organizations](AWS-Accounts-and-Organizations)
 - [Server Types and Tags](Server-Types-and-Tags)
-- [Security](Security)
 - [Troubleshooting](Troubleshooting)
+- [Security](Security)
 - [For IT Teams](For-IT-Teams)
 - [FAQ](FAQ)
 - [What's New](Whats-New)
+
+**Extra feature**
+
+- [Copy Files Between Servers](File-Transfer)
 
 **SSMConnect for Linux**
 
