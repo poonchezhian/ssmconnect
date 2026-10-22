@@ -60,21 +60,14 @@ public sealed class AccountsDialog : Form
 
         var hdr = new HeaderBand { Dock = DockStyle.Top, Height = 76 };
         hdr.Set("Your AWS accounts", "Rename a sign-in or remove the ones you no longer use.");
-        var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 62, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(20, 12, 20, 10), BackColor = Color.White };
+        var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 62, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(20, 12, 20, 10), BackColor = AppTheme.Page };
         footer.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, 0, footer.Width, 0); };
         _close.Margin = new Padding(0); _remove.Margin = new Padding(0, 0, 10, 0); _rename.Margin = new Padding(0, 0, 10, 0);
         footer.Controls.Add(_close);
         footer.Controls.Add(_remove);
         footer.Controls.Add(_rename);
         var body = new Panel { Dock = DockStyle.Fill, Padding = new Padding(20, 14, 20, 6), BackColor = AppTheme.Page };
-        var frame = new Panel { Dock = DockStyle.Fill, BackColor = Color.White, Padding = new Padding(8, 6, 8, 6) };
-        frame.Paint += (_, e) =>
-        {
-            e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
-            using var path = AppTheme.RoundRect(new RectangleF(0.5f, 0.5f, frame.Width - 2, frame.Height - 2), 10);
-            using var p = new Pen(AppTheme.Line);
-            e.Graphics.DrawPath(p, path);
-        };
+        var frame = new GlassPanel { Dock = DockStyle.Fill, Padding = new Padding(12, 10, 12, 12) };
         frame.Controls.Add(_tree);
         body.Controls.Add(frame);
         Controls.Add(body);

@@ -22,13 +22,16 @@ namespace SSMConnect.Wizard;
 /// One side of the file browser: pick a server (signed in as its default user with the saved key), optionally switch to
 /// another user with sudo, then browse its folders.
 /// </summary>
-sealed class FilePane : Panel
+sealed class FilePane : GlassPanel
 {
     static readonly string[] CommonUsers = { "ec2-user", "ubuntu", "admin", "centos", "fedora", "rocky", "ssm-user" };
 
     List<TunnelConfig> _servers;
     readonly Func<int, bool> _isUp;
     readonly Func<TunnelConfig, Task<bool>>? _ensure;
+    readonly Func<TunnelConfig, IWin32Window?, Task<bool>>? _login;
+    const string Placeholder = "Select the server to connect";
+    readonly Label _hint = new() { Dock = DockStyle.Fill, TextAlign = ContentAlignment.MiddleCenter, ForeColor = Color.FromArgb(112, 128, 132), BackColor = Color.White, Text = Placeholder };
     readonly ComboBox _server = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300, DropDownWidth = 480 };
     bool _loadingServers;
     readonly ComboBox _user = new() { DropDownStyle = ComboBoxStyle.DropDown, Width = 120 };
@@ -44,21 +47,23 @@ sealed class FilePane : Panel
     readonly ToolTip _tip = new();
 
     public FsBase? Fs { get; private set; }
-    public TunnelConfig? Server => _server.SelectedIndex >= 0 && _server.SelectedIndex < _servers.Count ? _servers[_server.SelectedIndex] : null;
+    public TunnelConfig? Server => _server.SelectedIndex >= 1 && _server.SelectedIndex <= _servers.Count ? _servers[_server.SelectedIndex - 1] : null;
     public string CurrentPath { get; private set; } = "";
     public event Action? Changed;
 
     readonly Func<TunnelConfig, string> _label;
 
-    public FilePane(Func<int, bool> isUp, Func<TunnelConfig, string> label, Func<TunnelConfig, Task<bool>>? ensure = null)
+    public FilePane(Func<int, bool> isUp, Func<TunnelConfig, string> label, Func<TunnelConfig, Task<bool>>? ensure = null, Func<TunnelConfig, IWin32Window?, Task<bool>>? login = null)
     {
         _servers = new List<TunnelConfig>();
         _isUp = isUp;
         _ensure = ensure;
+        _login = login;
         _label = label;
         Dock = DockStyle.Fill;
-        BackColor = Color.White;
-        Padding = new Padding(8);
+        Padding = new Padding(14, 12, 14, 10);
+        Margin = new Padding(0);
+        _hint.Font = AppTheme.Semi(11f);
 
         _user.Items.AddRange(CommonUsers);
 
@@ -88,13 +93,15 @@ sealed class FilePane : Panel
 
         var frame = new Panel { Dock = DockStyle.Fill, Padding = new Padding(1), BackColor = AppTheme.Line };
         frame.Controls.Add(_list);
+        frame.Controls.Add(_hint);
+        _hint.BringToFront();
 
         Controls.Add(frame);
         Controls.Add(_status);
         Controls.Add(nav);
         Controls.Add(top);
 
-        _server.SelectedIndexChanged += async (_, _) => { if (_loadingServers) return; OnServerChosen(); await ConnectAsync(auto: true); };
+        _server.SelectedIndexChanged += async (_, _) => { if (_loadingServers) return; OnServerChosen(); if (Server != null) await ConnectAsync(auto: true); };
         _user.TextChanged += (_, _) => UpdateUserState();
         _user.SelectedIndexChanged += (_, _) => UpdateUserState();
         _connect.Click += async (_, _) => await ConnectAsync(auto: false);
@@ -119,11 +126,12 @@ sealed class FilePane : Panel
         CloseFs();
         _servers = servers.ToList();
         _server.Items.Clear();
+        _server.Items.Add(Placeholder);
         foreach (var s in _servers) _server.Items.Add(_label(s));
-        _server.SelectedIndex = pick != null && _servers.Contains(pick) ? _servers.IndexOf(pick) : (_servers.Count > 0 ? 0 : -1);
+        _server.SelectedIndex = 0;   // never sign in by default: the person picks the server
         _loadingServers = false;
         OnServerChosen();
-        if (_servers.Count > 0) await ConnectAsync(auto: true);
+        await Task.CompletedTask;
     }
 
     bool IsDefaultUser => Server is { } t && string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal);
@@ -174,8 +182,9 @@ sealed class FilePane : Panel
             if (!_user.Items.Contains(t.UserName)) _user.Items.Insert(0, t.UserName);
             _user.Text = t.UserName;
             _status.Text = "Signing in as " + t.UserName + " with the saved key ...";
+            _hint.Text = "Signing in ...";
         }
-        else { _user.Text = ""; _status.Text = "No servers in this organization."; }
+        else { _user.Text = ""; _status.Text = _servers.Count == 0 ? "No servers in this organization." : "Not connected."; _hint.Text = Placeholder; }
         UpdateUserState();
         SetEnabledState();
         Changed?.Invoke();
@@ -193,6 +202,10 @@ sealed class FilePane : Panel
     {
         var on = Fs != null;
         _up.Enabled = _refresh.Enabled = _newFolder.Enabled = _path.Enabled = _list.Enabled = on;
+        _hint.Visible = !on;
+        _list.Visible = on;
+        _connect.Enabled = Server != null;
+        _user.Enabled = Server != null;
         Changed?.Invoke();
     }
 
@@ -237,6 +250,18 @@ sealed class FilePane : Panel
                     return;
                 }
             }
+            var wasDefault = string.Equals(user, t.UserName, StringComparison.Ordinal);
+            if (_login != null)
+            {
+                _status.Text = "Checking the login for this server ...";
+                if (!await _login(t, FindForm()))
+                {
+                    _status.Text = "Could not sign in: the key or user for this server is not set up.";
+                    _hint.Text = "Could not sign in. Pick the server again to retry.";
+                    return;
+                }
+                if (wasDefault && !string.Equals(_user.Text.Trim(), t.UserName, StringComparison.Ordinal)) { if (!_user.Items.Contains(t.UserName)) _user.Items.Insert(0, t.UserName); _user.Text = t.UserName; user = t.UserName; }
+            }
             var def = string.Equals(user, t.UserName, StringComparison.Ordinal);
             _status.Text = def ? $"Signing in as {user} with the saved key ..." : $"Switching to {user} with sudo ...";
             var pw = _pass.Text;
@@ -249,6 +274,7 @@ sealed class FilePane : Panel
         catch (Exception ex)
         {
             CloseFs();
+            _hint.Text = "Could not sign in. Pick the server again to retry.";
             var first = ex.Message.Split('\n')[0];
             _status.Text = "Could not sign in: " + first;
             _tip.SetToolTip(_status, ex.Message);
@@ -379,7 +405,7 @@ public sealed class TransferDialog : Form
     readonly ComboBox _orgBox = new() { DropDownStyle = ComboBoxStyle.DropDownList, Width = 300 };
     bool _orgLoading;
 
-    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, Func<TunnelConfig, string> serverLabel, TunnelConfig? preselect = null, string? startOrgKey = null, Func<TunnelConfig, Task<bool>>? ensureOpen = null)
+    public TransferDialog(IEnumerable<Org> orgs, Func<int, bool> isUp, Func<TunnelConfig, string> serverLabel, TunnelConfig? preselect = null, string? startOrgKey = null, Func<TunnelConfig, Task<bool>>? ensureOpen = null, Func<TunnelConfig, IWin32Window?, Task<bool>>? ensureLogin = null)
     {
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -393,13 +419,13 @@ public sealed class TransferDialog : Form
 
         _all = orgs.Where(o => o.Servers.Count > 0).ToList();
         _isUp = isUp;
-        _left = new FilePane(isUp, serverLabel, ensureOpen);
-        _right = new FilePane(isUp, serverLabel, ensureOpen);
+        _left = new FilePane(isUp, serverLabel, ensureOpen, ensureLogin);
+        _right = new FilePane(isUp, serverLabel, ensureOpen, ensureLogin);
         _preselect = preselect;
         _startKey = preselect != null ? _all.FirstOrDefault(o => o.Servers.Contains(preselect))?.Key : startOrgKey;
 
         var hdr = new HeaderBand { Dock = DockStyle.Top, Height = 84 };
-        hdr.Set("Copy files between servers", "Servers sign in with their saved key. To act as another user, pick it and click Switch user (done with sudo). Only servers of the same organization can be linked.");
+        hdr.Set("Copy files between servers", "Pick a server in each pane to sign in. To act as another user, pick it and click Switch user (done with sudo). Only servers of the same organization can be linked.");
 
         var orgBar = new FlowLayoutPanel { Dock = DockStyle.Top, Height = 46, Padding = new Padding(22, 8, 14, 0), BackColor = AppTheme.Page };
         orgBar.Controls.Add(new Label { Text = "Organization:", AutoSize = true, Margin = new Padding(0, 8, 8, 0) });
@@ -412,7 +438,7 @@ public sealed class TransferDialog : Form
         mid.Controls.Add(_toRight);
         mid.Controls.Add(_toLeft);
 
-        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(14, 10, 14, 6), BackColor = AppTheme.Page };
+        var body = new TableLayoutPanel { Dock = DockStyle.Fill, ColumnCount = 3, RowCount = 1, Padding = new Padding(18, 8, 18, 10), BackColor = AppTheme.Page };
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 130));
         body.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
@@ -420,7 +446,8 @@ public sealed class TransferDialog : Form
         body.Controls.Add(mid, 1, 0);
         body.Controls.Add(_right, 2, 0);
 
-        var footer = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 70, ColumnCount = 4, Padding = new Padding(16, 10, 16, 10), BackColor = Color.White };
+        var footer = new TableLayoutPanel { Dock = DockStyle.Bottom, Height = 70, ColumnCount = 4, Padding = new Padding(16, 10, 16, 10), BackColor = AppTheme.Page };
+        footer.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, 0, footer.Width, 0); };
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 260));
         footer.ColumnStyles.Add(new ColumnStyle(SizeType.AutoSize));
@@ -472,7 +499,7 @@ public sealed class TransferDialog : Form
         {
             await _left.SetServersAsync(new List<TunnelConfig>(), null);
             await _right.SetServersAsync(new List<TunnelConfig>(), null);
-            _info.Text = "No servers are available right now. Sign in on the dashboard so the cards show Ready, then click Refresh.";
+            _info.Text = "No servers are available right now. Sign in on the dashboard so the cards turn green, then click Refresh.";
             return;
         }
         _info.Text = "Tip: Switch user uses sudo, like Ubuntu does. Leave the password blank unless sudo asks for one. root is not allowed.";
@@ -483,8 +510,7 @@ public sealed class TransferDialog : Form
     {
         if (index < 0 || index >= _orgs.Count) return;
         var o = _orgs[index];
-        var other = o.Servers.FirstOrDefault(x => x != (pick ?? o.Servers[0])) ?? o.Servers[0];
-        await Task.WhenAll(_left.SetServersAsync(o.Servers, pick ?? o.Servers[0]), _right.SetServersAsync(o.Servers, other));
+        await Task.WhenAll(_left.SetServersAsync(o.Servers, null), _right.SetServersAsync(o.Servers, null));
     }
 
     void UpdateButtons()

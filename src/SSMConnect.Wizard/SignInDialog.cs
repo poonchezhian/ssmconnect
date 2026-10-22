@@ -46,7 +46,7 @@ sealed class SignInDialog : Form
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = "Sign in to " + orgLabel;
         Font = AppTheme.Body();
-        BackColor = Color.White;
+        BackColor = AppTheme.Page;
         ClientSize = new Size(520, 360);
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false; MinimizeBox = false;

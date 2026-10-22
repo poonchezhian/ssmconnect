@@ -381,6 +381,9 @@ public sealed class DashboardForm : Form
                         MessageBox.Show(this, $"The secure connection to \"{t.Name}\" did not open.\n\n{why}", "SSMConnect", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                         return;
                     }
+                    // the tunnel is green, but the login must work too: find the key, test the user, fix the saved sessions
+                    if (id != "rdp" && !await LoginCheck.EnsureAsync(this, t, _cfg)) return;
+                    if (id is "putty" or "winscp" && !PpkReady(t)) return;
                 }
                 finally { _launching.Remove(guard); }
             }
@@ -388,7 +391,13 @@ public sealed class DashboardForm : Form
             {
                 case "rdp": OpenRdp(); break;
                 case "pwd": _ = CopyWindowsPasswordAsync(); break;
-                case "putty" when _puttyPath != null: Process.Start(new ProcessStartInfo(_puttyPath, $"-load \"{session}\"") { UseShellExecute = false }); break;
+                case "putty" when _puttyPath != null:
+                {
+                    var ppk = string.IsNullOrWhiteSpace(t.KeyFile) ? null : KeyConverter.EnsurePpk(t.KeyFile!);
+                    var pargs = $"-load \"{session}\" -l \"{t.UserName}\"" + (ppk != null ? $" -i \"{ppk}\"" : "");
+                    Process.Start(new ProcessStartInfo(_puttyPath, pargs) { UseShellExecute = false });
+                    break;
+                }
                 case "winscp" when _winscpPath != null: Process.Start(new ProcessStartInfo(_winscpPath, $"\"{session}\"") { UseShellExecute = false }); break;
                 case "moba" when _mobaPath != null: _ = OpenMobaAsync(t, _mobaPath); break;
                 case "transfer": OpenTransfer(t); break;
@@ -399,6 +408,14 @@ public sealed class DashboardForm : Form
             }
         }
         catch (Exception ex) { MessageBox.Show(this, "Could not open the tool: " + ex.Message, "SSMConnect"); }
+    }
+
+    /// <summary>PuTTY and WinSCP only read .ppk keys. False (with a plain explanation) when this server's key cannot be turned into one.</summary>
+    bool PpkReady(TunnelConfig t)
+    {
+        if (!string.IsNullOrWhiteSpace(t.KeyFile) && KeyConverter.EnsurePpk(t.KeyFile!) != null) return true;
+        MessageBox.Show(this, "PuTTY and WinSCP can only use .ppk keys, and SSMConnect could not convert this server's key (it may be protected by a passphrase or use a newer key format).\n\nMobaXterm and Copy files work with it. Or open the key in PuTTYgen, save it as a .ppk, and choose that file for this server.", "SSMConnect");
+        return false;
     }
 
     /// <summary>Opens the server's secure connection if it is not open yet and waits (up to about a minute) until its local port answers.</summary>
@@ -483,7 +500,7 @@ public sealed class DashboardForm : Form
             var acct = _cfg.AliasOr(t.Profile, t.Profile);
             return string.IsNullOrWhiteSpace(acct) ? t.Name : $"{t.Name}    -  {acct}";
         }
-        using var dlg = new TransferDialog(orgs, Avail, Label, preselect, _view, EnsureOpenAsync);
+        using var dlg = new TransferDialog(orgs, Avail, Label, preselect, _view, EnsureOpenAsync, (tt, owner) => LoginCheck.EnsureAsync(owner ?? this, tt, _cfg));
         dlg.ShowDialog(this);
     }
 

@@ -106,12 +106,15 @@ public sealed class WizardForm : Form
         StartPosition = FormStartPosition.CenterScreen;
         MaximizeBox = false;
 
-        var host = new Panel { Dock = DockStyle.Fill, Padding = new Padding(28, 12, 28, 8) };
+        var host = new BackdropPanel { Dock = DockStyle.Fill, Padding = new Padding(22, 14, 22, 12) };
         BackColor = AppTheme.Page;
-        host.BackColor = AppTheme.Page;
+        // every step sits on one rounded "glass" card, the same look as the dashboard and the file transfer window
+        var glass = new GlassPanel { Dock = DockStyle.Fill, Padding = new Padding(26, 18, 26, 14) };
+        host.Controls.Add(glass);
         _hdr.Steps = new[] { "Requirements", "AWS account", "Servers", "SSH keys", "Save" };
         var header = _hdr;
-        var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 64, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(20, 12, 20, 12), BackColor = Color.White };
+        var footer = new FlowLayoutPanel { Dock = DockStyle.Bottom, Height = 64, FlowDirection = FlowDirection.RightToLeft, Padding = new Padding(20, 12, 20, 12), BackColor = AppTheme.Page };
+        footer.Paint += (_, e) => { using var p = new Pen(AppTheme.Line); e.Graphics.DrawLine(p, 0, 0, footer.Width, 0); };
         footer.Controls.Add(_next);
         footer.Controls.Add(_back);
         Controls.Add(host);
@@ -122,11 +125,11 @@ public sealed class WizardForm : Form
         _back.Click += (_, _) => Go(_idx - 1);
         _next.Click += (_, _) => OnNext();
 
-        BuildPrereqStep(host);
-        BuildAwsStep(host);
-        BuildServersStep(host);
-        BuildKeysStep(host);
-        BuildApplyStep(host);
+        BuildPrereqStep(glass);
+        BuildAwsStep(glass);
+        BuildServersStep(glass);
+        BuildKeysStep(glass);
+        BuildApplyStep(glass);
 
         _back.Tag = null; _next.Tag = "primary";
         AppTheme.RoomyRows(_list);

@@ -184,24 +184,23 @@ sealed class LegendBar : Control
         Item(CardLevel.Red, "Stopped after 3 tries");
         Item(CardLevel.Grey, "Switched off");
 
-        // ring colours
-        var ringText = "Rings (CPU, memory, disk):";
+        // usage bar colours
+        var ringText = "Usage (CPU, RAM, disk):";
         var rw = TextRenderer.MeasureText(ringText, f, new Size(int.MaxValue, int.MaxValue), TextFormatFlags.NoPadding).Width;
-        var need = rw + 3 * (14 * s + 6 * s + 60 * s) + 20 * s;
+        var need = rw + 3 * (22 * s + 6 * s + 56 * s) + 20 * s;
         if (Width - x < need) return;
         x = Width - need - 6 * s;
         TextRenderer.DrawText(g, ringText, f, new Rectangle((int)x, 0, rw + 4, Height), Color.FromArgb(94, 110, 114), TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
         x += rw + 12 * s;
-        void Ring(Color c, string text)
+        void Swatch(int pct, string text)
         {
-            var d = 14 * s;
-            using (var tp = new Pen(Color.FromArgb(206, 214, 216), 2.4f * s)) g.DrawEllipse(tp, x + 1 * s, cy - d / 2 + 1 * s, d - 2 * s, d - 2 * s);
-            using (var ap = new Pen(c, 2.6f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round }) g.DrawArc(ap, x + 1 * s, cy - d / 2 + 1 * s, d - 2 * s, d - 2 * s, -90f, 250f);
-            TextRenderer.DrawText(g, text, f, new Rectangle((int)(x + d + 6 * s), 0, (int)(60 * s), Height), Color.FromArgb(60, 72, 78), TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
-            x += d + 6 * s + 60 * s;
+            var sw = new RectangleF(x, cy - 7 * s, 22 * s, 14 * s);
+            ButtonLook.PaintSurface(g, sw, 4 * s, ServerCard.UsageColor(pct), 0f, false, false, s);
+            TextRenderer.DrawText(g, text, f, new Rectangle((int)(x + 22 * s + 6 * s), 0, (int)(56 * s), Height), Color.FromArgb(60, 72, 78), TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
+            x += 22 * s + 6 * s + 56 * s;
         }
-        Ring(Color.FromArgb(46, 160, 90), "under 60%");
-        Ring(Color.FromArgb(232, 160, 20), "60-85%");
-        Ring(Color.FromArgb(214, 64, 60), "over 85%");
+        Swatch(30, "under 60%");
+        Swatch(70, "60-85%");
+        Swatch(95, "over 85%");
     }
 }

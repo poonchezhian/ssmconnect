@@ -3,11 +3,12 @@
 | Symptom | What to do |
 |---|---|
 | A server shows **SSM ready: No** | The SSM Agent is not running on it, or its instance role lacks SSM permissions (for example `AmazonSSMManagedInstanceCore`). |
+| PuTTY says "No supported authentication methods available" | The server did not accept the key or user. From 2.0.2 SSMConnect tests the login before opening the tool and fixes the user and key by itself. If it asks for a key file, choose the `.pem` (or `.ppk`) this server was created with. A key protected by a passphrase cannot be converted for PuTTY or WinSCP; use MobaXterm, or save it as a `.ppk` in PuTTYgen. |
 | "Your AWS sign-in has expired" | Click the red **AWS sign-in** pill (or the **Sign in** button on the server card). Your browser opens; sign in and the pill turns green. **AWS > Sign in again** does the same. |
 | The AWS pill is red | The sign-in of the account you are viewing has expired. Click the pill to sign in. Other accounts are checked separately when you switch to them. |
 | A card says **Stopped** | The server failed 3 tries in a row, so SSMConnect stopped trying. Read the reason on the card, fix it, then click **Sign in again** (top right) to give every server 3 more tries. |
 | Sign-in window does not open my browser | Pick the browser in the sign-in window, or click **Open the window again**. If the browser is not listed, SSMConnect uses the Windows default. |
-| The rings on a card are dashed | No usage reading yet. Click **Refresh usage**. If it stays dashed, your AWS role is probably not allowed to run commands through SSM (`ssm:SendCommand`); hover a ring for the reason. Sizes also need `ec2:DescribeInstances`, `ec2:DescribeInstanceTypes` and `ec2:DescribeVolumes`. |
+| The usage bars on a card show -- | No usage reading yet. Click **Refresh usage**. If it stays empty, your AWS role is probably not allowed to run commands through SSM (`ssm:SendCommand`); hover a bar for the reason. Sizes also need `ec2:DescribeInstances`, `ec2:DescribeInstanceTypes` and `ec2:DescribeVolumes`. |
 | A connection closed by itself | Unused connections close after 15 minutes (change it under **Connections**) and your administrators may set a shorter AWS limit. Click a tool and it opens again. |
 | A card is amber or red | Read the message on the card. It says what to do: sign in, install a tool, start the connections, or free a port that is in use. |
 | "Port already in use" | Another program uses that local port. Close it or restart SSMConnect. SSMConnect never takes over a busy port on purpose. |

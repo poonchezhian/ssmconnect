@@ -290,7 +290,9 @@ public static class KeyConverter
             var dir = System.IO.Path.Combine(ConfigStore.DataDir, "keys");
             Directory.CreateDirectory(dir);
             var safe = string.Concat(System.IO.Path.GetFileNameWithoutExtension(keyPath).Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'));
-            var outFile = System.IO.Path.Combine(dir, safe + ".ppk");
+            // the folder is part of the name, so two different keys that share a file name never overwrite each other
+            var tag = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(System.IO.Path.GetFullPath(keyPath).ToLowerInvariant())))[..8].ToLowerInvariant();
+            var outFile = System.IO.Path.Combine(dir, safe + "-" + tag + ".ppk");
             if (File.Exists(outFile) && File.GetLastWriteTimeUtc(outFile) >= File.GetLastWriteTimeUtc(keyPath)) return outFile;
 
             var text = File.ReadAllText(keyPath);

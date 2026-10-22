@@ -125,6 +125,13 @@ public static class AppTheme
         return p;
     }
 
+    public static void PaintBackdrop(Graphics g, Rectangle r)
+    {
+        if (r.Width <= 0 || r.Height <= 0) return;
+        using var br = new LinearGradientBrush(new Rectangle(r.X, r.Y - 1, r.Width, r.Height + 2), Color.FromArgb(249, 252, 252), Color.FromArgb(233, 241, 242), 90f);
+        g.FillRectangle(br, r);
+    }
+
     public static Color Mix(Color a, Color b, float t) =>
         Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t));
 
@@ -153,6 +160,38 @@ public static class AppTheme
     public static void RoomyRows(ListView lv, int height = 28)
     {
         lv.SmallImageList = new ImageList { ImageSize = new Size(1, height) };
+    }
+}
+
+/// <summary>The soft light backdrop every window sits on (a faint top-to-bottom wash).</summary>
+public class BackdropPanel : Panel
+{
+    public BackdropPanel() { DoubleBuffered = true; ResizeRedraw = true; BackColor = AppTheme.Page; }
+    protected override void OnPaintBackground(PaintEventArgs e) => AppTheme.PaintBackdrop(e.Graphics, ClientRectangle);
+}
+
+/// <summary>A rounded, white "glass" card with a hairline border and a soft shadow, used to group the content of a screen.</summary>
+public class GlassPanel : Panel
+{
+    public GlassPanel() { DoubleBuffered = true; ResizeRedraw = true; BackColor = Color.White; }
+    protected override void OnPaintBackground(PaintEventArgs e)
+    {
+        var g = e.Graphics;
+        var s = DeviceDpi / 96f;
+        if (Parent is BackdropPanel) AppTheme.PaintBackdrop(g, ClientRectangle);
+        else using (var b = new SolidBrush(Parent?.BackColor ?? AppTheme.Page)) g.FillRectangle(b, ClientRectangle);
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        var r = new RectangleF(1.5f * s, 1f * s, Width - 3f * s, Height - 4f * s);
+        for (var k = 2; k >= 0; k--)
+        {
+            using var sp = AppTheme.RoundRect(new RectangleF(r.X - k * 0.6f * s, r.Y + (1.6f + k * 0.5f) * s, r.Width + k * 1.2f * s, r.Height), 13 * s);
+            using var sb = new SolidBrush(Color.FromArgb(7 + (2 - k) * 5, 8, 50, 56));
+            g.FillPath(sb, sp);
+        }
+        using var path = AppTheme.RoundRect(r, 13 * s);
+        using (var fill = new LinearGradientBrush(new RectangleF(r.X, r.Y - 1, r.Width, r.Height + 2), Color.White, Color.FromArgb(250, 252, 252), 90f)) g.FillPath(fill, path);
+        using var pen = new Pen(Color.FromArgb(205, 221, 222), 1f);
+        g.DrawPath(pen, path);
     }
 }
 

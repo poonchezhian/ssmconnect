@@ -6,6 +6,12 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.2
+- **No more "No supported authentication methods available" in PuTTY.** A green card only meant the secure tunnel was up; the login (key and user) was never checked. Now, before PuTTY, WinSCP, MobaXterm or file transfer opens, SSMConnect finds the key that belongs to the server (saved path, then its AWS key pair by fingerprint and name), tests which login user the server accepts, saves what works and refreshes the saved sessions. If no key fits, it asks you for the right key file once and remembers it. PuTTY is also started with the user and key explicitly.
+- **Usage bars instead of rings.** CPU, memory and disk show as small button-style bars with an icon and the percentage, in the same green, amber and red as the buttons. The colour key at the bottom shows them.
+- **File transfer connects to nothing by default.** Both panes show "Select the server to connect"; a server is signed in to only after you pick it.
+- **One look everywhere.** The setup wizard, file transfer, account manager and sign-in window now use the same rounded glass cards, footers and buttons as the dashboard.
+
 ## 2.0.1
 - **All connections open together and stay open.** Back to the simple way: when SSMConnect starts (or after you sign in) every server connects at once and stays connected until you click **Stop connections** or exit the app. There is no Ready state and no idle countdown. If AWS ends a session, SSMConnect quietly opens the next one. The three-tries rule stays.
 - **Stop connections / Start connections** replaces Disconnect all, as one button at the bottom left.

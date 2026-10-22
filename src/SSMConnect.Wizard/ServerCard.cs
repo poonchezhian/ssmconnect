@@ -207,20 +207,17 @@ public sealed class ServerCard : Control
         TextRenderer.DrawText(g, spec, small, new Rectangle((int)tx, (int)(card.Y + 35 * s), (int)(right - tx), (int)(18 * s)),
             Color.FromArgb(84, 100, 106), TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
 
-        // status text and the three usage rings
-        float ringD = 20 * s, ringGap = 6 * s;
-        float ringsW = 3 * ringD + 2 * ringGap;
+        // status text, then the CPU / RAM / disk usage bars on a row of their own
         float rowY = card.Y + 55 * s;
-        var textRect = new Rectangle((int)tx, (int)rowY, (int)(right - tx - ringsW - 10 * s), (int)(20 * s));
+        var textRect = new Rectangle((int)tx, (int)rowY, (int)(right - tx), (int)(20 * s));
         var stateText = _d.StatusText + (string.IsNullOrEmpty(_d.Detail) ? "" : "  ·  " + _d.Detail);
         TextRenderer.DrawText(g, stateText, smallBold, textRect, pal.Text, TextFormatFlags.EndEllipsis | TextFormatFlags.NoPadding | TextFormatFlags.VerticalCenter);
 
         _ringHits.Clear();
-        var rx = right - ringsW;
-        var ry = rowY + (20 * s - ringD) / 2f;
-        DrawRing(g, new RectangleF(rx, ry, ringD, ringD), _d.Cpu, "C", s, "CPU", _d.UsageTip);
-        DrawRing(g, new RectangleF(rx + ringD + ringGap, ry, ringD, ringD), _d.Ram, "R", s, "Memory", _d.UsageTip);
-        DrawRing(g, new RectangleF(rx + 2 * (ringD + ringGap), ry, ringD, ringD), _d.Disk, "D", s, "Disk", _d.UsageTip);
+        float uw = 58 * s, uh = 20 * s, ugap = 6 * s, uy = card.Y + 79 * s;
+        DrawUsage(g, new RectangleF(tx, uy, uw, uh), _d.Cpu, "cpu", s, "CPU", _d.UsageTip);
+        DrawUsage(g, new RectangleF(tx + uw + ugap, uy, uw, uh), _d.Ram, "ram", s, "Memory", _d.UsageTip);
+        DrawUsage(g, new RectangleF(tx + 2 * (uw + ugap), uy, uw, uh), _d.Disk, "disk", s, "Disk", _d.UsageTip);
 
         // tool buttons: one row, equal columns, always visible
         _hits.Clear();
@@ -272,28 +269,66 @@ public sealed class ServerCard : Control
         }
     }
 
-    void DrawRing(Graphics g, RectangleF r, int pct, string letter, float s, string name, string note)
+    /// <summary>Colour of a usage bar: the same green / amber / red as the buttons, soft grey while there is no reading.</summary>
+    internal static Color UsageColor(int pct) => pct < 0 ? Color.FromArgb(222, 229, 230) : RingColor(pct);
+
+    /// <summary>One small button-like bar: an icon (CPU chip, memory stick or disk) and the percentage in use.</summary>
+    void DrawUsage(Graphics g, RectangleF r, int pct, string kind, float s, string name, string note)
     {
-        var track = Color.FromArgb(206, 214, 216);
-        var inner = RectangleF.Inflate(r, -2f * s, -2f * s);
-        if (pct < 0)
-        {
-            using var dash = new Pen(Color.FromArgb(168, 178, 182), 1.6f * s) { DashStyle = DashStyle.Dot };
-            g.DrawEllipse(dash, inner);
-        }
-        else
-        {
-            using (var tp = new Pen(track, 2.6f * s)) g.DrawEllipse(tp, inner);
-            if (pct > 0)
-            {
-                using var ap = new Pen(RingColor(pct), 2.8f * s) { StartCap = LineCap.Round, EndCap = LineCap.Round };
-                g.DrawArc(ap, inner, -90f, Math.Min(359.5f, 360f * pct / 100f));
-            }
-        }
-        using var f = AppTheme.Body(6.5f);
-        TextRenderer.DrawText(g, letter, f, Rectangle.Round(r), pct < 0 ? Color.FromArgb(150, 160, 164) : Color.FromArgb(60, 72, 78), TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
+        var (cell, text, shadow) = ButtonLook.PaintSurface(g, r, 6 * s, UsageColor(pct), 0f, false, false, s);
+        var ic = new RectangleF(cell.X + 7 * s, cell.Y + (cell.Height - 11 * s) / 2f, 11 * s, 11 * s);
+        UsageGlyph(g, kind, ic, pct < 0 ? Color.FromArgb(120, 134, 138) : Color.White, s);
+        using var f = AppTheme.Semi(7.5f);
+        var label = pct >= 0 ? pct + "%" : "--";
+        var tr = new Rectangle((int)(ic.Right + 3 * s), (int)cell.Y, (int)(cell.Right - ic.Right - 6 * s), (int)cell.Height);
+        TextRenderer.DrawText(g, label, f, tr, pct < 0 ? Color.FromArgb(104, 118, 122) : text, TextFormatFlags.HorizontalCenter | TextFormatFlags.VerticalCenter | TextFormatFlags.NoPadding);
         var tip = pct >= 0 ? $"{name}: {pct}% in use" : name + ": no reading yet" + (string.IsNullOrEmpty(note) ? "" : "\n" + note);
         _ringHits.Add((r, tip));
+    }
+
+    /// <summary>Tiny line icons: "cpu" (chip with pins), "ram" (memory stick) and "disk" (drive cylinder).</summary>
+    internal static void UsageGlyph(Graphics g, string kind, RectangleF r, Color c, float s)
+    {
+        var old = g.SmoothingMode;
+        g.SmoothingMode = SmoothingMode.AntiAlias;
+        using var pen = new Pen(c, 1.2f * s) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round };
+        using var fill = new SolidBrush(c);
+        switch (kind)
+        {
+            case "cpu":
+            {
+                var body = RectangleF.Inflate(r, -2.2f * s, -2.2f * s);
+                g.DrawRectangle(pen, body.X, body.Y, body.Width, body.Height);
+                g.FillRectangle(fill, body.X + body.Width * 0.3f, body.Y + body.Height * 0.3f, body.Width * 0.4f, body.Height * 0.4f);
+                for (var k = 0; k < 3; k++)
+                {
+                    var t = body.X + body.Width * (0.2f + 0.3f * k);
+                    g.DrawLine(pen, t, r.Y, t, body.Y); g.DrawLine(pen, t, body.Bottom, t, r.Bottom);
+                    var u = body.Y + body.Height * (0.2f + 0.3f * k);
+                    g.DrawLine(pen, r.X, u, body.X, u); g.DrawLine(pen, body.Right, u, r.Right, u);
+                }
+                break;
+            }
+            case "ram":
+            {
+                var body = new RectangleF(r.X, r.Y + 2.6f * s, r.Width, r.Height - 6f * s);
+                g.DrawRectangle(pen, body.X, body.Y, body.Width, body.Height);
+                for (var k = 0; k < 3; k++) g.FillRectangle(fill, body.X + 1.6f * s + k * 3.2f * s, body.Y + 1.8f * s, 2f * s, body.Height - 3.6f * s);
+                for (var k = 0; k < 4; k++) g.DrawLine(pen, body.X + 1.2f * s + k * 3f * s, body.Bottom, body.X + 1.2f * s + k * 3f * s, body.Bottom + 1.8f * s);
+                break;
+            }
+            default:
+            {
+                var w = r.Width - 2f * s; var x = r.X + 1f * s; var h = 3f * s;
+                g.DrawEllipse(pen, x, r.Y + 0.6f * s, w, h);
+                g.DrawLine(pen, x, r.Y + 0.6f * s + h / 2f, x, r.Bottom - 2.6f * s);
+                g.DrawLine(pen, x + w, r.Y + 0.6f * s + h / 2f, x + w, r.Bottom - 2.6f * s);
+                g.DrawArc(pen, x, r.Bottom - 2.6f * s - h, w, h, 0, 180);
+                g.DrawArc(pen, x, r.Y + 0.6f * s + (r.Height - 3.2f * s - h) / 2f, w, h, 0, 180);
+                break;
+            }
+        }
+        g.SmoothingMode = old;
     }
 
     void FadeTo(float target)
