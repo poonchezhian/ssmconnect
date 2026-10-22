@@ -2,6 +2,7 @@
 
 - [Getting Started](Getting-Started)
 - [AWS Accounts and Organizations](AWS-Accounts-and-Organizations)
+- [Copy Files Between Servers](File-Transfer)
 - [Dashboard Guide](Dashboard-Guide)
 - [Server Types and Tags](Server-Types-and-Tags)
 - [Security](Security)

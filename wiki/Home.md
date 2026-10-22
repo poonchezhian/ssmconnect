@@ -4,6 +4,10 @@
 
 SSMConnect is a small Windows app. A short wizard finds your servers, opens secure tunnels through AWS Systems Manager (SSM), and saves ready-to-use sessions in **PuTTY**, **WinSCP** and **MobaXterm**. Windows servers open in **Remote Desktop**.
 
+### Copy files between servers, with port 22 closed
+
+The part people ask for most: **move files from one server to another with two panes and a Copy button.** Pick a server on each side, select files or folders, press Copy. The data passes through your PC over the SSM tunnels, so there is no S3 bucket to set up, no `scp` to type and no network path needed between the servers. See [Copy Files Between Servers](File-Transfer).
+
 ```
 PuTTY / WinSCP / MobaXterm  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  your server
 ```
@@ -16,6 +20,7 @@ PuTTY / WinSCP / MobaXterm  ->  127.0.0.1:2201  ->  aws ssm start-session  ->  y
 |---|---|
 | Install it and connect to my first server | [Getting Started](Getting-Started) |
 | Add another AWS account, rename or remove one | [AWS Accounts and Organizations](AWS-Accounts-and-Organizations) |
+| Copy files from one server to another | [Copy Files Between Servers](File-Transfer) |
 | Understand the dashboard, cards and buttons | [Dashboard Guide](Dashboard-Guide) |
 | Know why a server shows PROD or UAT | [Server Types and Tags](Server-Types-and-Tags) |
 | Check what is protected and how | [Security](Security) |

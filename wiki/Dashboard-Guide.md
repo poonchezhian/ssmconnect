@@ -1,37 +1,52 @@
 # Dashboard Guide
 
-## The top
+## The layout
 
-- **Three status pills:** *Connections* (for example "3 of 8 up"), *AWS sign-in* (OK, or "needs sign-in") and *AWS tools* (CLI and plugin installed). The first two always describe the sign-in you are looking at and change when you switch accounts. Hover a pill for details.
-- **Sign in with one click:** when the *AWS sign-in* pill turns red, click it. Your browser opens, you sign in, and the pill turns green by itself. A server card with an expired sign-in also gets a **Sign in** button. Accounts that share one company sign-in need only one visit to the browser.
-- **The summary line** says how many connections of the current sign-in are up, and when you have several sign-ins it adds the total across all of them. Red cards show the reason. The tray icon always covers everything.
-- **Organization chips** appear when your sign-in has more than one AWS account.
-- **Account switcher** in the header: see [AWS Accounts and Organizations](AWS-Accounts-and-Organizations).
+- **Left: organizations and filters.** Each sign-in (organization) has a status dot and a server count. Under **Show** you can filter the cards: *All servers*, *Connected*, *Needs attention* or *PROD only*. Three status pills sit at the bottom: *Connections* (for example "Connections: on"), *AWS sign-in* (OK, or needs sign-in) and *AWS tools* (CLI and plugin installed). Hover a pill for details.
+- **Top: the organization you are viewing.** It shows the sign-in state and time left, how many servers are connected, when usage was last read, a search box, **Refresh usage** and **Sign in again**.
+- **Sign in with one click.** When the *AWS sign-in* pill turns red, click it. Your browser opens, you sign in, and the pill turns green by itself. A card with an expired sign-in also gets a **Sign in** button. Accounts that share one company sign-in need only one visit to the browser.
+- **Middle: the server cards.** Servers of several AWS accounts are grouped under a quiet heading per account. If there are more cards than fit, the list scrolls.
+- **Bottom:** the colour key (including the usage colours), **Stop connections** (or **Start connections**) on the left and **Add / change servers...** on the right.
+- **Account switcher:** see [AWS Accounts and Organizations](AWS-Accounts-and-Organizations).
 
 ## Server cards
 
-Each card shows the server name, its type (a red **PROD** tag, or a grey one such as UAT or DEVELOPMENT), the operating system, the local port, and a status.
+Each card shows the server name, its type (a red **PROD** tag, or a grey one such as UAT or DEVELOPMENT), the operating system logo, one line with the OS, vCPU, memory and disk size, and a status. On the same row as the status, right-aligned, three small bars show how busy the server is: **CPU**, **memory** and **disk**, each with an icon and a percentage.
 
-| Colour | Meaning |
+| Card colour | Meaning |
 |---|---|
 | Green **Connected** | The tunnel is up and the local port is really open |
-| Amber | Connecting, reconnecting or checking |
-| Red **Problem** | Something is wrong; the card says what |
-| Grey **Off** | The connection is switched off |
+| Amber | Signing in, connecting or reconnecting |
+| Red **Stopped** | The server failed 3 tries in a row; the card says why. Click **Sign in again** to retry |
+| Grey | The connection is switched off |
 
-Buttons on a card: **PuTTY** and **WinSCP** for Linux servers, **Remote Desktop** and **Get password** for Windows servers. If no SSH tool is installed, **Copy session name** copies the saved session name for you. Hover a card for the instance ID and the full message.
-
-## Start, Stop, Restart
-
-| Button | What it does |
+| Usage bar colour | Meaning |
 |---|---|
-| **Start** | Opens all your secure connections. Each server gets a local port that PuTTY, WinSCP or Remote Desktop connects through. |
-| **Stop** | Closes every connection. Open sessions drop. Your servers in AWS are not touched. |
-| **Restart** | Closes and reopens every connection. Use it after your PC wakes from sleep or when a card shows a problem. |
+| Green | under 60% in use |
+| Amber | 60 to 85% |
+| Red | over 85% |
+| Grey `--` | no reading yet |
 
-Start is green, Stop is red, Restart is amber and the main action (**Add / change servers...**) is teal. Buttons are raised with a gloss and a soft shadow, lift slightly when you hover and press down when you click. A button with nothing to do (for example Start while already running) is faded but still shows a hover note that says why.
+Usage is read with a short read-only command through SSM (it needs `ssm:SendCommand`). SSMConnect reads connected non-production servers by itself about every 5 minutes; production servers are read only when you click **Refresh usage**. The **Servers** menu has two switches to turn automatic reading off, or to include production. If your role may not run commands, the bars stay `--` and their tooltip says so.
 
-**Add / change servers...** opens the setup wizard to find servers and choose which ones to connect.
+Buttons on a card: **PuTTY**, **WinSCP** and **MobaXterm** for Linux servers; **Remote Desktop** and **Get password** for Windows servers. All buttons are always visible and dimmed when they cannot be used. Before a tool opens, SSMConnect checks that the server really accepts your login (key and user) and fixes it if it can. Hover a card for the instance ID and the full message.
+
+## Stop and start connections
+
+Every connection opens together when SSMConnect starts (or after you sign in) and stays open until you stop it or exit.
+
+| Control | What it does |
+|---|---|
+| **Stop connections** (bottom left) | Closes every connection. Open sessions drop. Your servers in AWS are not touched. The button then reads **Start connections** |
+| **Start connections** | Opens them all again |
+| **Connections > Restart connections** | Closes and reopens everything. Use it after your PC wakes from sleep |
+| **Add / change servers...** | Opens the setup wizard to find servers and choose which ones to connect |
+
+If AWS ends a session, SSMConnect quietly opens the next one. A server that fails 3 tries in a row shows **Stopped** until you click **Sign in again**.
+
+## Copy files between servers
+
+**Servers > File transfer: browse and copy files...** opens two panes, one server on each side, with Copy buttons in the middle. See [Copy Files Between Servers](File-Transfer).
 
 ## Menus
 
@@ -39,7 +54,8 @@ Start is green, Stop is red, Restart is amber and the main action (**Add / chang
 |---|---|
 | **File** | Create desktop shortcut, Hide to tray, Exit |
 | **AWS** | Add AWS account, Manage accounts (rename, remove), Sign in again |
-| **Servers** | Scan for new or changed servers, What changed since the last scan |
+| **Connections** | Start, Stop and Restart connections |
+| **Servers** | Scan for new or changed servers, What changed since the last scan, File transfer (copy files between servers), and the two switches for reading CPU, memory and disk use |
 | **Help** | About, Check for updates, Open log file, Uninstall |
 
 ## The tray icon
@@ -59,5 +75,5 @@ Everything is under `%LOCALAPPDATA%\SSMConnect`:
 | `config.json` | Your saved connections and friendly names |
 | `status.json` | Live tunnel status |
 | `discovery.json` | The servers found by the last scans |
-| `keys\` | Converted `.ppk` keys for PuTTY |
+| `keys\` | Converted `.ppk` keys for PuTTY (readable only by your Windows user) |
 | the log | **Help > Open log file** |

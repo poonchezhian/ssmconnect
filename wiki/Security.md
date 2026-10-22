@@ -12,6 +12,9 @@ SSMConnect is built so that connecting is easy and nothing extra is exposed.
 - **No secrets kept.** SSMConnect stores no password and no key of its own. A copied Windows password leaves the clipboard after 60 seconds. Access keys you type go only to your own `~/.aws/credentials`, like the AWS CLI does.
 - **Safe edits.** Before changing your AWS files or your MobaXterm settings, a `.ssmconnect.bak` copy is kept beside them. Your own sessions in PuTTY and WinSCP are never modified.
 - **Runs as you.** Nothing runs as administrator or SYSTEM. Each Windows user has their own settings, tunnels and `~/.aws` sign-in.
+- **File transfer stays on your PC.** Files pass through your PC's memory in small blocks and are not saved to disk. The file window never works as root, and a sudo password you type is handed to sudo through a short-lived private helper file on the server that is removed when the window closes.
+- **Converted keys are locked down.** The `.ppk` copies SSMConnect makes for PuTTY are readable only by your Windows user.
+- **Only AWS sign-in pages open.** The sign-in window opens links on AWS's own domains only.
 - **Checked downloads.** Updates are verified against the SHA-256 checksum published with the release. The AWS installers are checked against Amazon's digital signature and pinned by hash.
 
 ## What to know

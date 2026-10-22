@@ -35,6 +35,10 @@ The wizard has five short steps. The page on the right of each step explains why
 
 A card turns **green** only when the tunnel is really up. If it is not, the card says in plain words what is wrong.
 
+## Copy files between servers
+
+Once two servers are green, open **Servers > File transfer: browse and copy files...**, pick a server on each side and press Copy. See [Copy Files Between Servers](File-Transfer).
+
 ## Keeping it up to date
 
 SSMConnect checks GitHub for a new version a few seconds after it starts and then once a day. When one exists, a banner appears; nothing installs by itself. **Update now** downloads the new setup, verifies its SHA-256 checksum, and upgrades in place. Your servers, keys, accounts and sessions are kept. **Help > Check for updates** checks immediately.

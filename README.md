@@ -2,9 +2,28 @@
 
 SSH-style access to AWS servers **with port 22 closed**, using AWS Systems Manager (SSM) Session Manager.
 
+**Copy files from one server to another with two panes and a Copy button, while port 22 stays closed on both.** No S3 bucket, no `scp` commands, no bastion host. The servers never need to reach each other, because the data passes through your PC over the SSM tunnels.
+
+![Copy files between servers: pick a server on each side, select files, press Copy (illustration with sample servers)](https://poonchezhian.github.io/assets/file-transfer-between-servers.png)
+
 SSMConnect is a small app for developers who just want to connect. A short wizard finds your servers (Linux over SSH, Windows over Remote Desktop), opens secure tunnels through SSM, and saves ready-to-use sessions in **PuTTY**, **WinSCP** and **MobaXterm** (Windows) or makes each server one short command away (Linux). No SSH keys on open ports, no bastion host, no infrastructure knowledge needed.
 
 > **Status:** early release. Please test against a non-production server first.
+
+## Copy files between servers
+
+1. Open **Servers > File transfer** and pick your organization.
+2. Pick a server on the left and one on the right. SSMConnect signs in with the server's saved key; there is nothing to type.
+3. Select files or folders, then press **Copy ▶** or **◀ Copy**. Watch the progress bar, or press **Stop**.
+
+```
+Server A  ->  SSM tunnel  ->  your PC  ->  SSM tunnel  ->  Server B
+```
+
+- Works across VPCs, subnets and AWS accounts of one sign-in organization. No network path between the servers is needed.
+- Copies whole folders, warns before it replaces anything, and never works as root. Need another user? **Switch user** uses `sudo`.
+- Files stream through your PC's memory and are never saved to its disk.
+- Linux (SSH) servers only. For very large or scheduled transfers, use S3. Full guide: [Copy Files Between Servers](https://github.com/poonchezhian/ssmconnect/wiki/File-Transfer) or the [website guide](https://poonchezhian.github.io/file-transfer/).
 
 ## Download
 
@@ -22,7 +41,7 @@ PuTTY / WinSCP / MobaXterm / ssh  ->  127.0.0.1:2201  ->  aws ssm start-session 
 
 The dashboard shows every server with a live status that turns **green** once its tunnel is really up. One tunnel per server runs **as you, not as an administrator**, and restarts by itself if it drops. Sessions are named `SSC - <server name>` (Windows) or `ssh ssc-<server name>` (Linux); your own sessions and `~/.ssh/config` entries are never touched.
 
-More in the wiki: [Getting Started](https://github.com/poonchezhian/ssmconnect/wiki/Getting-Started), [Dashboard Guide](https://github.com/poonchezhian/ssmconnect/wiki/Dashboard-Guide), [AWS accounts and organizations](https://github.com/poonchezhian/ssmconnect/wiki/AWS-Accounts-and-Organizations), [Server types and tags](https://github.com/poonchezhian/ssmconnect/wiki/Server-Types-and-Tags).
+More in the wiki: [Copy Files Between Servers](https://github.com/poonchezhian/ssmconnect/wiki/File-Transfer), [Getting Started](https://github.com/poonchezhian/ssmconnect/wiki/Getting-Started), [Dashboard Guide](https://github.com/poonchezhian/ssmconnect/wiki/Dashboard-Guide), [AWS accounts and organizations](https://github.com/poonchezhian/ssmconnect/wiki/AWS-Accounts-and-Organizations), [Server types and tags](https://github.com/poonchezhian/ssmconnect/wiki/Server-Types-and-Tags).
 
 ## Requirements
 
@@ -81,7 +100,7 @@ The update check reads `https://api.github.com/repos/poonchezhian/ssmconnect/rel
 
 ## Licence
 
-Copyright 2026 Poonchezhian Periasamy (poonchezhian@gmail.com) - [Blog](https://medium.com/@poonchezhian) - [Source](https://github.com/poonchezhian/ssmconnect).
+Copyright 2026 Poonchezhian Periasamy (poonchezhian@gmail.com) - [Website](https://poonchezhian.github.io/) - [Blog](https://poonchezhian.github.io/blog/) - [Medium](https://medium.com/@poonchezhian) - [Source](https://github.com/poonchezhian/ssmconnect).
 Licensed under the [Apache License 2.0](LICENSE). See [NOTICE](NOTICE).
 
 SSMConnect is an independent project and is not affiliated with or endorsed by Amazon Web Services. "AWS" is a trademark of Amazon.com, Inc. or its affiliates.

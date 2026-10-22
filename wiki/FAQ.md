@@ -6,6 +6,9 @@ No. SSMConnect uses AWS Systems Manager, so port 22 can stay closed.
 **Does SSMConnect store my AWS password or my SSH keys?**
 No. With a company sign-in you sign in through your browser. Access keys, if you use them, go only to your own `~/.aws/credentials`. Keys stay where they are; SSMConnect only points your tools at them.
 
+**Can I copy files from one server to another?**
+Yes. **Servers > File transfer** opens two panes, one server on each side. Select files or folders and press Copy. The data passes through your PC over the SSM tunnels, so port 22 stays closed and the servers do not need to reach each other. See [Copy Files Between Servers](File-Transfer).
+
 **Which tools can I connect with?**
 PuTTY, WinSCP and MobaXterm for Linux (SSH), and Remote Desktop for Windows. Sessions are saved as `SSC - <server name>`.
 
