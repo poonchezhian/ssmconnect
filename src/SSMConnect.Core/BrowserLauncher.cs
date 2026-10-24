@@ -119,19 +119,15 @@ public static class BrowserLauncher
         return Default() ?? all.FirstOrDefault(b => b.Id == "edge") ?? all.FirstOrDefault();
     }
 
-    /// <summary>Opens the page. Chrome / Edge / Brave get a slim window with the person's own profile (so they are already signed in); Firefox opens a tab.</summary>
+    /// <summary>Opens the page as a new tab in the person's own browser and profile, so an existing sign-in is reused. The PC's default browser is opened the way Windows opens any link.</summary>
     public static void Open(BrowserInfo? browser, string url)
     {
         try
         {
-            if (browser?.Exe == null) { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); return; }
+            var isDefault = browser != null && Default()?.Id == browser.Id;
+            if (browser?.Exe == null || isDefault) { Process.Start(new ProcessStartInfo(url) { UseShellExecute = true }); return; }
             var psi = new ProcessStartInfo(browser.Exe) { UseShellExecute = false };
-            if (browser.CanAppWindow)
-            {
-                psi.ArgumentList.Add("--app=" + url);
-                psi.ArgumentList.Add("--window-size=560,780");
-            }
-            else psi.ArgumentList.Add(url);
+            psi.ArgumentList.Add(url);
             Process.Start(psi);
         }
         catch

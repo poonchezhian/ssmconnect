@@ -36,8 +36,11 @@ public static class AwsSso
     /// app can open it in the person's own browser) and the call returns when the CLI finishes (signed in, failed or timed out).
     /// <paramref name="onCode"/> receives the short confirmation code the page may ask for.
     /// </summary>
-    public static async Task<CliResult> LoginInAppAsync(string session, Action<string> onUrl, Action<string>? onCode = null, CancellationToken ct = default)
+    public static async Task<CliResult> LoginInAppAsync(string session, Action<string> onUrl, Action<string>? onCode = null, CancellationToken ct = default, Action? onFallback = null)
     {
+        string? startHost = null;
+        try { var su = AwsProfiles.SessionInfo(session).StartUrl; if (!string.IsNullOrEmpty(su)) startHost = new Uri(su).Host.ToLowerInvariant(); } catch { }
+        AppLog.Info("Sign-in started for session '" + session + "'.");
         var psi = AwsCli.BuildStartInfo(new AppConfig { Profile = "", Region = "" }, new[] { "sso", "login", "--sso-session", session, "--no-browser" });
         var output = new StringBuilder();
         var urls = new List<string>();
@@ -66,7 +69,10 @@ public static class AwsSso
             {
                 bool first;
                 var candidate = m.Value.TrimEnd('.', ',', ')');
-                if (!IsAwsSignInUrl(candidate)) { AppLog.Warn("Ignored a sign-in link that is not an AWS address."); return; }
+                string host = "?";
+                try { host = new Uri(candidate).Host; } catch { }
+                if (!IsAwsSignInUrl(candidate, startHost)) { AppLog.Warn("Ignored a sign-in link on '" + host + "', which is not a known AWS address."); return; }
+                AppLog.Info("Sign-in link found on '" + host + "'.");
                 lock (gate) { urls.Add(candidate); first = urls.Count == 1; }
                 if (first) _ = Task.Delay(700).ContinueWith(_ => Pick());
             }
@@ -87,7 +93,21 @@ public static class AwsSso
 
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(TimeSpan.FromMinutes(3));
-        try { await p.WaitForExitAsync(timeout.Token); }
+        var exited = p.WaitForExitAsync(timeout.Token);
+        var firstDone = await Task.WhenAny(exited, Task.Delay(TimeSpan.FromSeconds(12), ct));
+        bool noLink;
+        lock (gate) noLink = urls.Count == 0;
+        if (firstDone != exited && noLink && !ct.IsCancellationRequested)
+        {
+            // the CLI printed no usable link (a different CLI version or output): let the CLI open the browser itself instead
+            AppLog.Warn("No sign-in link from the AWS CLI within 12 seconds. Output was: " + Shorten(output.ToString()));
+            try { p.Kill(entireProcessTree: true); } catch { }
+            try { onFallback?.Invoke(); } catch { }
+            var fb = await LoginAsync(session, ct);
+            AppLog.Info("Sign-in (CLI opens the browser) finished with code " + fb.ExitCode + "; token cached: " + (ReadAccessToken(session) != null ? "yes" : "no") + ".");
+            return fb;
+        }
+        try { await exited; }
         catch (OperationCanceledException)
         {
             try { p.Kill(entireProcessTree: true); } catch { }
@@ -95,15 +115,25 @@ public static class AwsSso
         }
         string text;
         lock (gate) text = output.ToString();
+        AppLog.Info("Sign-in finished with code " + p.ExitCode + "; token cached: " + (ReadAccessToken(session) != null ? "yes" : "no") + ".");
+        if (p.ExitCode != 0) AppLog.Warn("Sign-in output: " + Shorten(text));
         return p.ExitCode == 0 ? new CliResult(0, text, "") : new CliResult(p.ExitCode, text, text);
     }
 
-    /// <summary>Only https links on AWS's own sign-in domains are opened in the browser.</summary>
-    static bool IsAwsSignInUrl(string url)
+    static string Shorten(string s)
+    {
+        s = System.Text.RegularExpressions.Regex.Replace(s ?? "", @"(user_code|code|state|client_id)=[^&\s]+", "$1=...").Replace("\r", " ").Replace("\n", " ");
+        return s.Length > 400 ? s.Substring(0, 400) + "..." : s;
+    }
+
+    /// <summary>Only https links on AWS's own sign-in domains, or on the company's own sign-in address, are opened in the browser.</summary>
+    static bool IsAwsSignInUrl(string url, string? startHost = null)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var u) || u.Scheme != Uri.UriSchemeHttps) return false;
         var h = u.Host.ToLowerInvariant();
-        foreach (var d in new[] { "awsapps.com", "amazonaws.com", "amazon.com", "aws.amazon.com", "signin.aws" })
+        if (startHost != null && h == startHost) return true;
+        // .aws covers signin.aws and the newer api.aws endpoints; the rest cover the classic, China and GovCloud addresses
+        foreach (var d in new[] { "aws", "awsapps.com", "awsapps.cn", "amazonaws.com", "amazonaws.com.cn", "amazonaws-us-gov.com", "amazon.com", "aws.dev" })
             if (h == d || h.EndsWith("." + d, StringComparison.Ordinal)) return true;
         return false;
     }

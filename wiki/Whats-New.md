@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.6
+- **Sign-in fixed.** The sign-in page now opens as a new tab in your own browser, so an existing sign-in is reused. If the AWS tools do not give SSMConnect a sign-in address, it lets the AWS CLI open your browser the standard way instead of waiting silently.
+- **Signed in means signed in.** Companies whose servers use more than one sign-in session are signed in session by session, and a sign-in that finishes while the dashboard is checking can no longer be overwritten by that older check.
+- **Newer AWS addresses accepted.** The check that only opens AWS sign-in links now also accepts the newer AWS address styles and your company's own sign-in address. Sign-in steps are written to the log (`%LOCALAPPDATA%\SSMConnect\logs\ssmconnect.log`) to make problems easy to trace.
+
 ## 2.0.5
 - **Dashboard scrolls and tiles correctly.** With many servers (for example 11) the tiles no longer drop to three columns with the last rows cut off. The cards are now placed by SSMConnect itself, the columns always match the window width, and the list always scrolls to the last card.
 - **More compact tiles.** The CPU, memory and disk bars now sit on the same line as the status (for example Connected), right-aligned, which saves a line on every tile.

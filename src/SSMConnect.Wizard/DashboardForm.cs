@@ -119,6 +119,7 @@ public sealed class DashboardForm : Form
     string _authTip = "";
     Level _authLevel = Level.Grey;
     bool _authBusy, _busy;
+    int _authGen;   // raised by every sign-in, so a check that started before it cannot put the organization back to signed out
     DateTime _nextAuthCheck = DateTime.MinValue;
 
     public DashboardForm(bool startHidden)
@@ -1207,6 +1208,7 @@ public sealed class DashboardForm : Form
 
     async Task CheckAuthAsync()
     {
+        var gen = _authGen;
         _authBusy = true;
         try
         {
@@ -1224,6 +1226,7 @@ public sealed class DashboardForm : Form
                 var r = await AwsCli.WhoAmIAsync(new AppConfig { Profile = first.Profile, Region = first.Region });
                 if (!r.Ok) { failed.Add(g.Key); names.Add(PLabel(first.Profile)); if (firstProblem.Length == 0) firstProblem = AwsCli.FriendlyError(r.Error); }
             }
+            if (gen != _authGen) return;   // a sign-in finished while this check ran: its answer is out of date
             _signedOut = failed;
             _authChecked = true;
             if (failed.Count == 0)
@@ -1240,7 +1243,7 @@ public sealed class DashboardForm : Form
             }
         }
         catch (Exception ex) { _authText = "AWS sign-in: unknown"; _authLevel = Level.Amber; _authTip = ex.Message; }
-        finally { _authBusy = false; _nextAuthCheck = DateTime.UtcNow.AddSeconds(45); }
+        finally { _authBusy = false; _nextAuthCheck = gen != _authGen ? DateTime.MinValue : DateTime.UtcNow.AddSeconds(45); }
     }
 
     // ---- server size and usage ---------------------------------------------------------------
@@ -1447,7 +1450,12 @@ public sealed class DashboardForm : Form
             return;
         }
         var session = members.Select(p => p.SsoSession).FirstOrDefault(x => !string.IsNullOrEmpty(x)) ?? "";
-        using var dlg = new SignInDialog(PLabel(sso.Name), session, sso.Name, _cfg.PreferredBrowser);
+        var allSessions = members.Select(p => p.SsoSession).Where(x => !string.IsNullOrEmpty(x)).Select(x => x!).Distinct(StringComparer.Ordinal).ToList();
+        // sign in only the sessions that have no valid sign-in yet; when all look fine, the first one is renewed
+        var needed = allSessions.Where(x => AwsSso.ReadAccessToken(x) == null).ToList();
+        if (needed.Count == 0 && allSessions.Count > 0) needed.Add(allSessions[0]);
+        if (needed.Count > 0) session = needed[0];
+        using var dlg = new SignInDialog(PLabel(sso.Name), session, sso.Name, _cfg.PreferredBrowser, needed);
         var result = dlg.ShowDialog(this);
         if (result == DialogResult.OK)
         {
@@ -1455,6 +1463,7 @@ public sealed class DashboardForm : Form
             {
                 try { var c = ConfigStore.Load() ?? _cfg; c.PreferredBrowser = dlg.ChosenBrowserId; ConfigStore.Save(c); _cfg.PreferredBrowser = dlg.ChosenBrowserId; _cfgStamp = DateTime.MinValue; } catch { }
             }
+            _authGen++;
             _signedOut.Remove(key);
             _expiry.Remove(key);
             _mgr.ResetAll();

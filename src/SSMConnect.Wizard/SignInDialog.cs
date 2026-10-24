@@ -17,12 +17,13 @@ using SSMConnect.Core;
 namespace SSMConnect.Wizard;
 
 /// <summary>
-/// Company sign-in without leaving SSMConnect: the sign-in page opens in the person's own browser (a slim window in Chrome / Edge,
-/// a tab in Firefox) and this window waits until the AWS CLI reports the sign-in is done.
+/// Company sign-in without leaving SSMConnect: the sign-in page opens as a new tab in the person's own browser and this window waits
+/// until the AWS CLI reports the sign-in is done. When the servers of one company use several sign-in sessions, each is signed in in turn.
 /// </summary>
 sealed class SignInDialog : Form
 {
     readonly string _org, _session, _profile;
+    readonly List<string> _sessions;
     readonly Label _title = new() { AutoSize = false, Font = AppTheme.Semi(14f), ForeColor = AppTheme.Teal900 };
     readonly Label _browserLabel = new() { AutoSize = false, Text = "Opens in your browser:" };
     readonly ComboBox _browser = new() { DropDownStyle = ComboBoxStyle.DropDownList };
@@ -39,9 +40,11 @@ sealed class SignInDialog : Form
     /// <summary>The browser chosen in the list ("" = the PC's default).</summary>
     public string ChosenBrowserId { get; private set; } = "";
 
-    public SignInDialog(string orgLabel, string session, string profile, string? preferredBrowser)
+    public SignInDialog(string orgLabel, string session, string profile, string? preferredBrowser, IEnumerable<string>? allSessions = null)
     {
         _org = orgLabel; _session = session; _profile = profile;
+        _sessions = (allSessions ?? new[] { session }).Where(x => !string.IsNullOrEmpty(x)).Distinct(StringComparer.Ordinal).ToList();
+        if (_sessions.Count == 0 && !string.IsNullOrEmpty(session)) _sessions.Add(session);
         AutoScaleDimensions = new SizeF(96F, 96F);
         AutoScaleMode = AutoScaleMode.Dpi;
         Text = "Sign in to " + orgLabel;
@@ -56,7 +59,7 @@ sealed class SignInDialog : Form
         _title.Text = "Sign in to " + orgLabel;
         _steps.Text = string.IsNullOrEmpty(session)
             ? "1.  A browser window opens.\r\n2.  Sign in with your company account.\r\n3.  Come back here. SSMConnect finishes by itself."
-            : "1.  A small window opens in your browser, already signed in to your company if you were before.\r\n2.  Confirm or sign in there.\r\n3.  Come back here. SSMConnect finishes by itself and all your servers become ready.";
+            : "1.  A new tab opens in your browser. If you are already signed in to your company, it only asks you to confirm.\r\n2.  Confirm or sign in there.\r\n3.  Come back here. SSMConnect finishes by itself and all your servers become ready.";
 
         // the browser list: found browsers first; the PC's default is pre-selected unless a choice was saved
         var all = BrowserLauncher.Installed();
@@ -121,10 +124,26 @@ sealed class SignInDialog : Form
             }
             else
             {
-                r = await AwsSso.LoginInAppAsync(_session,
-                    url => { try { BeginInvoke(() => { _url = url; _again.Enabled = true; OpenInBrowser(); }); } catch { } },
-                    code => { try { BeginInvoke(() => { _code.Text = "If the page asks for a code:  " + code; _code.Visible = true; }); } catch { } },
-                    cts.Token);
+                r = new CliResult(0, "", "");
+                var n = 0;
+                foreach (var s in _sessions)
+                {
+                    n++;
+                    if (_sessions.Count > 1) { var msg = $"Sign-in {n} of {_sessions.Count}..."; BeginInvoke(() => { _status.Text = msg; _code.Visible = false; }); }
+                    _url = null;
+                    r = await AwsSso.LoginInAppAsync(s,
+                        url => { try { BeginInvoke(() => { _url = url; _again.Enabled = true; OpenInBrowser(); }); } catch { } },
+                        code => { try { BeginInvoke(() => { _code.Text = "If the page asks for a code:  " + code; _code.Visible = true; }); } catch { } },
+                        cts.Token,
+                        () => { try { BeginInvoke(() => { _status.Text = "Opening your browser the standard way. Sign in there..."; }); } catch { } });
+                    if (!r.Ok || cts.IsCancellationRequested) break;
+                    if (AwsSso.ReadAccessToken(s) == null)
+                    {
+                        AppLog.Warn("Sign-in reported success but no token was saved for session '" + s + "'.");
+                        r = new CliResult(1, "", "The sign-in finished, but no sign-in was saved for this company. Please try again.");
+                        break;
+                    }
+                }
             }
         }
         catch (Exception ex) { r = new CliResult(-1, "", ex.Message); }
