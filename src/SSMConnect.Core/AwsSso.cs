@@ -40,7 +40,7 @@ public static class AwsSso
     {
         string? startHost = null;
         try { var su = AwsProfiles.SessionInfo(session).StartUrl; if (!string.IsNullOrEmpty(su)) startHost = new Uri(su).Host.ToLowerInvariant(); } catch { }
-        AppLog.Info("Sign-in started for session '" + session + "'.");
+        AppLog.Info("Sign-in started for session '" + session + "'" + (startHost != null ? " (configured sign-in address host '" + startHost + "')." : "."));
         var psi = AwsCli.BuildStartInfo(new AppConfig { Profile = "", Region = "" }, new[] { "sso", "login", "--sso-session", session, "--no-browser" });
         var output = new StringBuilder();
         var urls = new List<string>();

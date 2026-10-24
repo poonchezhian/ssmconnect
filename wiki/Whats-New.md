@@ -6,6 +6,9 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## 2.0.7
+- **Sign-in always uses the account's own address.** Settings left behind by a local AWS emulator (such as floci or LocalStack) no longer redirect the sign-in or the connections to a local address. SSMConnect ignores `AWS_ENDPOINT_URL` settings and endpoint addresses in the AWS files, stray access keys and profile names in the environment, and an `AWS_CONFIG_FILE` that does not hold the account. The account's sign-in address and region from the standard AWS files come first.
+
 ## 2.0.6
 - **Sign-in fixed.** The sign-in page now opens as a new tab in your own browser, so an existing sign-in is reused. If the AWS tools do not give SSMConnect a sign-in address, it lets the AWS CLI open your browser the standard way instead of waiting silently.
 - **Signed in means signed in.** Companies whose servers use more than one sign-in session are signed in session by session, and a sign-in that finishes while the dashboard is checking can no longer be overwritten by that older check.

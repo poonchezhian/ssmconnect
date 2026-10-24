@@ -65,7 +65,8 @@ public static class AwsCli
             StandardOutputEncoding = redirect ? Encoding.UTF8 : null,
             StandardErrorEncoding = redirect ? Encoding.UTF8 : null,
         };
-        foreach (var a in args) psi.ArgumentList.Add(a);
+        var argList = args.ToList();
+        foreach (var a in argList) psi.ArgumentList.Add(a);
         if (!string.IsNullOrWhiteSpace(cfg.Profile)) { psi.ArgumentList.Add("--profile"); psi.ArgumentList.Add(cfg.Profile); }
         if (!string.IsNullOrWhiteSpace(cfg.Region)) { psi.ArgumentList.Add("--region"); psi.ArgumentList.Add(cfg.Region); }
 
@@ -76,7 +77,65 @@ public static class AwsCli
             psi.Environment["PATH"] = Path.GetDirectoryName(plugin) + ";" + current;
         }
         psi.Environment["AWS_PAGER"] = "";
+        var si = argList.IndexOf("--sso-session");
+        ProtectFromLocalOverrides(psi, cfg.Profile, si >= 0 && si + 1 < argList.Count ? argList[si + 1] : null);
         return psi;
+    }
+
+    /// <summary>
+    /// The account's own configuration (the sign-in address and region it was set up with, in the standard AWS files) comes first.
+    /// Settings left behind in the environment by a local AWS emulator such as floci or LocalStack must not redirect the sign-in or the
+    /// connections to a local address, so they are not passed on to the AWS CLI.
+    /// </summary>
+    static void ProtectFromLocalOverrides(ProcessStartInfo psi, string? profile, string? session)
+    {
+        try
+        {
+            var env = psi.Environment;
+            var removed = new List<string>();
+            foreach (var k in env.Keys.Cast<string>().ToList())
+            {
+                if (k.StartsWith("AWS_ENDPOINT_URL", StringComparison.OrdinalIgnoreCase)) { removed.Add(k); env.Remove(k); }
+            }
+            // also ignore endpoint addresses written in the AWS config files (for example "endpoint_url = http://localhost:4566")
+            env["AWS_IGNORE_CONFIGURED_ENDPOINT_URLS"] = "true";
+            if (!string.IsNullOrWhiteSpace(profile))
+            {
+                // the named profile decides who is signed in: loose keys or a profile name left in the environment must not win
+                foreach (var k in new[] { "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN", "AWS_PROFILE", "AWS_DEFAULT_PROFILE" })
+                    if (env.Keys.Cast<string>().Any(x => string.Equals(x, k, StringComparison.OrdinalIgnoreCase))) { removed.Add(k); env.Remove(k); }
+            }
+            PinConfigFile(psi, "AWS_CONFIG_FILE", "config", profile, session, forCredentials: false);
+            PinConfigFile(psi, "AWS_SHARED_CREDENTIALS_FILE", "credentials", profile, session, forCredentials: true);
+            if (removed.Count > 0 && Interlocked.Exchange(ref _overridesLogged, 1) == 0)
+                AppLog.Warn("Ignoring AWS settings found in the environment so they cannot redirect the sign-in: " + string.Join(", ", removed) + ".");
+        }
+        catch { /* protection must never stop the AWS CLI from running */ }
+    }
+
+    static int _overridesLogged;
+
+    /// <summary>When AWS_CONFIG_FILE / AWS_SHARED_CREDENTIALS_FILE points to a file that does not hold the account, the standard file in the AWS folder is used.</summary>
+    static void PinConfigFile(ProcessStartInfo psi, string envName, string fileName, string? profile, string? session, bool forCredentials)
+    {
+        var custom = Environment.GetEnvironmentVariable(envName);
+        if (string.IsNullOrWhiteSpace(custom)) return;
+        var standard = Path.Combine(AwsProfiles.AwsDir, fileName);
+        if (!File.Exists(standard) || string.Equals(Path.GetFullPath(custom), Path.GetFullPath(standard), StringComparison.OrdinalIgnoreCase)) return;
+        var headers = new List<string>();
+        if (!string.IsNullOrWhiteSpace(profile))
+        {
+            if (forCredentials) headers.Add(profile);
+            else { headers.Add("profile " + profile); if (profile == "default") headers.Add("default"); }
+        }
+        if (!forCredentials && !string.IsNullOrWhiteSpace(session)) headers.Add("sso-session " + session);
+        if (headers.Count == 0) return;
+        bool In(string path) => File.Exists(path) && File.ReadLines(path).Any(l => { var t = l.Trim(); return t.StartsWith("[") && t.EndsWith("]") && headers.Contains(t.Substring(1, t.Length - 2).Trim(), StringComparer.Ordinal); });
+        if (!In(custom) && In(standard))
+        {
+            psi.Environment[envName] = standard;
+            AppLog.Warn(envName + " points to a file that does not hold this account; using the standard AWS file instead.");
+        }
     }
 
     public static async Task<CliResult> RunAsync(AppConfig cfg, IEnumerable<string> args, TimeSpan? timeout = null, CancellationToken ct = default)

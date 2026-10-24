@@ -42,8 +42,9 @@ public static class AwsProfiles
     static readonly Regex NameRule = new(@"^[A-Za-z0-9_.@\-]{1,64}$", RegexOptions.Compiled);
 
     public static string AwsDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), ".aws");
-    public static string ConfigPath => Environment.GetEnvironmentVariable("AWS_CONFIG_FILE") is { Length: > 0 } c ? c : Path.Combine(AwsDir, "config");
-    public static string CredentialsPath => Environment.GetEnvironmentVariable("AWS_SHARED_CREDENTIALS_FILE") is { Length: > 0 } c ? c : Path.Combine(AwsDir, "credentials");
+    // an environment setting is followed only while the file it names exists; a leftover value (for example from a removed local AWS emulator) falls back to the standard file
+    public static string ConfigPath => Environment.GetEnvironmentVariable("AWS_CONFIG_FILE") is { Length: > 0 } c && File.Exists(c) ? c : Path.Combine(AwsDir, "config");
+    public static string CredentialsPath => Environment.GetEnvironmentVariable("AWS_SHARED_CREDENTIALS_FILE") is { Length: > 0 } c && File.Exists(c) ? c : Path.Combine(AwsDir, "credentials");
 
     public static bool IsValidName(string? name) => name != null && NameRule.IsMatch(name);
 
