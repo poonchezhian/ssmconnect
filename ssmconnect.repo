@@ -9,4 +9,6 @@ gpgcheck=1
 # Every package is checked against the key (gpgcheck). The repository index is not, because dnf then asks a question about its key that
 # background and graphical updaters cannot answer, and they quietly leave the repository out of the list of updates.
 repo_gpgcheck=0
+# Look for a new release every 6 hours (dnf's default is 2 days, so a new version would take that long to be listed).
+metadata_expire=6h
 gpgkey=https://poonchezhian.github.io/ssmconnect/SIGNING-KEY.asc
