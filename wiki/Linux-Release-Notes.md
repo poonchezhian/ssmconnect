@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.5
+- The 2.0.x features below, released. 2.0.4 was tagged but its automatic tests failed on one test helper (not the program), so it was never published; 2.0.5 is the same program.
+
 ## 2.0.4
 - **Operating-system logos** on every server card (Ubuntu, Debian, Red Hat, Amazon Linux, CentOS, Rocky, AlmaLinux, Fedora, SUSE, Alpine, Windows).
 - **Filter and search the dashboard**: All, Connected, Needs attention or PROD only, plus a search box.

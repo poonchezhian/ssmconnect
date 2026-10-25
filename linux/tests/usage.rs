@@ -16,7 +16,7 @@ fn parses_the_scripts_answer() {
 const FAKE: &str = r#"#!/bin/sh
 case "$*" in
   *send-command*) case "$*" in *i-0denied*) echo 'An error occurred (AccessDeniedException) when calling the SendCommand operation: User is not authorized to perform: ssm:SendCommand' >&2; exit 254;; esac; echo cmd-1;;
-  *get-command-invocation*) echo '{"Status":"Success","StandardOutputContent":"SSMUSAGE 2 4194304 1048576 20971520 2097152 9\n"}';;
+  *get-command-invocation*) printf '%s\n' '{"Status":"Success","StandardOutputContent":"SSMUSAGE 2 4194304 1048576 20971520 2097152 9\n"}';;   # printf, not echo: dash (Ubuntu's sh) would turn the \n into a real newline
 esac
 "#;
 

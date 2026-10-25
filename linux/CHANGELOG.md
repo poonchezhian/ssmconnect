@@ -6,6 +6,11 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.5] - 2026-10-25
+Same program as 2.0.4, which was tagged but never released because its automatic tests failed on Ubuntu's CI machine.
+### Fixed
+- A test's stand-in `aws` used `echo` with `\n` inside JSON, which Ubuntu's `sh` (dash) turns into a real newline; it uses `printf` now. Tests were also run with dash as `/bin/sh` to check the rest.
+
 ## [2.0.4] - 2026-10-25
 ### Added
 - **Operating-system logos** on the server cards (Ubuntu, Debian, Red Hat, Amazon Linux, CentOS, Rocky, AlmaLinux, Fedora, SUSE, Alpine, Windows, generic Linux), chosen from the operating-system name AWS reports; built into the program (`data/os`).
