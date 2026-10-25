@@ -1,14 +1,14 @@
 Package: ssmconnect
-Version: 2.0.5
+Version: 2.0.6
 Architecture: amd64
 Maintainer: Poonchezhian Periasamy <poonchezhian@gmail.com>
 Depends: libgtk-4-1 (>= 4.12), libadwaita-1-0 (>= 1.5), libc6 (>= 2.34), openssh-client
 Recommends: freerdp3-x11 | freerdp2-x11 | remmina, gnome-terminal | konsole | xfce4-terminal | xterm
-Filename: ./ssmconnect_2.0.5_amd64.deb
-Size: 3720094
-MD5sum: 04f9b435cdf1bd7369dca70f6394a40e
-SHA1: 823432d35c7b23bd8e01d00ba70f908bbe3582e0
-SHA256: d0c44d583e102d44337781edba89e8bc0d9b85d774ea390ae78d491669285c99
+Filename: ./ssmconnect_2.0.6_amd64.deb
+Size: 3709684
+MD5sum: 20b437b125947fb4658a40a38f88352d
+SHA1: 6dacab74c4e8be4ba3de9b3d82f9028548978a20
+SHA256: a35dc2c21d0105e7a2e70f182809c141681b41ed2f8730cc9b7dd34ba4b417aa
 Section: net
 Priority: optional
 Homepage: https://github.com/poonchezhian/ssmconnect
