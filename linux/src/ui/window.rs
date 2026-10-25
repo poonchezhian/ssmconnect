@@ -1,9 +1,9 @@
 //! The dashboard: header (account switcher, status pills, summary, organization chips), the action buttons and one card per server.
 
 use super::app::App;
-use super::common::{clear_box, in_background, pill, set_pill};
+use super::common::{clear_box, confirm, in_background, pill, set_pill};
 use crate::models::{AppConfig, State, TunnelConfig, TunnelStatus};
-use crate::{aws_cli, aws_profiles as ap, config_store, known_hosts, launchers, sso, ssh_config};
+use crate::{aws_cli, aws_profiles as ap, config_store, known_hosts, launchers, login_check, sso, ssh_config};
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
@@ -381,8 +381,8 @@ impl Dashboard {
             action("Remote Desktop", Box::new(|d, t, _| if let Err(e) = launchers::open_rdp(t) { d.toast(&e); }));
             action("Get password", Box::new(|d, t, _| d.get_password(t)));
         } else {
-            action("Terminal", Box::new(|d, _, a| if let Err(e) = launchers::open_terminal(a) { d.toast(&e); }));
-            action("Files", Box::new(|d, t, a| d.open_files(t, a)));
+            action("Terminal", Box::new(|d, t, a| { let a = a.to_string(); d.checked(t, move |d| if let Err(e) = launchers::open_terminal(&a) { d.toast(&e); }); }));
+            action("Files", Box::new(|d, t, a| { let (t2, a) = (t.clone(), a.to_string()); d.checked(t, move |d| d.open_files(&t2, &a)); }));
         }
         // double-click anywhere else on the card does the main thing
         let first = buttons.first().map(|(_, b)| b.clone());
@@ -415,7 +415,8 @@ impl Dashboard {
         let t4 = t.clone();
         mk("settings", Box::new(move |d| if let Some(a) = d.app() { super::server_settings::show(&a, &d.win, &t4); }));
         let a3 = alias.to_string();
-        mk("sftp", Box::new(move |d| if let Err(e) = launchers::open_sftp_terminal(&a3) { d.toast(&e); }));
+        let t5 = t.clone();
+        mk("sftp", Box::new(move |d| { let a3 = a3.clone(); d.checked(&t5, move |d| if let Err(e) = launchers::open_sftp_terminal(&a3) { d.toast(&e); }); }));
         card.insert_action_group("row", Some(&group));
         ServerRow { card, line, status, buttons, tunnel: t.clone() }
     }
@@ -431,6 +432,37 @@ impl Dashboard {
             }
         }
         f(self, t, alias);
+    }
+
+    /// Checks that the server accepts the login (right user, right key) before a tool opens, and repairs it when it can. If the server does not
+    /// answer, the person may still open the tool; if no key fits, they are asked for one.
+    fn checked(self: &Rc<Self>, t: &TunnelConfig, then: impl Fn(&Rc<Dashboard>) + Clone + 'static) {
+        self.toast("Checking the login...");
+        let (t2, d) = (t.clone(), self.clone());
+        in_background(move || login_check::ensure(&t2), {
+            let t = t.clone();
+            move |out| match out {
+                login_check::Outcome::Ready { user, .. } => { if user != t.user_name { d.reload(); } then(&d); }
+                login_check::Outcome::Down(why) => { let (d2, then) = (d.clone(), then.clone()); confirm(&d.win, "The server did not answer", &format!("{why}\n\nOpen the tool anyway?"), "Open anyway", false, move || then(&d2)); }
+                login_check::Outcome::NeedKey => {
+                    let (d2, t2, then) = (d.clone(), t.clone(), then.clone());
+                    confirm(&d.win, "Which key file is this?", &format!("None of the key files on this computer lets you in to {}. Pick the key file you use for it.", t.name), "Choose a key file", false, move || {
+                        let dlg = gtk::FileDialog::builder().title("Choose the key file for this server").build();
+                        let ssh = crate::paths::ssh_dir();
+                        if ssh.is_dir() { dlg.set_initial_folder(Some(&gio::File::for_path(ssh))); }
+                        let (d3, t3, then) = (d2.clone(), t2.clone(), then.clone());
+                        dlg.open(Some(&d2.win), None::<&gio::Cancellable>, move |res| if let Some(p) = res.ok().and_then(|f| f.path()) {
+                            login_check::save(&t3, &t3.user_name, Some(&p.to_string_lossy()));
+                            login_check::forget_refusals(&t3.instance_id);
+                            let mut fresh = t3.clone();
+                            fresh.key_file = Some(p.to_string_lossy().into_owned());
+                            d3.reload();
+                            d3.checked(&fresh, then);
+                        });
+                    });
+                }
+            }
+        });
     }
 
     /// The "Files" button: logs in over SFTP and opens the server's folders (a few seconds, so off the main thread), telling the person what happens.

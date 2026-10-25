@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.1
+- **The login is checked before a tool opens.** A green card only meant the secure tunnel was up. Now, before Terminal, Files or sftp opens, SSMConnect finds the key that belongs to the server, tests which login user it accepts, saves what works and refreshes the `ssh ssc-...` entries. No more terminal windows that close on "Permission denied". If no key fits it asks you for one; if the server does not answer it says so and lets you open the tool anyway.
+
 ## 2.0.0
 The Linux edition joins the 2.x line and will catch up with the Windows app step by step.
 - **Sign-in opens in your own browser** as a new tab, so a sign-in you already have there is reused. Only AWS and your company's sign-in pages are opened.

@@ -16,6 +16,7 @@ pub mod installer_text;
 pub mod key_finder;
 pub mod known_hosts;
 pub mod launchers;
+pub mod login_check;
 pub mod models;
 pub mod netcheck;
 pub mod paths;

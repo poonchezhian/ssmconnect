@@ -6,6 +6,10 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-10-25
+### Added
+- **Login check** (from Windows 2.0.2 and 2.0.4). A green card only meant the secure tunnel was up; the login (user and key) was never checked, so a wrong one ended in a terminal window that closed with "Permission denied". Before Terminal, Files and *Open sftp in a terminal* open, SSMConnect now finds the key that belongs to the server (the saved file, else the key on this computer that matches the server's AWS key pair by fingerprint or name), tries the login users that fit (only the server's own operating-system user when it is known; otherwise `ec2-user`, `ubuntu`, `admin`, `centos`, `fedora`, `rocky`, `opc`), never asks for a password, and saves the user and key that work (the `ssh ssc-...` entries are rewritten). A combination the server refused is not tried twice. If no key fits you are asked to pick one; if the server does not answer, or its identity changed, you are told why and can open the tool anyway. A "Checking the login..." message shows meanwhile.
+
 ## [2.0.0] - 2026-10-25
 The Linux edition moves to the 2.x line, catching up with the Windows app (2.0.7) one feature at a time.
 ### Added
