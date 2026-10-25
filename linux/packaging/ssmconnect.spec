@@ -36,8 +36,9 @@ install -Dpm644 packaging/repo/ssmconnect.repo %{buildroot}%{_sysconfdir}/yum.re
 install -Dpm644 SIGNING-KEY.asc %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect
 
 %posttrans
-# trust the release key now, so the first update does not stop to ask about it (the updaters in GNOME Software and Discover cannot answer)
-rpm --import %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect >/dev/null 2>&1 || :
+# trust the release key, so the first update does not stop to ask about it (the updaters in GNOME Software and Discover cannot answer).
+# The transaction still holds the rpm database, so the import is done by a detached helper that retries until the database is free.
+(for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do rpm --import %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect >/dev/null 2>&1 && break; sleep 2; done) </dev/null >/dev/null 2>&1 &
 
 %files
 %license %{_licensedir}/%{name}/LICENSE

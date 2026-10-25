@@ -6,6 +6,10 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.8] - 2026-10-25
+### Fixed
+- **The .rpm did not trust the release key when it installed (2.0.7 meant to).** The rpm database is locked while a package installs, so the import silently failed and the first update still asked "Importing OpenPGP key … Is this ok?". The import now runs just after the install, once the database is free.
+
 ## [2.0.7] - 2026-10-25
 ### Fixed
 - **Updates through the system did not list SSMConnect.** The repository file asked dnf to check the repository index too, which makes dnf ask whether to trust the key; graphical and background updaters cannot answer, so they left the repository out. The index is no longer checked (every package still is), and the .rpm now trusts the release key when it installs. If you installed 2.0.5 or earlier, set `repo_gpgcheck=0` in `/etc/yum.repos.d/ssmconnect.repo` once; later versions replace the file.
