@@ -35,9 +35,53 @@ pub fn which(name: &str) -> Option<PathBuf> { search_dirs().into_iter().map(|d| 
 pub fn find_aws() -> Option<PathBuf> { which("aws") }
 pub fn find_plugin() -> Option<PathBuf> { which("session-manager-plugin") }
 
-pub fn apply_env(cmd: &mut Command) {
-    cmd.env("PATH", search_path()).env("AWS_PAGER", "").env_remove("AWS_PROFILE");   // the profile is always passed explicitly
+pub fn apply_env(cmd: &mut Command) { apply_env_for(cmd, "", None) }
+
+/// What to do to the environment of an AWS CLI call so that settings left behind by a local AWS emulator (floci, LocalStack...)
+/// cannot redirect the sign-in or the connections to a local address. Returns (variables to remove, variables to set).
+pub fn env_plan(env: &[(String, String)], profile: &str, session: Option<&str>) -> (Vec<String>, Vec<(String, String)>) {
+    let (mut remove, mut set) = (vec![], vec![("AWS_IGNORE_CONFIGURED_ENDPOINT_URLS".to_string(), "true".to_string())]);   // also endpoint_url in the AWS files
+    remove.push("AWS_PROFILE".into());   // the profile is always passed explicitly
+    for (k, _) in env {
+        let up = k.to_ascii_uppercase();
+        let loose = ["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY", "AWS_SESSION_TOKEN", "AWS_SECURITY_TOKEN", "AWS_DEFAULT_PROFILE"];
+        if up.starts_with("AWS_ENDPOINT_URL") || (!profile.trim().is_empty() && loose.contains(&up.as_str())) { remove.push(k.clone()); }
+    }
+    let standard = paths::aws_dir();
+    for (var, file, creds) in [("AWS_CONFIG_FILE", "config", false), ("AWS_SHARED_CREDENTIALS_FILE", "credentials", true)] {
+        let Some((_, custom)) = env.iter().find(|(k, v)| k == var && !v.is_empty()) else { continue };
+        let standard_file = standard.join(file);
+        if std::path::Path::new(custom) == standard_file { continue; }
+        if !std::path::Path::new(custom).is_file() { remove.push(var.into()); continue; }   // a leftover value naming a file that is gone
+        let mut headers: Vec<String> = vec![];
+        if !profile.trim().is_empty() {
+            if creds { headers.push(profile.into()); } else { headers.push(format!("profile {profile}")); if profile == "default" { headers.push("default".into()); } }
+        }
+        if let (false, Some(sess)) = (creds, session) { headers.push(format!("sso-session {sess}")); }
+        if headers.is_empty() { continue; }
+        let has = |path: &std::path::Path| std::fs::read_to_string(path).map(|t| t.lines().any(|l| {
+            let l = l.trim();
+            l.starts_with('[') && l.ends_with(']') && headers.iter().any(|h| h == l[1..l.len() - 1].trim())
+        })).unwrap_or(false);
+        if !has(std::path::Path::new(custom)) && has(&standard_file) { set.push((var.into(), standard_file.to_string_lossy().into_owned())); }
+    }
+    (remove, set)
 }
+
+pub fn apply_env_for(cmd: &mut Command, profile: &str, session: Option<&str>) {
+    cmd.env("PATH", search_path()).env("AWS_PAGER", "");
+    let env: Vec<(String, String)> = std::env::vars().collect();
+    let (remove, set) = env_plan(&env, profile, session);
+    let mut ignored: Vec<&String> = remove.iter().filter(|k| env.iter().any(|(e, _)| e == *k) && *k != "AWS_PROFILE").collect();
+    ignored.sort();
+    for k in &remove { cmd.env_remove(k); }
+    for (k, v) in &set { cmd.env(k, v); }
+    if !ignored.is_empty() && !LOGGED.swap(true, std::sync::atomic::Ordering::Relaxed) {
+        crate::applog::warn(&format!("Ignoring AWS settings found in the environment so they cannot redirect the sign-in: {}.", ignored.iter().map(|s| s.as_str()).collect::<Vec<_>>().join(", ")));
+    }
+}
+
+static LOGGED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 
 pub fn build_args(args: &[&str], profile: &str, region: &str) -> Result<Vec<String>, String> {
     let aws = find_aws().ok_or("AWS CLI is not installed.")?;
@@ -52,7 +96,8 @@ pub fn run(args: &[&str], profile: &str, region: &str, timeout_s: u64) -> CliRes
     let cmdline = match build_args(args, profile, region) { Ok(c) => c, Err(e) => return CliResult { exit_code: -1, output: String::new(), error: e } };
     let mut cmd = Command::new(&cmdline[0]);
     cmd.args(&cmdline[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    apply_env(&mut cmd);
+    let session = args.iter().position(|a| *a == "--sso-session").and_then(|i| args.get(i + 1)).copied();
+    apply_env_for(&mut cmd, profile, session);
     let mut child = match cmd.spawn() { Ok(c) => c, Err(e) => return CliResult { exit_code: -1, output: String::new(), error: e.to_string() } };
     let (mut so, mut se) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
     let t_out = std::thread::spawn(move || { let mut b = Vec::new(); let _ = so.read_to_end(&mut b); b });
@@ -75,7 +120,74 @@ pub fn run(args: &[&str], profile: &str, region: &str, timeout_s: u64) -> CliRes
 }
 
 /// Opens the browser sign-in for an SSO profile.
-pub fn sso_login(profile: &str) -> CliResult { run(&["sso", "login"], profile, "", 180) }
+pub fn sso_login(profile: &str) -> CliResult { sign_in(&["sso", "login"], profile, "") }
+
+/// True for an address a sign-in may open: https, on an AWS sign-in host or the company's own sign-in address.
+pub fn is_sign_in_link(url: &str, company_host: Option<&str>) -> bool {
+    let Some(rest) = url.strip_prefix("https://") else { return false };
+    let host = rest.split(['/', '?', '#', ':']).next().unwrap_or("").to_ascii_lowercase();
+    if host.is_empty() || url.chars().any(|c| c.is_whitespace() || c.is_control()) { return false; }
+    let on = |d: &str| host == d || host.ends_with(&format!(".{d}"));
+    ["amazonaws.com", "awsapps.com", "amazon.com", "aws.amazon.com", "amazonaws.com.cn", "aws"].iter().any(|d| on(d))
+        || company_host.is_some_and(|c| !c.is_empty() && host == c.to_ascii_lowercase())
+}
+
+fn first_link(text: &str) -> Option<String> { text.split_whitespace().find(|w| w.starts_with("https://")).map(String::from) }
+
+/// The browser sign-in: the AWS CLI is asked for the sign-in address (`--no-browser`) and the page is opened in the person's own
+/// browser as a new tab, so a sign-in they already have is reused. If the CLI gives no address within a few seconds, it is run the
+/// standard way and opens the browser itself.
+pub fn sign_in(args: &[&str], profile: &str, session: &str) -> CliResult {
+    let mut a: Vec<&str> = args.to_vec();
+    a.push("--no-browser");
+    let Ok(cmdline) = build_args(&a, profile, "") else { return run(args, profile, "", 180) };
+    let company_host = if session.is_empty() { None } else { crate::aws_profiles::session_info(session).0
+        .and_then(|u| u.strip_prefix("https://").map(|r| r.split(['/', ':']).next().unwrap_or("").to_string())) };
+    let mut cmd = Command::new(&cmdline[0]);
+    cmd.args(&cmdline[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    apply_env_for(&mut cmd, profile, if session.is_empty() { None } else { Some(session) });
+    let Ok(mut child) = cmd.spawn() else { return run(args, profile, "", 180) };
+    crate::applog::info(&format!("Sign-in started{}.", if session.is_empty() { String::new() } else { format!(" for session '{session}'") }));
+    let (tx, rx) = std::sync::mpsc::channel::<(bool, String)>();
+    for (is_err, pipe) in [(false, child.stdout.take().map(|p| Box::new(p) as Box<dyn Read + Send>)), (true, child.stderr.take().map(|p| Box::new(p) as Box<dyn Read + Send>))] {
+        let (tx, Some(mut pipe)) = (tx.clone(), pipe) else { continue };
+        std::thread::spawn(move || {
+            let mut buf = [0u8; 1024];
+            while let Ok(n) = pipe.read(&mut buf) { if n == 0 { break; } let _ = tx.send((is_err, String::from_utf8_lossy(&buf[..n]).into_owned())); }
+        });
+    }
+    drop(tx);
+    let (mut out, mut err) = (String::new(), String::new());
+    let (start, mut opened) = (Instant::now(), false);
+    let status = loop {
+        while let Ok((is_err, chunk)) = rx.try_recv() { if is_err { err.push_str(&chunk) } else { out.push_str(&chunk) } }
+        if !opened {
+            if let Some(link) = first_link(&out).or_else(|| first_link(&err)) {
+                if is_sign_in_link(&link, company_host.as_deref()) { crate::launchers::open_url(&link); crate::applog::info("Sign-in page opened in the browser."); }
+                else { crate::applog::warn("The AWS CLI gave a sign-in address that is not an AWS or company address; it was not opened."); let _ = child.kill(); let _ = child.wait();
+                       return CliResult { exit_code: -1, output: String::new(), error: "The sign-in address did not look like an AWS sign-in page, so it was not opened.".into() }; }
+                opened = true;
+            }
+        }
+        match child.try_wait() {
+            Ok(Some(s)) => break Some(s),
+            Ok(None) if !opened && start.elapsed() > Duration::from_secs(10) => {
+                crate::applog::warn("The AWS CLI gave no sign-in address; letting it open the browser itself.");
+                let _ = child.kill(); let _ = child.wait();
+                return run(args, profile, "", 180);
+            }
+            Ok(None) if start.elapsed() > Duration::from_secs(180) => { let _ = child.kill(); let _ = child.wait(); break None; }
+            Ok(None) => std::thread::sleep(Duration::from_millis(100)),
+            Err(_) => break None,
+        }
+    };
+    std::thread::sleep(Duration::from_millis(60));
+    while let Ok((is_err, chunk)) = rx.try_recv() { if is_err { err.push_str(&chunk) } else { out.push_str(&chunk) } }
+    match status {
+        Some(s) => CliResult { exit_code: s.code().unwrap_or(-1), output: out.trim().into(), error: err.trim().into() },
+        None => CliResult { exit_code: -1, output: out.trim().into(), error: "Timed out waiting for the sign-in.".into() },
+    }
+}
 
 /// Checks the sign-in. STS needs some region, so a neutral one is used when none is chosen yet.
 pub fn who_am_i(profile: &str, region: &str) -> CliResult {

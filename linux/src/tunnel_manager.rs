@@ -226,7 +226,7 @@ impl Inner {
                 let m = format!("{} Retrying in {}s.", slot.last_error, slot.backoff);
                 changed |= self.set(slot, State::Error, m);
                 applog::warn(&format!("Tunnel {} exited with code {code}: {}", t.name, slot.last_error));
-            } else if was_up && ran_for > 20.0 {
+            } else if was_up && ran_for > 30.0 {
                 slot.failures = 0; slot.backoff = 5; slot.next_start = n; slot.refreshing = true;
                 applog::info(&format!("Tunnel {}: session ended after {} min (code {code}); renewing it quietly.", t.name, (ran_for / 60.0) as u64));
             } else {
@@ -278,7 +278,7 @@ impl Inner {
         };
         let mut cmd = Command::new(&cmdline[0]);
         cmd.args(&cmdline[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped()).process_group(0);
-        aws_cli::apply_env(&mut cmd);
+        aws_cli::apply_env_for(&mut cmd, &t.profile, None);
         // if SSMConnect dies without cleaning up, the session dies with it
         unsafe { cmd.pre_exec(|| { libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM); Ok(()) }); }
         match cmd.spawn() {

@@ -176,3 +176,49 @@ fn sftp_problems_are_explained_in_plain_words() {
     // "this desktop cannot mount SFTP" is not a problem with the server: the caller falls back to a file manager or the sftp client
     assert!(sftp_problem("Operation not supported / no handler for sftp").is_none());
 }
+
+#[test]
+fn env_plan_ignores_local_emulator_settings() {
+    use ssmconnect::aws_cli::env_plan;
+    let h = common::Home::new();
+    std::fs::create_dir_all(h.join(".aws")).unwrap();
+    std::fs::write(h.join(".aws/config"), "[profile prod]\nsso_session = acme\n[sso-session acme]\nsso_region = eu-west-1\n").unwrap();
+    std::fs::write(h.join("emulator.cfg"), "[profile local]\nendpoint_url = http://localhost:4566\n").unwrap();
+    let env = |v: &[(&str, String)]| v.iter().map(|(k, x)| (k.to_string(), x.clone())).collect::<Vec<_>>();
+    let e = env(&[("AWS_ENDPOINT_URL", "http://localhost:4566".into()), ("AWS_ENDPOINT_URL_SSM", "http://localhost:4566".into()),
+        ("AWS_ACCESS_KEY_ID", "test".into()), ("AWS_CONFIG_FILE", h.join("emulator.cfg").to_string_lossy().into_owned())]);
+    let (remove, set) = env_plan(&e, "prod", Some("acme"));
+    for k in ["AWS_ENDPOINT_URL", "AWS_ENDPOINT_URL_SSM", "AWS_ACCESS_KEY_ID", "AWS_PROFILE"] { assert!(remove.iter().any(|r| r == k), "{k} should be removed"); }
+    assert!(set.iter().any(|(k, v)| k == "AWS_IGNORE_CONFIGURED_ENDPOINT_URLS" && v == "true"));
+    assert!(set.iter().any(|(k, v)| k == "AWS_CONFIG_FILE" && v.ends_with(".aws/config")), "config file pinned to the standard one");
+    // a missing file is dropped; without a profile, keys are kept
+    let gone = env(&[("AWS_CONFIG_FILE", h.join("nope").to_string_lossy().into_owned()), ("AWS_ACCESS_KEY_ID", "k".into())]);
+    let (remove, _) = env_plan(&gone, "", None);
+    assert!(remove.iter().any(|r| r == "AWS_CONFIG_FILE") && !remove.iter().any(|r| r == "AWS_ACCESS_KEY_ID"));
+}
+
+#[test]
+fn only_aws_or_company_sign_in_links_are_opened() {
+    use ssmconnect::aws_cli::is_sign_in_link;
+    assert!(is_sign_in_link("https://device.sso.eu-west-1.amazonaws.com/?user_code=ABCD-EFGH", None));
+    assert!(is_sign_in_link("https://acme.awsapps.com/start/#/device", None));
+    assert!(is_sign_in_link("https://login.acme.example/start", Some("login.acme.example")));
+    assert!(!is_sign_in_link("https://evil.example/amazonaws.com", None));
+    assert!(!is_sign_in_link("https://amazonaws.com.evil.example/", None));
+    assert!(!is_sign_in_link("http://acme.awsapps.com/start", None));
+    assert!(!is_sign_in_link("file:///etc/passwd", None));
+}
+
+#[test]
+fn sign_in_opens_the_address_the_cli_prints() {
+    let h = Home::new();
+    h.tool("aws", "#!/bin/sh\necho 'Browser will not be automatically opened.'\necho 'https://device.sso.eu-west-1.amazonaws.com/?user_code=ABCD-EFGH'\nsleep 0.3\nexit 0\n");
+    h.tool("xdg-open", &format!("#!/bin/sh\necho \"$1\" > {}\n", h.join("opened.txt").display()));
+    let old_path = std::env::var("PATH").unwrap_or_default();
+    std::env::set_var("PATH", format!("{}:{old_path}", h.join(".local/share/ssmconnect/bin").display()));   // the stub xdg-open comes first
+    let r = ssmconnect::aws_cli::sign_in(&["sso", "login", "--sso-session", "acme"], "", "acme");
+    std::env::set_var("PATH", old_path);
+    assert!(r.ok(), "{}", r.error);
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(std::fs::read_to_string(h.join("opened.txt")).unwrap_or_default().contains("user_code=ABCD-EFGH"));
+}

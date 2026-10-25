@@ -2,6 +2,11 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.0
+The Linux edition joins the 2.x line and will catch up with the Windows app step by step.
+- **Sign-in opens in your own browser** as a new tab, so a sign-in you already have there is reused. Only AWS and your company's sign-in pages are opened.
+- **Local AWS emulator settings are ignored** during sign-in and connections (`AWS_ENDPOINT_URL*`, loose keys, a leftover `AWS_CONFIG_FILE`), so floci or LocalStack leftovers cannot send you to a local address.
+
 ## 1.1.0
 - **Flatpak for older systems.** RHEL, AlmaLinux and Rocky Linux 8 and 9, Ubuntu 22.04, Linux Mint 21 and Debian 12 are still supported by their vendors but ship a GTK 4 / libadwaita too old for the `.rpm` and `.deb`. The Flatpak brings its own: `flatpak install --user https://poonchezhian.github.io/ssmconnect/ssmconnect.flatpakref`, and `flatpak update` keeps it current. See [Install and Update](Linux-Install-and-Update#which-file-is-for-my-system) for which file fits which system.
 

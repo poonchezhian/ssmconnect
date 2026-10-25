@@ -5,6 +5,14 @@ Git tags and GitHub Releases are named `linux-vX.Y.Z` so they never clash with t
 While the major version is 0, the minor and patch numbers may change behaviour between releases.
 
 ## [Unreleased]
+
+## [2.0.0] - 2026-10-25
+The Linux edition moves to the 2.x line, catching up with the Windows app (2.0.7) one feature at a time.
+### Added
+- **Sign-in opens in your own browser as a new tab** (`aws sso login --no-browser`; the address is checked to be an AWS or your company's sign-in page first). If the AWS CLI gives no address within 10 seconds it opens the browser itself, as before. Sign-in steps are written to the log.
+### Changed
+- **Local AWS emulator settings can no longer hijack a sign-in.** `AWS_ENDPOINT_URL*`, endpoint addresses in the AWS files (`AWS_IGNORE_CONFIGURED_ENDPOINT_URLS`), loose access keys and profile names in the environment, and an `AWS_CONFIG_FILE` / `AWS_SHARED_CREDENTIALS_FILE` that names a missing file or does not hold the account are ignored for the AWS CLI calls SSMConnect makes (floci, LocalStack...). The account's own files in `~/.aws` win.
+- A session that ends after 30 seconds or more is renewed quietly; shorter counts as a failed try (was 20 seconds), like the Windows app.
 ### Fixed
 - Publishing the Flatpak repository from a CI artifact: the empty folders an OSTree repository needs are restored, and the repository index and app-store data are signed when they are made (so `flatpak update` does not complain about missing signatures).
 

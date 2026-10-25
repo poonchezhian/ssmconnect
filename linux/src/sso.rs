@@ -9,7 +9,7 @@ use std::collections::HashSet;
 pub struct SsoAccount { pub id: String, pub name: String }
 
 /// Opens the browser sign-in for a named sso-session.
-pub fn login(session: &str) -> aws_cli::CliResult { aws_cli::run(&["sso", "login", "--sso-session", session], "", "", 180) }
+pub fn login(session: &str) -> aws_cli::CliResult { aws_cli::sign_in(&["sso", "login", "--sso-session", session], "", session) }
 
 /// The access token the AWS CLI cached after sign-in (file name = SHA-1 of the session name).
 pub fn read_access_token(session: &str) -> Option<String> {

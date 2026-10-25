@@ -29,11 +29,12 @@ pub fn status_path() -> PathBuf { state_dir().join("status.json") }
 pub fn discovery_path() -> PathBuf { config_dir().join("discovery.json") }
 pub fn log_path() -> PathBuf { state_dir().join("ssmconnect.log") }
 pub fn aws_dir() -> PathBuf { home().join(".aws") }
+/// An environment setting is followed only while the file it names exists; a leftover value (a removed local emulator) falls back to the standard file.
 pub fn aws_config_path() -> PathBuf {
-    std::env::var_os("AWS_CONFIG_FILE").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| aws_dir().join("config"))
+    std::env::var_os("AWS_CONFIG_FILE").filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.exists()).unwrap_or_else(|| aws_dir().join("config"))
 }
 pub fn aws_credentials_path() -> PathBuf {
-    std::env::var_os("AWS_SHARED_CREDENTIALS_FILE").filter(|v| !v.is_empty()).map(PathBuf::from).unwrap_or_else(|| aws_dir().join("credentials"))
+    std::env::var_os("AWS_SHARED_CREDENTIALS_FILE").filter(|v| !v.is_empty()).map(PathBuf::from).filter(|p| p.exists()).unwrap_or_else(|| aws_dir().join("credentials"))
 }
 pub fn ssh_dir() -> PathBuf { home().join(".ssh") }
 
