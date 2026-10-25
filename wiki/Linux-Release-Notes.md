@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.9
+- **New releases reach system updates sooner.** The update repository is now checked every 6 hours instead of every 2 days. Run `sudo dnf upgrade --refresh` to look right away.
+
 ## 2.0.8
 - **The .rpm now really trusts the SSMConnect release key when it installs**, so the first system update does not stop to ask about it (2.0.7 tried, but the import was blocked while the package was installing).
 

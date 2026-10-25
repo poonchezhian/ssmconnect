@@ -6,6 +6,12 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.9] - 2026-10-26
+### Fixed
+- **A new release took up to two days to show up in system updates.** dnf keeps its copy of a repository's index for 48 hours unless told otherwise. The repository file now asks for a check every 6 hours (`metadata_expire=6h`). Installed 2.0.8 or earlier? Update the file once with `sudo sed -i '/^repo_gpgcheck=0/a metadata_expire=6h' /etc/yum.repos.d/ssmconnect.repo`, or run `sudo dnf upgrade --refresh`; this version replaces it.
+### Changed
+- The release check in CI also requires an entry for the version in the wiki's Linux release notes.
+
 ## [2.0.8] - 2026-10-25
 ### Fixed
 - **The .rpm did not trust the release key when it installed (2.0.7 meant to).** The rpm database is locked while a package installs, so the import silently failed and the first update still asked "Importing OpenPGP key … Is this ok?". The import now runs just after the install, once the database is free.

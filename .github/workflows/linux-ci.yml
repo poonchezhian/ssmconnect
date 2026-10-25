@@ -45,6 +45,7 @@ jobs:
         run: |
           test "linux-v$(cat VERSION)" = "${GITHUB_REF_NAME}"
           grep -q "^## \[$(cat VERSION)\]" CHANGELOG.md
+          grep -q "^## $(cat VERSION)\$" ../wiki/Linux-Release-Notes.md
       - run: desktop-file-validate data/*.desktop && appstreamcli validate --no-net data/*.metainfo.xml
 
   # Downloads Amazon's real packages and signatures and checks them against the built-in keys. If AWS ever rotates a key this turns red

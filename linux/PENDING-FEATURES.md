@@ -1,6 +1,6 @@
 # Linux edition: pending features
 
-What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-25 (Linux 2.0.6, compared with Windows 2.0.7).
+What the Linux edition still lacks compared with the Windows app, plus open items. Last updated 2026-10-26 (Linux 2.0.9, compared with Windows 2.0.7).
 Done items move to [CHANGELOG.md](CHANGELOG.md); delete them from here.
 
 ## Features
@@ -8,7 +8,6 @@ Ported from Windows 2.0.x: see "Done recently". What is left needs a person with
 - [ ] **Try the copy-files window against real servers**: copying a folder between two servers, Stop, replacing existing files, switching to another user with and without a sudo password (the password helper in `/tmp/.ssc-*` must be gone afterwards). The layout was checked on screen (2026-10-25); the data path is covered by tests that use a stand-in `ssh`.
 - [ ] **Try the usage labels with a real AWS role**, with and without permission to run `ssm:SendCommand` (dashes and the one-hour back-off), and on a Windows server. The labels and colours were checked on screen with sample readings.
 - [ ] **Try the login check against real servers** (wrong user, wrong key, rebuilt server) and look at the "Which key file is this?" prompt on screen.
-- [ ] **Verify the tray icon on a real tray.** Added in 0.5.0 but only tested on a desktop without a tray (stock GNOME). Check it on KDE or GNOME with the AppIndicator extension: icon, tooltip, menu entries, "needs attention" state.
 
 ## Decided not to port (revisit if wanted)
 - **Organization sidebar (Windows 2.0.0).** The Linux window already has the account switcher in the band, the organization chips, filters and search, and the three status pills; a sidebar would use width the cards need.
@@ -17,7 +16,7 @@ Ported from Windows 2.0.x: see "Done recently". What is left needs a person with
 - **Whole-card tint and usage bars on the status row.** Linux keeps the coloured left strip and a separate row of usage labels (the look checked on screen on 2026-10-25).
 
 ## Release process
-- [ ] Add the release-notes entry (wiki) and the README size figure automatically instead of by hand. The first release that exercises the new CI steps (`dist/` swap and wiki sync) should be checked.
+- [ ] The README size figure ("about 11 MB") is still checked by hand. The wiki sync and `dist/` swap are automatic, and CI now refuses a tag whose version has no entry in `wiki/Linux-Release-Notes.md`.
 
 ## Packaging (not in Windows, found while comparing)
 - [ ] The `.rpm` is built on Fedora (`fc44`) and needs glibc 2.39+. Tested 2026-10-20 in containers: installs on AlmaLinux 10 (RHEL 10) and openSUSE Tumbleweed; fails on AlmaLinux 9 (RHEL 9, also needs libadwaita 1.5) and openSUSE Leap 15.6 (glibc). Decide whether RHEL 9 / Leap are worth a separate build (older toolchain, newer libadwaita unavailable there).
@@ -25,6 +24,7 @@ Ported from Windows 2.0.x: see "Done recently". What is left needs a person with
 - [ ] Only `x86_64`/`amd64`. No arm64 build.
 
 ## Done recently
+- Tray icon checked on KDE by the user (2026-10-26): works. System updates through dnf fixed in 2.0.7 to 2.0.9 (repo index no longer asks about its key, the .rpm trusts the release key, the repo is checked every 6 hours).
 - A way to look at the running app without a desktop: run it on a GTK Broadway display (`gtk4-broadwayd :9`, `GDK_BACKEND=broadway BROADWAY_DISPLAY=:9 GTK_USE_PORTAL=0 ADW_DISABLE_PORTAL=1`) with a throw-away `HOME` that holds a sample config and a stand-in `aws`, and take a screenshot of `http://127.0.0.1:8089/` with Chrome's debugging port. It found the missing-cards bug fixed in 2.0.6.
 - Ported from Windows 2.0.x (Linux 2.0.0 to 2.0.6, 2026-10-25): sign-in in the user's own browser with a CLI fallback and link check; local AWS emulator settings ignored; 30-second flap rule; login check before Terminal, Files and sftp; CPU, memory and disk labels with Preferences switches and *Refresh usage*; two-pane *Copy files between servers* with switch user through sudo and no root; OS logos; filters, search and colour key. Released as 2.0.5; 2.0.6 fixes cards missing from the dashboard.
 - Every vendor-supported OS release is covered: native packages tested in containers on Fedora 43/44, RHEL 10, Leap 16, Tumbleweed, Ubuntu 24.04/26.04, Debian 13; a Flatpak for RHEL 8/9, Ubuntu 22.04, Mint 21, Debian 12 (1.1.0).
