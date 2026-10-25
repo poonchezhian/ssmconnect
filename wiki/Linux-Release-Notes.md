@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.2
+- **See how busy each server is.** Every server card shows CPU, memory and disk use as small green, amber or red labels (under 60%, 60 to 85%, above), and its size on the second line. SSMConnect asks the server through Session Manager with a short read-only command, so your AWS role needs to be allowed to run commands there; without that the labels stay as dashes. Connected servers refresh about every 5 minutes; production servers only when you choose **Servers > Refresh usage** (or switch it on in Preferences). An account that is refused is left alone for an hour.
+
 ## 2.0.1
 - **The login is checked before a tool opens.** A green card only meant the secure tunnel was up. Now, before Terminal, Files or sftp opens, SSMConnect finds the key that belongs to the server, tests which login user it accepts, saves what works and refreshes the `ssh ssc-...` entries. No more terminal windows that close on "Permission denied". If no key fits it asks you for one; if the server does not answer it says so and lets you open the tool anyway.
 

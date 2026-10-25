@@ -69,6 +69,12 @@ pub fn show(app: &Rc<App>, parent: &impl IsA<gtk::Widget>) {
     let c = combo("Files button", "How the server's files are opened for exchange over SFTP.", &modes, keys.iter().position(|k| *k == cfg.files_mode).unwrap_or(0));
     { let a = app.clone(); c.connect_selected_notify(move |r| { let k = keys[r.selected() as usize].to_string(); change(&a, |c| c.files_mode = k); }); }
     g.add(&c);
+    let s = switch("Show how busy my servers are", "Reads processor, memory and disk use of connected servers about every 5 minutes with a read-only command run through Session Manager. Needs permission to run commands; without it the numbers stay as dashes. Servers > Refresh usage reads them now.", cfg.read_usage);
+    { let a = app.clone(); s.connect_active_notify(move |r| { let on = r.is_active(); change(&a, |c| c.read_usage = on); }); }
+    g.add(&s);
+    let s = switch("...also on production servers", "Off by default so nothing runs on production unless you ask (Refresh usage still does).", cfg.read_usage_on_prod);
+    { let a = app.clone(); s.connect_active_notify(move |r| { let on = r.is_active(); change(&a, |c| c.read_usage_on_prod = on); }); }
+    g.add(&s);
     let p = adw::SpinRow::with_range(1024.0, 64000.0, 1.0);
     p.set_title("First local port for new servers");
     p.set_subtitle("Each server gets its own local port, counting up from here. Servers you already saved keep theirs.");

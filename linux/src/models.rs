@@ -80,6 +80,11 @@ pub struct AppConfig {
     /// First local port offered to new servers
     #[serde(default = "first_port")]
     pub first_port: u16,
+    /// Read processor, memory and disk use of connected servers about every five minutes (needs permission to run SSM commands)
+    #[serde(default = "yes")]
+    pub read_usage: bool,
+    /// ...also on production servers (off: use Refresh usage when you want them)
+    pub read_usage_on_prod: bool,
 }
 
 fn auto() -> String { "auto".into() }
@@ -88,7 +93,7 @@ fn first_port() -> u16 { 2201 }
 impl Default for AppConfig {
     fn default() -> Self {
         Self { profile: String::new(), region: String::new(), tunnels: vec![], aliases: BTreeMap::new(), selected_account: String::new(), autostart_connections: true, ssh_integration: true,
-               check_updates: true, strict_host_keys: false, terminal: String::new(), rdp_client: String::new(), files_mode: "auto".into(), first_port: 2201 }
+               check_updates: true, strict_host_keys: false, terminal: String::new(), rdp_client: String::new(), files_mode: "auto".into(), first_port: 2201, read_usage: true, read_usage_on_prod: false }
     }
 }
 

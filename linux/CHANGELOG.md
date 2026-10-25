@@ -6,6 +6,11 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.2] - 2026-10-25
+### Added
+- **Processor, memory and disk use on every server card** (from Windows 2.0.0 to 2.0.5), as three small coloured labels: green under 60%, amber 60 to 85%, red above. The card's second line also shows the size (vCPUs, memory, disk). The numbers come from a short read-only command run on the server through Session Manager (`AWS-RunShellScript`, `AWS-RunPowerShellScript` on Windows); it needs permission to run SSM commands, and without it the labels stay as dashes (hover for the reason). Connected servers are read about every 5 minutes, production servers only when you choose *Servers > Refresh usage* (or switch it on in Preferences); an account whose role is refused is left alone for an hour. Readings are kept in `~/.local/state/ssmconnect/usage.json`.
+- Preferences: *Show how busy my servers are* and *...also on production servers*.
+
 ## [2.0.1] - 2026-10-25
 ### Added
 - **Login check** (from Windows 2.0.2 and 2.0.4). A green card only meant the secure tunnel was up; the login (user and key) was never checked, so a wrong one ended in a terminal window that closed with "Permission denied". Before Terminal, Files and *Open sftp in a terminal* open, SSMConnect now finds the key that belongs to the server (the saved file, else the key on this computer that matches the server's AWS key pair by fingerprint or name), tries the login users that fit (only the server's own operating-system user when it is known; otherwise `ec2-user`, `ubuntu`, `admin`, `centos`, `fedora`, `rocky`, `opc`), never asks for a password, and saves the user and key that work (the `ssh ssc-...` entries are rewritten). A combination the server refused is not tried twice. If no key fits you are asked to pick one; if the server does not answer, or its identity changed, you are told why and can open the tool anyway. A "Checking the login..." message shows meanwhile.

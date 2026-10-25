@@ -101,3 +101,13 @@ button.abtn-more { border-radius: 7px; padding: 3px 6px; min-height: 22px; }
 .ssm.dark .ssm-bar button.plain { background: alpha(white, .1); color: @window_fg_color; }
 .ssm-bar button.main { background: #0d9488; color: white; }
 .ssm-bar button.main:hover { background: #0f766e; }
+
+/* processor, memory and disk use on a server card: green under 60%, amber 60 to 85%, red above */
+.scard .ubar { border-radius: 6px; padding: 1px 8px; font-size: 8pt; font-weight: 600; background: #e4e4e4; color: #373737; }
+.scard .ubar.ok { background: #ceeed6; color: #005523; }
+.scard .ubar.warn { background: #ffeaba; color: #734100; }
+.scard .ubar.bad { background: #fad6d6; color: #910014; }
+.ssm.dark .scard .ubar { background: alpha(white, .1); color: alpha(@window_fg_color, .7); }
+.ssm.dark .scard .ubar.ok { background: alpha(#22aa50, .25); color: #7ee2a0; }
+.ssm.dark .scard .ubar.warn { background: alpha(#f0aa14, .25); color: #ffd36b; }
+.ssm.dark .scard .ubar.bad { background: alpha(#cd2832, .3); color: #ff9aa3; }

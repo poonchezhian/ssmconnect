@@ -119,6 +119,7 @@ impl App {
         self.add_action("preferences", |a| { let w = a.show_window(); super::preferences::show(a, &w.win); });
         self.add_action("identities", |a| { let w = a.show_window(); super::identities::show(a, &w.win); });
         self.add_action("scan", |a| a.scan_now());
+        self.add_action("refresh-usage", |a| a.show_window().refresh_usage(true));
         self.add_action("changes", |a| a.show_changes());
         self.add_action("check-updates", |a| a.check_updates(true));
         self.add_action("open-log", |a| if paths::log_path().exists() { launchers::open_file(&paths::log_path().to_string_lossy()) } else { a.toast("There is no log file yet.") });

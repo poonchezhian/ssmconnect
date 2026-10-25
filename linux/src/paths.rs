@@ -27,6 +27,7 @@ pub fn applications_dir() -> PathBuf { xdg("XDG_DATA_HOME", ".local/share").join
 pub fn config_path() -> PathBuf { config_dir().join("config.json") }
 pub fn status_path() -> PathBuf { state_dir().join("status.json") }
 pub fn discovery_path() -> PathBuf { config_dir().join("discovery.json") }
+pub fn usage_path() -> PathBuf { state_dir().join("usage.json") }
 pub fn log_path() -> PathBuf { state_dir().join("ssmconnect.log") }
 pub fn aws_dir() -> PathBuf { home().join(".aws") }
 /// An environment setting is followed only while the file it names exists; a leftover value (a removed local emulator) falls back to the standard file.

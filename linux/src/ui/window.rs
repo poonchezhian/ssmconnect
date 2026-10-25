@@ -3,7 +3,7 @@
 use super::app::App;
 use super::common::{clear_box, confirm, in_background, pill, set_pill};
 use crate::models::{AppConfig, State, TunnelConfig, TunnelStatus};
-use crate::{aws_cli, aws_profiles as ap, config_store, known_hosts, launchers, login_check, sso, ssh_config};
+use crate::{usage, aws_cli, aws_profiles as ap, config_store, known_hosts, launchers, login_check, sso, ssh_config};
 use adw::prelude::*;
 use gtk::{gdk, gio, glib};
 use std::cell::{Cell, RefCell};
@@ -14,6 +14,8 @@ struct ServerRow {
     card: gtk::Box,
     line: gtk::Label,
     status: gtk::Label,
+    /// processor, memory, disk
+    bars: [gtk::Label; 3],
     buttons: Vec<(&'static str, gtk::Button)>,
     tunnel: TunnelConfig,
 }
@@ -40,6 +42,9 @@ pub struct Dashboard {
     clip_token: Cell<u32>,
     /// alias -> has its identity been confirmed (filled in the background)
     trusted: RefCell<BTreeMap<String, bool>>,
+    /// last readings of processor, memory and disk use (usage.json)
+    usage: RefCell<usage::UsageCache>,
+    usage_busy: Cell<bool>,
 }
 
 impl Dashboard {
@@ -132,7 +137,7 @@ impl Dashboard {
         win.set_content(Some(&toasts));
 
         let d = Rc::new(Dashboard { win: win.clone(), app: Rc::downgrade(app), cfg: RefCell::new(AppConfig::default()), rows: RefCell::new(vec![]), toasts, stack, switch_title, switch_avatar,
-            switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0), trusted: RefCell::new(BTreeMap::new()) });
+            switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0), trusted: RefCell::new(BTreeMap::new()), usage: RefCell::new(usage::load()), usage_busy: Cell::new(false) });
 
         for (label, css, f) in [("Start", "go", Dashboard::start as fn(&Rc<Dashboard>)), ("Stop", "halt", Dashboard::stop), ("Restart", "plain", Dashboard::restart)] {
             let b = gtk::Button::builder().label(label).width_request(124).build();
@@ -160,6 +165,10 @@ impl Dashboard {
         glib::spawn_future_local(async move { while rx.recv().await.is_ok() { dd.refresh_status(); } });
         let dd = d.clone();
         glib::timeout_add_seconds_local(3, move || { dd.refresh_status(); glib::ControlFlow::Continue });
+        let dd = d.clone();
+        glib::timeout_add_seconds_local(300, move || { dd.refresh_usage(false); glib::ControlFlow::Continue });
+        let dd = d.clone();
+        glib::timeout_add_seconds_local_once(25, move || dd.refresh_usage(false));
         d.reload();
         d
     }
@@ -193,7 +202,7 @@ impl Dashboard {
         };
         sub("_File", &[("Preferences", "app.preferences"), ("Add to application menu", "app.create-launcher"), ("Hide window", "win.hide"), ("Quit and close all connections", "app.quit")]);
         sub("_AWS", &[("Add AWS account…", "app.add-account"), ("Manage accounts…", "app.manage-accounts"), ("Sign in again", "app.sign-in-again")]);
-        sub("_Servers", &[("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("What changed since the last scan", "app.changes")]);
+        sub("_Servers", &[("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("Refresh usage", "app.refresh-usage"), ("What changed since the last scan", "app.changes")]);
         sub("_Help", &[("Check for updates", "app.check-updates"), ("Open log file", "app.open-log"), ("Clean up this user's settings…", "app.cleanup"), ("About SSMConnect", "app.about")]);
         bar
     }
@@ -359,6 +368,16 @@ impl Dashboard {
         text.append(&line);
         top.append(&text);
         card.append(&top);
+        // use of processor, memory and disk (dashes until read)
+        let usage_row = gtk::Box::new(gtk::Orientation::Horizontal, 6);
+        let bars = ["CPU", "Memory", "Disk"].map(|n| {
+            let l = gtk::Label::builder().label(format!("{n} -")).build();
+            l.add_css_class("ubar");
+            l.set_tooltip_text(Some("Reading... Needs permission to run commands through Session Manager."));
+            usage_row.append(&l);
+            l
+        });
+        card.append(&usage_row);
         // bottom: status pill on the left, the action buttons on the right
         let bottom = gtk::Box::new(gtk::Orientation::Horizontal, 8);
         let status = gtk::Label::builder().label("●  Stopped").valign(gtk::Align::Center).build();
@@ -418,7 +437,7 @@ impl Dashboard {
         let t5 = t.clone();
         mk("sftp", Box::new(move |d| { let a3 = a3.clone(); d.checked(&t5, move |d| if let Err(e) = launchers::open_sftp_terminal(&a3) { d.toast(&e); }); }));
         card.insert_action_group("row", Some(&group));
-        ServerRow { card, line, status, buttons, tunnel: t.clone() }
+        ServerRow { card, line, status, bars, buttons, tunnel: t.clone() }
     }
 
     // Unavailable buttons are dimmed, not disabled, so their hover note still shows and a click explains why.
@@ -482,6 +501,25 @@ impl Dashboard {
         });
     }
 
+    /// Reads processor, memory and disk use of the connected servers in the background. Automatic reads follow the Preferences; a manual one
+    /// (`force`) reads every connected server, production included.
+    pub fn refresh_usage(self: &Rc<Self>, force: bool) {
+        let Some(app) = self.app() else { return };
+        let cfg = self.cfg.borrow().clone();
+        if (!force && !cfg.read_usage) || self.usage_busy.get() { if force { self.toast("Already reading..."); } return; }
+        let connected: std::collections::HashSet<String> = app.manager.snapshot().iter().filter(|s| s.state == State::Connected).map(|s| s.instance_id.clone()).collect();
+        if connected.is_empty() { if force { self.toast("No server is connected yet."); } return; }
+        self.usage_busy.set(true);
+        if force { self.toast("Reading how busy the servers are..."); }
+        let (tunnels, d) = (cfg.tunnels.clone(), self.clone());
+        in_background(move || usage::refresh(&tunnels, &connected, &cfg, force), move |n| {
+            d.usage_busy.set(false);
+            *d.usage.borrow_mut() = usage::load();
+            d.refresh_status();
+            if force { d.toast(&if n > 0 { format!("Read {n} server(s).") } else { "Nothing could be read. Your AWS role may not be allowed to run commands through Session Manager.".to_string() }); }
+        });
+    }
+
     pub fn refresh_status(self: &Rc<Self>) {
         let Some(app) = self.app() else { return };
         let status = app.manager.snapshot();
@@ -489,7 +527,7 @@ impl Dashboard {
         let (mut up, mut n) = (0, 0);
         for sr in self.rows.borrow().iter() {
             let st = status.iter().find(|s| s.instance_id == sr.tunnel.instance_id && s.local_port == sr.tunnel.local_port);
-            update_row(sr, st, &tools);
+            update_row(sr, st, &tools, self.usage.borrow().servers.get(&sr.tunnel.instance_id));
             n += 1;
             up += usize::from(st.is_some_and(|s| s.state == State::Connected));
         }
@@ -569,7 +607,7 @@ fn initial(name: Option<&str>) -> String {
     name.and_then(|n| n.trim().chars().next()).map(|c| c.to_uppercase().to_string()).unwrap_or_else(|| "+".into())
 }
 
-fn update_row(sr: &ServerRow, st: Option<&TunnelStatus>, tools: &launchers::Tools) {
+fn update_row(sr: &ServerRow, st: Option<&TunnelStatus>, tools: &launchers::Tools, use_: Option<&usage::Usage>) {
     let t = &sr.tunnel;
     let state = st.map(|s| s.state).unwrap_or(State::Disabled);
     let up = state == State::Connected;
@@ -591,7 +629,18 @@ fn update_row(sr: &ServerRow, st: Option<&TunnelStatus>, tools: &launchers::Tool
     sr.line.remove_css_class("bad");
     match problem {
         Some(s) => { sr.line.set_text(&s.message); if state == State::Error { sr.line.add_css_class("bad"); } }
-        None => sr.line.set_text(&format!("{what}  -  local port {}", t.local_port)),
+        None => {
+            let size = use_.filter(|u| u.cpus > 0).map(|u| format!("  -  {} vCPU, {} memory, {} disk", u.cpus, usage::size_text(u.mem_total_mb), format!("{} GB", u.disk_total_gb))).unwrap_or_default();
+            sr.line.set_text(&format!("{what}{size}  -  port {}", t.local_port));
+        }
+    }
+    let readings = use_.map(|u| [("CPU", u.cpu_pct), ("Memory", u.mem_pct), ("Disk", u.disk_pct)]);
+    for (i, l) in sr.bars.iter().enumerate() {
+        for c in ["ok", "warn", "bad"] { l.remove_css_class(c); }
+        match readings {
+            Some(r) => { l.set_text(&format!("{} {}%", r[i].0, r[i].1)); l.add_css_class(usage::level(r[i].1)); l.set_tooltip_text(Some(&format!("{} in use, read {} minute(s) ago.", r[i].0, ((crate::util::now() - use_.map(|u| u.read_at).unwrap_or(0.0)) / 60.0).max(0.0) as u64))); }
+            None => { l.set_text(&format!("{} -", ["CPU", "Memory", "Disk"][i])); l.set_tooltip_text(Some("Not read yet. Reading needs a connected server and permission to run commands through Session Manager (Servers > Refresh usage).")); }
+        }
     }
     for (label, b) in &sr.buttons {
         let (ok, why) = if !up { (false, "Waiting for the connection to open (see the status line).".to_string()) } else { match *label {

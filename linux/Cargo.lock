@@ -2489,7 +2489,7 @@ dependencies = [
 
 [[package]]
 name = "ssmconnect"
-version = "2.0.1"
+version = "2.0.2"
 dependencies = [
  "async-channel",
  "base64",

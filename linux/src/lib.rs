@@ -30,6 +30,7 @@ pub mod status_store;
 pub mod tunnel_manager;
 pub mod ui;
 pub mod update_checker;
+pub mod usage;
 pub mod util;
 pub mod validator;
 
