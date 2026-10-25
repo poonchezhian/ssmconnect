@@ -2,6 +2,11 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.4
+- **Operating-system logos** on every server card (Ubuntu, Debian, Red Hat, Amazon Linux, CentOS, Rocky, AlmaLinux, Fedora, SUSE, Alpine, Windows).
+- **Filter and search the dashboard**: All, Connected, Needs attention or PROD only, plus a search box.
+- **A colour key** under the cards explains the colours and the usage labels.
+
 ## 2.0.3
 - **Copy files between servers.** **Servers > Copy files between servers…** opens two panes, one server each. Pick a server on each side, open folders, select files or folders and press Copy in either direction. You get a progress bar, a Stop button and a warning before anything is replaced. The files pass through your computer, so the servers never need to reach each other and nothing extra has to be installed on them.
 - **Switch user** acts as another user on the server through `sudo`, signed in with the saved key. If sudo asks for a password, type the default user's password in the box.

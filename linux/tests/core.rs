@@ -222,3 +222,13 @@ fn sign_in_opens_the_address_the_cli_prints() {
     std::thread::sleep(std::time::Duration::from_millis(300));
     assert!(std::fs::read_to_string(h.join("opened.txt")).unwrap_or_default().contains("user_code=ABCD-EFGH"));
 }
+
+#[test]
+fn os_logo_follows_the_operating_system() {
+    use ssmconnect::os_icons::{key_for, png};
+    for (name, win, key) in [("Ubuntu", false, "ubuntu"), ("Amazon Linux", false, "amazon-linux"), ("Red Hat Enterprise Linux", false, "rhel"),
+                             ("Microsoft Windows Server 2022", true, "windows"), ("", true, "windows"), ("", false, "linux"), ("AlmaLinux", false, "almalinux"), ("SLES", false, "suse")] {
+        assert_eq!(key_for(name, win), key, "{name}");
+    }
+    assert!(png("ubuntu").starts_with(b"\x89PNG") && png("whatever").starts_with(b"\x89PNG"));
+}

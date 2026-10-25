@@ -45,6 +45,9 @@ pub struct Dashboard {
     /// last readings of processor, memory and disk use (usage.json)
     usage: RefCell<usage::UsageCache>,
     usage_busy: Cell<bool>,
+    /// "all", "connected", "attention" or "prod"
+    filter: RefCell<String>,
+    search: RefCell<String>,
 }
 
 impl Dashboard {
@@ -120,6 +123,21 @@ impl Dashboard {
         let (p_conn, p_signin, p_tools) = (pill("Connections"), pill("AWS sign-in"), pill("AWS tools"));
         for p in [&p_conn, &p_signin, &p_tools] { pills.append(p); }
         main.append(&pills);
+        // show only some servers: by state, and by what is typed in the search box
+        let find = gtk::Box::new(gtk::Orientation::Horizontal, 8);
+        let filter_box = gtk::Box::new(gtk::Orientation::Horizontal, 0);
+        filter_box.add_css_class("linked");
+        let mut first: Option<gtk::ToggleButton> = None;
+        let filter_buttons: Vec<(String, gtk::ToggleButton)> = [("all", "All"), ("connected", "Connected"), ("attention", "Needs attention"), ("prod", "PROD only")].iter().map(|(id, label)| {
+            let b = gtk::ToggleButton::builder().label(*label).active(*id == "all").build();
+            if let Some(f) = &first { b.set_group(Some(f)); } else { first = Some(b.clone()); }
+            filter_box.append(&b);
+            (id.to_string(), b)
+        }).collect();
+        find.append(&filter_box);
+        let search = gtk::SearchEntry::builder().placeholder_text("Search servers").hexpand(true).halign(gtk::Align::End).width_request(240).build();
+        find.append(&search);
+        main.append(&find);
         let summary = gtk::Label::builder().xalign(0.0).wrap(true).margin_top(4).build();
         summary.add_css_class("ssm-summary");
         main.append(&summary);
@@ -127,6 +145,18 @@ impl Dashboard {
         main.append(&chips);
         let groups = gtk::Box::new(gtk::Orientation::Vertical, 12);
         main.append(&groups);
+        // the colour key: what the card colours and the use labels mean
+        let legend = gtk::Box::new(gtk::Orientation::Horizontal, 14);
+        legend.add_css_class("legend");
+        legend.set_margin_top(8);
+        for (cls, text) in [("green", "Connected"), ("amber", "Connecting"), ("red", "Problem"), ("grey", "Stopped")] {
+            let l = gtk::Label::builder().use_markup(true).label(format!("<span foreground=\"{}\">\u{25CF}</span>  {text}", match cls { "green" => "#22aa50", "amber" => "#f0aa14", "red" => "#cd2832", _ => "#969696" })).build();
+            legend.append(&l);
+        }
+        let l = gtk::Label::new(Some("CPU, memory, disk:  under 60%  \u{00B7}  60 to 85%  \u{00B7}  over 85%"));
+        l.set_hexpand(true); l.set_halign(gtk::Align::End);
+        legend.append(&l);
+        main.append(&legend);
         view.set_content(Some(&stack));
 
         // the bottom bar: connection controls on the left, the main action on the right
@@ -137,7 +167,7 @@ impl Dashboard {
         win.set_content(Some(&toasts));
 
         let d = Rc::new(Dashboard { win: win.clone(), app: Rc::downgrade(app), cfg: RefCell::new(AppConfig::default()), rows: RefCell::new(vec![]), toasts, stack, switch_title, switch_avatar,
-            switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0), trusted: RefCell::new(BTreeMap::new()), usage: RefCell::new(usage::load()), usage_busy: Cell::new(false) });
+            switch_pop, switch_box, banner: banner.clone(), banner_cb: RefCell::new(None), p_conn, p_signin, p_tools, summary, chips, groups, clip_token: Cell::new(0), trusted: RefCell::new(BTreeMap::new()), usage: RefCell::new(usage::load()), usage_busy: Cell::new(false), filter: RefCell::new("all".into()), search: RefCell::new(String::new()) });
 
         for (label, css, f) in [("Start", "go", Dashboard::start as fn(&Rc<Dashboard>)), ("Stop", "halt", Dashboard::stop), ("Restart", "plain", Dashboard::restart)] {
             let b = gtk::Button::builder().label(label).width_request(124).build();
@@ -169,8 +199,41 @@ impl Dashboard {
         glib::timeout_add_seconds_local(300, move || { dd.refresh_usage(false); glib::ControlFlow::Continue });
         let dd = d.clone();
         glib::timeout_add_seconds_local_once(25, move || dd.refresh_usage(false));
+        for (id, b) in filter_buttons {
+            let dd = d.clone();
+            b.connect_toggled(move |b| if b.is_active() { *dd.filter.borrow_mut() = id.clone(); dd.apply_filter(); });
+        }
+        let dd = d.clone();
+        search.connect_search_changed(move |e| { *dd.search.borrow_mut() = e.text().trim().to_lowercase(); dd.apply_filter(); });
         d.reload();
         d
+    }
+
+    /// Shows only the servers that match the chosen filter and the search text; an account heading disappears when none of its servers do.
+    fn apply_filter(self: &Rc<Self>) {
+        let Some(app) = self.app() else { return };
+        let (filter, search) = (self.filter.borrow().clone(), self.search.borrow().clone());
+        let status = app.manager.snapshot();
+        for sr in self.rows.borrow().iter() {
+            let t = &sr.tunnel;
+            let state = status.iter().find(|s| s.instance_id == t.instance_id && s.local_port == t.local_port).map(|s| s.state);
+            let by_state = match filter.as_str() {
+                "connected" => state == Some(State::Connected),
+                "attention" => matches!(state, Some(State::Error | State::Retrying | State::Starting)),
+                "prod" => t.is_prod(),
+                _ => true,
+            };
+            let by_text = search.is_empty() || [&t.name, &t.instance_id, &t.environment, &t.os_name, &t.profile].iter().any(|f| f.to_lowercase().contains(&search));
+            if let Some(cell) = sr.card.parent() { cell.set_visible(by_state && by_text); }
+        }
+        let mut g = self.groups.first_child();
+        while let Some(group) = g {
+            g = group.next_sibling();
+            let Some(cards) = group.last_child().and_downcast::<gtk::FlowBox>() else { continue };
+            let (mut any, mut c) = (false, cards.first_child());
+            while let Some(cell) = c { any |= cell.is_visible(); c = cell.next_sibling(); }
+            group.set_visible(any);
+        }
     }
 
     /// Looks up (off the main thread) which Linux servers have a confirmed identity, and offers to review the ones that do not.
@@ -348,7 +411,7 @@ impl Dashboard {
         card.set_size_request(300, -1);
         // top: operating-system badge, name, environment tag, second line
         let top = gtk::Box::new(gtk::Orientation::Horizontal, 12);
-        top.append(&super::common::os_avatar(t.is_rdp()));
+        top.append(&super::common::os_logo(&t.os_name, t.is_rdp()));
         let text = gtk::Box::new(gtk::Orientation::Vertical, 3);
         text.set_hexpand(true);
         let name_row = gtk::Box::new(gtk::Orientation::Horizontal, 8);
@@ -531,6 +594,7 @@ impl Dashboard {
             n += 1;
             up += usize::from(st.is_some_and(|s| s.state == State::Connected));
         }
+        self.apply_filter();
         let total_up = status.iter().filter(|s| s.state == State::Connected).count();
         let problems = status.iter().filter(|s| matches!(s.state, State::Error | State::Retrying)).count();
         let kind = if n == 0 { "" } else if up == n { "ok" } else if problems > 0 { "err" } else { "warn" };

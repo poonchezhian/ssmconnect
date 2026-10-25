@@ -19,6 +19,7 @@ pub mod launchers;
 pub mod login_check;
 pub mod models;
 pub mod netcheck;
+pub mod os_icons;
 pub mod paths;
 pub mod prereq_installer;
 pub mod sso;

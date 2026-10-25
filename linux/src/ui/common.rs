@@ -53,6 +53,21 @@ pub fn message(parent: &impl IsA<gtk::Widget>, heading: &str, body: &str) {
 pub fn esc(s: &str) -> String { glib::markup_escape_text(s).to_string() }
 
 /// The round operating-system badge on a server card: a blue tile of four squares for Windows, a lilac prompt (>_) for Linux.
+pub fn os_logo(os_name: &str, windows: bool) -> gtk::Widget {
+    let bytes = gtk::glib::Bytes::from_static(crate::os_icons::png(crate::os_icons::key_for(os_name, windows)));
+    match gtk::gdk::Texture::from_bytes(&bytes) {
+        Ok(t) => {
+            let pic = gtk::Picture::for_paintable(&t);
+            pic.set_content_fit(gtk::ContentFit::Contain);
+            pic.set_size_request(38, 38);
+            pic.set_valign(gtk::Align::Start);
+            pic.set_can_shrink(true);
+            pic.upcast()
+        }
+        Err(_) => os_avatar(windows).upcast(),
+    }
+}
+
 pub fn os_avatar(windows: bool) -> gtk::DrawingArea {
     let a = gtk::DrawingArea::builder().content_width(38).content_height(38).valign(gtk::Align::Start).build();
     a.set_draw_func(move |_, cr, w, h| {

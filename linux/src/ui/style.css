@@ -111,3 +111,6 @@ button.abtn-more { border-radius: 7px; padding: 3px 6px; min-height: 22px; }
 .ssm.dark .scard .ubar.ok { background: alpha(#22aa50, .25); color: #7ee2a0; }
 .ssm.dark .scard .ubar.warn { background: alpha(#f0aa14, .25); color: #ffd36b; }
 .ssm.dark .scard .ubar.bad { background: alpha(#cd2832, .3); color: #ff9aa3; }
+
+.legend { font-size: 8.5pt; color: #5e6e72; }
+.ssm.dark .legend { color: alpha(@window_fg_color, .65); }

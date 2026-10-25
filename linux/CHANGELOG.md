@@ -6,6 +6,12 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.4] - 2026-10-25
+### Added
+- **Operating-system logos** on the server cards (Ubuntu, Debian, Red Hat, Amazon Linux, CentOS, Rocky, AlmaLinux, Fedora, SUSE, Alpine, Windows, generic Linux), chosen from the operating-system name AWS reports; built into the program (`data/os`).
+- **Filters and search** above the cards (Windows 2.0.0): *All*, *Connected*, *Needs attention*, *PROD only*, and a search box that matches name, instance id, environment, system and account. An account heading hides when none of its servers match.
+- **A colour key** under the cards: what green, amber, red and grey mean, and the 60% / 85% limits of the CPU, memory and disk labels.
+
 ## [2.0.3] - 2026-10-25
 ### Added
 - **Copy files between servers** (Windows 1.0.46 to 2.0.5): *Servers > Copy files between servers…* opens two panes, each one a server. Pick a server on each side (nothing connects until you pick), open folders, select files or folders and copy in either direction, with a progress bar, **Stop**, and a warning listing what would be replaced. The data goes as a `tar` stream from one server through this computer to the other in 128 KB blocks over the open connections (`ssh` with the saved key; nothing extra on the servers beyond `tar`, `find` and `du`), so the servers never need to reach each other. The login check runs first. One organization (company sign-in) is linked at a time, chosen at the top; only connected Linux servers are listed.
