@@ -35,6 +35,10 @@ target/release/ssmconnect --install-files --prefix %{_prefix} --destdir %{buildr
 install -Dpm644 packaging/repo/ssmconnect.repo %{buildroot}%{_sysconfdir}/yum.repos.d/ssmconnect.repo
 install -Dpm644 SIGNING-KEY.asc %{buildroot}%{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect
 
+%posttrans
+# trust the release key now, so the first update does not stop to ask about it (the updaters in GNOME Software and Discover cannot answer)
+rpm --import %{_sysconfdir}/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect >/dev/null 2>&1 || :
+
 %files
 %license %{_licensedir}/%{name}/LICENSE
 %license %{_licensedir}/%{name}/NOTICE

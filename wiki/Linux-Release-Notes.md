@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.7
+- **System updates now list SSMConnect.** `sudo dnf upgrade`, GNOME Software and Discover were skipping the update repository because of a key question they cannot answer. Fixed in the repository file and the .rpm. Installed 2.0.5 or earlier? Set `repo_gpgcheck=0` in `/etc/yum.repos.d/ssmconnect.repo` once.
+
 ## 2.0.6
 - **Fixes missing server cards.** In 2.0.4 and 2.0.5 the dashboard could show the status pills but no servers because of a bug in the new filter. Please update.
 

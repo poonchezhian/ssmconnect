@@ -6,5 +6,7 @@ name=SSMConnect for Linux
 baseurl=https://poonchezhian.github.io/ssmconnect/rpm/
 enabled=1
 gpgcheck=1
-repo_gpgcheck=1
+# Every package is checked against the key (gpgcheck). The repository index is not, because dnf then asks a question about its key that
+# background and graphical updaters cannot answer, and they quietly leave the repository out of the list of updates.
+repo_gpgcheck=0
 gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-ssmconnect
