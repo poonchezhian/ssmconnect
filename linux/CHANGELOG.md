@@ -6,6 +6,11 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.6] - 2026-10-25
+### Fixed
+- **The server cards could disappear from the dashboard in 2.0.4 and 2.0.5.** The new filter code hid a group of cards and then asked the cards whether they were visible; GTK answers "no" for anything inside a hidden group, so the group stayed hidden and the dashboard showed the status pills but no servers. Which cards show is now worked out from the filter and the search text only. Found by looking at the running app; the automatic tests cannot see it. Update from 2.0.4 or 2.0.5.
+- The "Switch user" box of the copy-files window no longer cuts its hint off.
+
 ## [2.0.5] - 2026-10-25
 Same program as 2.0.4, which was tagged but never released because its automatic tests failed on Ubuntu's CI machine.
 ### Fixed

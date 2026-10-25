@@ -2,6 +2,9 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.6
+- **Fixes missing server cards.** In 2.0.4 and 2.0.5 the dashboard could show the status pills but no servers because of a bug in the new filter. Please update.
+
 ## 2.0.5
 - The 2.0.x features below, released. 2.0.4 was tagged but its automatic tests failed on one test helper (not the program), so it was never published; 2.0.5 is the same program.
 

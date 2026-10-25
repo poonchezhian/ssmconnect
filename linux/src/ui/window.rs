@@ -214,7 +214,8 @@ impl Dashboard {
         let Some(app) = self.app() else { return };
         let (filter, search) = (self.filter.borrow().clone(), self.search.borrow().clone());
         let status = app.manager.snapshot();
-        for sr in self.rows.borrow().iter() {
+        let rows = self.rows.borrow();
+        let shown: Vec<bool> = rows.iter().map(|sr| {
             let t = &sr.tunnel;
             let state = status.iter().find(|s| s.instance_id == t.instance_id && s.local_port == t.local_port).map(|s| s.state);
             let by_state = match filter.as_str() {
@@ -225,14 +226,14 @@ impl Dashboard {
             };
             let by_text = search.is_empty() || [&t.name, &t.instance_id, &t.environment, &t.os_name, &t.profile].iter().any(|f| f.to_lowercase().contains(&search));
             if let Some(cell) = sr.card.parent() { cell.set_visible(by_state && by_text); }
-        }
+            by_state && by_text
+        }).collect();
+        // a group is judged from the results above, not from the widgets: a hidden group makes everything in it report "not visible"
         let mut g = self.groups.first_child();
         while let Some(group) = g {
             g = group.next_sibling();
-            let Some(cards) = group.last_child().and_downcast::<gtk::FlowBox>() else { continue };
-            let (mut any, mut c) = (false, cards.first_child());
-            while let Some(cell) = c { any |= cell.is_visible(); c = cell.next_sibling(); }
-            group.set_visible(any);
+            let any = rows.iter().zip(&shown).any(|(sr, show)| *show && sr.card.is_ancestor(&group));
+            group.set_visible(any || rows.is_empty());
         }
     }
 

@@ -60,7 +60,7 @@ impl Pane {
         let picker = gtk::DropDown::from_strings(&[PICK]);
         root.append(&picker);
         let who = gtk::Box::new(gtk::Orientation::Horizontal, 6);
-        let user = gtk::Entry::builder().placeholder_text("Act as another user (optional)").hexpand(true).build();
+        let user = gtk::Entry::builder().placeholder_text("Switch to user").hexpand(true).build();
         let password = gtk::PasswordEntry::builder().placeholder_text("sudo password").show_peek_icon(true).width_chars(14).build();
         let switch = gtk::Button::builder().label("Switch user").build();
         switch.add_css_class("abtn");
