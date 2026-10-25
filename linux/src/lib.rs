@@ -27,6 +27,7 @@ pub mod signature;
 pub mod self_update;
 pub mod ssh_config;
 pub mod status_store;
+pub mod transfer;
 pub mod tunnel_manager;
 pub mod ui;
 pub mod update_checker;

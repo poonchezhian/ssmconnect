@@ -6,6 +6,13 @@ While the major version is 0, the minor and patch numbers may change behaviour b
 
 ## [Unreleased]
 
+## [2.0.3] - 2026-10-25
+### Added
+- **Copy files between servers** (Windows 1.0.46 to 2.0.5): *Servers > Copy files between servers…* opens two panes, each one a server. Pick a server on each side (nothing connects until you pick), open folders, select files or folders and copy in either direction, with a progress bar, **Stop**, and a warning listing what would be replaced. The data goes as a `tar` stream from one server through this computer to the other in 128 KB blocks over the open connections (`ssh` with the saved key; nothing extra on the servers beyond `tar`, `find` and `du`), so the servers never need to reach each other. The login check runs first. One organization (company sign-in) is linked at a time, chosen at the top; only connected Linux servers are listed.
+- **Switch user**: act as another user on a server through `sudo -u`, staying signed in as the default user with the saved key, so no password sign-in has to be enabled. A sudo password, if needed, reaches sudo through a private helper in a mode-700 folder in `/tmp` on the server that is removed when you switch again or close the window.
+- **Root is never used**: a user named root is refused, and so is any login that turns out to have user id 0.
+- Engine in `src/transfer.rs` with tests that run the real copy through a stand-in `ssh`.
+
 ## [2.0.2] - 2026-10-25
 ### Added
 - **Processor, memory and disk use on every server card** (from Windows 2.0.0 to 2.0.5), as three small coloured labels: green under 60%, amber 60 to 85%, red above. The card's second line also shows the size (vCPUs, memory, disk). The numbers come from a short read-only command run on the server through Session Manager (`AWS-RunShellScript`, `AWS-RunPowerShellScript` on Windows); it needs permission to run SSM commands, and without it the labels stay as dashes (hover for the reason). Connected servers are read about every 5 minutes, production servers only when you choose *Servers > Refresh usage* (or switch it on in Preferences); an account whose role is refused is left alone for an hour. Readings are kept in `~/.local/state/ssmconnect/usage.json`.

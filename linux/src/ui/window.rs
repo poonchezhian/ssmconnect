@@ -202,7 +202,7 @@ impl Dashboard {
         };
         sub("_File", &[("Preferences", "app.preferences"), ("Add to application menu", "app.create-launcher"), ("Hide window", "win.hide"), ("Quit and close all connections", "app.quit")]);
         sub("_AWS", &[("Add AWS account…", "app.add-account"), ("Manage accounts…", "app.manage-accounts"), ("Sign in again", "app.sign-in-again")]);
-        sub("_Servers", &[("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("Refresh usage", "app.refresh-usage"), ("What changed since the last scan", "app.changes")]);
+        sub("_Servers", &[("Copy files between servers…", "app.file-transfer"), ("Server identities…", "app.identities"), ("Scan for new or changed servers", "app.scan"), ("Refresh usage", "app.refresh-usage"), ("What changed since the last scan", "app.changes")]);
         sub("_Help", &[("Check for updates", "app.check-updates"), ("Open log file", "app.open-log"), ("Clean up this user's settings…", "app.cleanup"), ("About SSMConnect", "app.about")]);
         bar
     }

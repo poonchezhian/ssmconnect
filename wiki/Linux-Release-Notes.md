@@ -2,6 +2,11 @@
 
 Linux releases are tagged `linux-vX.Y.Z` on the [Releases page](https://github.com/poonchezhian/ssmconnect/releases); the Windows app keeps its own versions. The complete list is `linux/CHANGELOG.md` in the source.
 
+## 2.0.3
+- **Copy files between servers.** **Servers > Copy files between servers…** opens two panes, one server each. Pick a server on each side, open folders, select files or folders and press Copy in either direction. You get a progress bar, a Stop button and a warning before anything is replaced. The files pass through your computer, so the servers never need to reach each other and nothing extra has to be installed on them.
+- **Switch user** acts as another user on the server through `sudo`, signed in with the saved key. If sudo asks for a password, type the default user's password in the box.
+- **Never root.** Typing `root`, or any account that turns out to have root rights, is refused. Only one organization is linked at a time, and only connected Linux servers are listed.
+
 ## 2.0.2
 - **See how busy each server is.** Every server card shows CPU, memory and disk use as small green, amber or red labels (under 60%, 60 to 85%, above), and its size on the second line. SSMConnect asks the server through Session Manager with a short read-only command, so your AWS role needs to be allowed to run commands there; without that the labels stay as dashes. Connected servers refresh about every 5 minutes; production servers only when you choose **Servers > Refresh usage** (or switch it on in Preferences). An account that is refused is left alone for an hour.
 

@@ -6,6 +6,7 @@ pub mod common;
 pub mod identities;
 pub mod preferences;
 pub mod server_settings;
+pub mod transfer;
 pub mod tray;
 pub mod installer;
 pub mod window;
