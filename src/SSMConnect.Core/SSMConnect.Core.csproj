@@ -2,4 +2,7 @@
   <PropertyGroup>
     <OutputType>Library</OutputType>
   </PropertyGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="SSMConnect.Core.Tests" />
+  </ItemGroup>
 </Project>

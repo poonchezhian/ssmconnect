@@ -6,6 +6,11 @@ The full list with downloads and checksums is on the [Releases page](https://git
 
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
+## Unreleased
+- **Reliable Windows connection status.** The dashboard reads the tunnel manager's live status instead of repeating Windows TCP-table queries. A temporary query failure no longer makes a healthy tunnel appear disconnected. Transient network failures retry with a capped backoff; sign-in and configuration problems still require attention.
+- **PuTTY key access repaired.** Converted keys use the current account's Windows security identifier, including Microsoft and domain accounts. Existing cached key permissions are repaired, incomplete keys are regenerated, and new keys are written atomically.
+- **Linux security fixes.** Environment labels cannot add OpenSSH configuration lines. AWS SSO and wiki publishing credentials no longer travel in process arguments.
+
 ## 2.0.7
 - **Sign-in always uses the account's own address.** Settings left behind by a local AWS emulator (such as floci or LocalStack) no longer redirect the sign-in or the connections to a local address. SSMConnect ignores `AWS_ENDPOINT_URL` settings and endpoint addresses in the AWS files, stray access keys and profile names in the environment, and an `AWS_CONFIG_FILE` that does not hold the account. The account's sign-in address and region from the standard AWS files come first.
 

@@ -5,8 +5,9 @@ use crate::aws_profiles::COMMON_REGIONS;
 use crate::models::{DiscoveredServer, TunnelConfig};
 use crate::{classifier, paths, util};
 use serde_json::Value;
-use std::io::Read;
+use std::io::{Read, Write};
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{Duration, Instant};
@@ -49,29 +50,67 @@ pub fn build_args(args: &[&str], profile: &str, region: &str) -> Result<Vec<Stri
 }
 
 pub fn run(args: &[&str], profile: &str, region: &str, timeout_s: u64) -> CliResult {
+    run_with_input(args, profile, region, timeout_s, None)
+}
+
+/// Supplies sensitive CLI JSON through a pipe rather than visible process arguments.
+pub fn run_with_input(args: &[&str], profile: &str, region: &str, timeout_s: u64, input: Option<String>) -> CliResult {
     let cmdline = match build_args(args, profile, region) { Ok(c) => c, Err(e) => return CliResult { exit_code: -1, output: String::new(), error: e } };
     let mut cmd = Command::new(&cmdline[0]);
-    cmd.args(&cmdline[1..]).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.args(&cmdline[1..]).stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() }).stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd.process_group(0);
     apply_env(&mut cmd);
     let mut child = match cmd.spawn() { Ok(c) => c, Err(e) => return CliResult { exit_code: -1, output: String::new(), error: e.to_string() } };
-    let (mut so, mut se) = (child.stdout.take().unwrap(), child.stderr.take().unwrap());
-    let t_out = std::thread::spawn(move || { let mut b = Vec::new(); let _ = so.read_to_end(&mut b); b });
-    let t_err = std::thread::spawn(move || { let mut b = Vec::new(); let _ = se.read_to_end(&mut b); b });
+    // The writer runs beside output readers so neither a full pipe nor a slow CLI can bypass the timeout.
+    let writer = input.map(|text| {
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let (send, receive) = std::sync::mpsc::channel();
+        std::thread::spawn(move || { let ok = stdin.write_all(text.as_bytes()).is_ok(); drop(stdin); let _ = send.send(ok); });
+        receive
+    });
+    let t_out = read_pipe(child.stdout.take().unwrap());
+    let t_err = read_pipe(child.stderr.take().unwrap());
     let start = Instant::now();
     let status = loop {
         match child.try_wait() {
             Ok(Some(s)) => break Some(s),
-            Ok(None) if start.elapsed() > Duration::from_secs(timeout_s) => { let _ = child.kill(); let _ = child.wait(); break None; }
+            Ok(None) if start.elapsed() > Duration::from_secs(timeout_s) => { stop_child(&mut child); break None; }
             Ok(None) => std::thread::sleep(Duration::from_millis(40)),
-            Err(_) => break None,
+            Err(_) => { stop_child(&mut child); break None; }
         }
     };
-    let out = String::from_utf8_lossy(&t_out.join().unwrap_or_default()).trim().to_string();
-    let err = String::from_utf8_lossy(&t_err.join().unwrap_or_default()).trim().to_string();
+    // Keep the same deadline after the CLI exits: descendants may still hold inherited pipe handles.
+    let remaining = || Duration::from_secs(timeout_s).saturating_sub(start.elapsed());
+    let output = t_out.recv_timeout(remaining());
+    let errors = t_err.recv_timeout(remaining());
+    let written = writer.map(|w| w.recv_timeout(remaining()));
+    if output.is_err() || errors.is_err() || matches!(written, Some(Err(_))) {
+        stop_child(&mut child);
+        return CliResult { exit_code: -1, output: String::new(), error: "Timed out waiting for the AWS CLI.".into() };
+    }
+    let out = String::from_utf8_lossy(&output.unwrap()).trim().to_string();
+    let err = String::from_utf8_lossy(&errors.unwrap()).trim().to_string();
+    let input_failed = matches!(written, Some(Ok(false)));
+    if status.is_some_and(|s| s.success()) && input_failed {
+        return CliResult { exit_code: -1, output: String::new(), error: "Could not supply private input to the AWS CLI.".into() };
+    }
     match status {
         Some(s) => CliResult { exit_code: s.code().unwrap_or(-1), output: out, error: err },
         None => CliResult { exit_code: -1, output: out, error: "Timed out waiting for the AWS CLI.".into() },
     }
+}
+
+fn read_pipe(mut pipe: impl Read + Send + 'static) -> std::sync::mpsc::Receiver<Vec<u8>> {
+    let (send, receive) = std::sync::mpsc::channel();
+    std::thread::spawn(move || { let mut bytes = Vec::new(); let _ = pipe.read_to_end(&mut bytes); let _ = send.send(bytes); });
+    receive
+}
+
+fn stop_child(child: &mut std::process::Child) {
+    // Descendants can otherwise keep stdin/stdout pipes open after the CLI is killed.
+    unsafe { libc::kill(-(child.id() as i32), libc::SIGKILL); }
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 /// Opens the browser sign-in for an SSO profile.

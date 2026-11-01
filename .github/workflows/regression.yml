@@ -1,0 +1,32 @@
+name: security-and-stability-regression
+on:
+  push:
+    branches: [main, linux, 'codex/**']
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - run: dotnet build src/SSMConnect.Wizard/SSMConnect.Wizard.csproj -c Release
+      - run: dotnet run --project tests/SSMConnect.Core.Tests -c Release
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libadwaita-1-dev openssh-client openssl python3
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            linux/target
+          key: cargo-regression-${{ hashFiles('linux/Cargo.lock') }}
+      - run: cargo test --locked
+        working-directory: linux
+      - run: python3 linux/tests/git_auth.py

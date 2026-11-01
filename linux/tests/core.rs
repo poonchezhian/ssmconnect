@@ -114,6 +114,51 @@ fn ssh_config_apply_remove_keeps_user_hosts() {
 }
 
 #[test]
+fn cloud_labels_cannot_add_ssh_directives() {
+    for env in ["x\nProxyCommand id>/tmp/a", "x\r\nHost *", "Custom environment"] {
+        let server = TunnelConfig { name: "Web\r\nHost *".into(), instance_id: "i-0123456789abcdef0".into(), environment: env.into(), local_port: 2201, ..Default::default() };
+        let text = ssh_config::render(&[server], false);
+        assert_eq!(text.lines().filter(|l| l.starts_with("Host ")).count(), 1);
+        assert!(!text.lines().any(|l| l.trim_start().starts_with("ProxyCommand")));
+        assert!(!text.contains('\r'));
+        assert!(text.contains("Port 2201"));
+        assert!(text.contains(&env.replace(['\r', '\n'], " ")));
+    }
+}
+
+#[test]
+fn sso_credentials_use_private_input_for_accounts_and_roles() {
+    let h = Home::new();
+    h.tool("aws", r#"#!/usr/bin/env python3
+import json, sys
+a = sys.argv[1:]
+assert '--access-token' not in a and not any('synthetic-token' in x for x in a)
+assert a[a.index('--cli-input-json') + 1] == 'file:///dev/stdin'
+assert json.load(sys.stdin)['accessToken'] == 'synthetic-token-"\\value'
+if a[:2] == ['sso', 'list-accounts']:
+    print(json.dumps([['111111111111', 'Normal Account']]))
+elif a[:2] == ['sso', 'list-account-roles']:
+    assert a[a.index('--account-id') + 1] == '111111111111'
+    print(json.dumps(['Admin', 'ReadOnly']))
+else:
+    sys.exit(9)
+"#);
+    let token = "synthetic-token-\"\\value";
+    assert_eq!(ssmconnect::sso::list_accounts(token, "us-east-1").unwrap()[0].name, "Normal Account");
+    assert_eq!(ssmconnect::sso::list_roles(token, "us-east-1", "111111111111").unwrap(), ["Admin", "ReadOnly"]);
+    h.tool("aws", "#!/bin/sh\nsleep 5\n");
+    let start = std::time::Instant::now();
+    let r = ssmconnect::aws_cli::run_with_input(&["sso", "list-accounts"], "", "", 1, Some("x".repeat(1_000_000)));
+    assert!(!r.ok());
+    assert!(start.elapsed().as_secs() < 4, "private-input timeout must not wait for blocked stdin");
+    h.tool("aws", "#!/bin/sh\n(sleep 5) &\nexit 0\n");
+    let start = std::time::Instant::now();
+    let r = ssmconnect::aws_cli::run_with_input(&["sso", "list-accounts"], "", "", 1, Some("{}".into()));
+    assert!(!r.ok());
+    assert!(start.elapsed().as_secs() < 4, "descendant pipe handles must not bypass the deadline after parent exit");
+}
+
+#[test]
 fn key_fingerprint_matches_openssl() {
     let h = Home::new();
     let key = h.join("k.pem");

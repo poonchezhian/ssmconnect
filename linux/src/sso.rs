@@ -23,7 +23,8 @@ pub fn read_access_token(session: &str) -> Option<String> {
 }
 
 pub fn list_accounts(token: &str, sso_region: &str) -> Result<Vec<SsoAccount>, String> {
-    let r = aws_cli::run(&["sso", "list-accounts", "--access-token", token, "--region", sso_region, "--query", "accountList[].[accountId,accountName]", "--output", "json"], "", "", 60);
+    let r = aws_cli::run_with_input(&["sso", "list-accounts", "--cli-input-json", "file:///dev/stdin", "--region", sso_region, "--query", "accountList[].[accountId,accountName]", "--output", "json"], "", "", 60,
+        Some(serde_json::json!({"accessToken": token}).to_string()));
     if !r.ok() { return Err(aws_cli::friendly_error(&r.error, None)); }
     let rows: Vec<Value> = serde_json::from_str(if r.output.is_empty() { "[]" } else { &r.output }).unwrap_or_default();
     let mut v: Vec<SsoAccount> = rows.iter().map(|row| SsoAccount {
@@ -33,7 +34,8 @@ pub fn list_accounts(token: &str, sso_region: &str) -> Result<Vec<SsoAccount>, S
 }
 
 pub fn list_roles(token: &str, sso_region: &str, account_id: &str) -> Result<Vec<String>, String> {
-    let r = aws_cli::run(&["sso", "list-account-roles", "--access-token", token, "--region", sso_region, "--account-id", account_id, "--query", "roleList[].roleName", "--output", "json"], "", "", 60);
+    let r = aws_cli::run_with_input(&["sso", "list-account-roles", "--cli-input-json", "file:///dev/stdin", "--region", sso_region, "--account-id", account_id, "--query", "roleList[].roleName", "--output", "json"], "", "", 60,
+        Some(serde_json::json!({"accessToken": token}).to_string()));
     if !r.ok() { return Err(aws_cli::friendly_error(&r.error, None)); }
     let mut v: Vec<String> = serde_json::from_str::<Vec<String>>(if r.output.is_empty() { "[]" } else { &r.output }).unwrap_or_default().into_iter().filter(|s| !s.is_empty()).collect();
     v.sort();

@@ -19,8 +19,8 @@ namespace SSMConnect.Core;
 
 /// <summary>
 /// Opens one "aws ssm start-session" port-forward per enabled server as soon as the manager starts and keeps every
-/// one alive (renewing sessions AWS ends) until the manager is stopped. A server that fails 3 times in a row stays
-/// down until <see cref="ResetAll"/> (the person signed in again).
+/// one alive (renewing sessions AWS ends) until the manager is stopped. Transient network failures back off and retry;
+/// failures requiring user action stop after three attempts until <see cref="ResetAll"/>.
 /// Hosted by the tray / dashboard app. Writes live state to status.json for other windows.
 /// </summary>
 public sealed class TunnelManager : IDisposable
@@ -50,6 +50,8 @@ public sealed class TunnelManager : IDisposable
         public DateTime LastActive = DateTime.UtcNow;
         public int Clients;
         public int IdleLeft = -1;
+        public DateTime? MissingListenerSince;
+        public bool ReadyReported;
     }
 
     readonly object _lock = new();
@@ -60,6 +62,23 @@ public sealed class TunnelManager : IDisposable
 
     CancellationTokenSource? _cts;
     Task? _loop;
+    StatusFile _status = new();
+    readonly Func<System.Net.IPEndPoint[]> _readListeners;
+    readonly Func<TcpConnectionInformation[]> _readConnections;
+    readonly Action<StatusFile> _saveStatus;
+
+    public TunnelManager() : this(() => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners(),
+        () => IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpConnections(), StatusStore.Save) { }
+
+    internal TunnelManager(Func<System.Net.IPEndPoint[]> readListeners, Func<TcpConnectionInformation[]> readConnections, Action<StatusFile> saveStatus)
+    {
+        _readListeners = readListeners;
+        _readConnections = readConnections;
+        _saveStatus = saveStatus;
+    }
+
+    /// <summary>Last complete in-memory snapshot. UI reads do not depend on disk or a second Windows TCP query.</summary>
+    public StatusFile Status => Volatile.Read(ref _status);
 
     public bool IsRunning => _loop is { IsCompleted: false };
 
@@ -161,7 +180,11 @@ public sealed class TunnelManager : IDisposable
     }
 
     /// <summary>True when the connection is open and its local port answers.</summary>
-    public bool IsOpen(TunnelConfig t) => StateOf(t, out _) == TunnelStates.Connected && IsListening(t.LocalPort);
+    public bool IsOpen(TunnelConfig t)
+    {
+        lock (_lock) return _slots.TryGetValue(KeyOf(t), out var slot) && slot.State == TunnelStates.Connected
+            && slot.Proc is { HasExited: false } && !slot.Refreshing && slot.MissingListenerSince == null;
+    }
 
     void CloseSlot(Slot slot, string message)
     {
@@ -212,7 +235,9 @@ public sealed class TunnelManager : IDisposable
                 foreach (var s in _slots.Values) StopSlot(s);
                 _slots.Clear();
                 _cfg = null;
-                StatusStore.Save(new StatusFile { UpdatedUtc = DateTime.UtcNow });
+                var empty = new StatusFile { UpdatedUtc = DateTime.UtcNow };
+                Volatile.Write(ref _status, empty);
+                _saveStatus(empty);
             }
             Changed?.Invoke();
             AppLog.Info("Tunnel manager stopped.");
@@ -231,6 +256,14 @@ public sealed class TunnelManager : IDisposable
 
     void Reconcile(AppConfig cfg)
     {
+        // Windows can temporarily fail to enumerate TCP tables (for example while adapters/VPNs change).
+        // Unknown is not an empty table. Read once per pass rather than twice for every server.
+        System.Net.IPEndPoint[]? listeners = null;
+        System.Net.NetworkInformation.TcpConnectionInformation[]? connections = null;
+        try { listeners = _readListeners(); }
+        catch (NetworkInformationException ex) { AppLog.Warn("Could not refresh tunnel listeners: " + ex.Message); }
+        try { connections = _readConnections(); }
+        catch (NetworkInformationException) { }
         _invalid.Clear();
         var globalProblem = ConfigValidator.ValidateGlobal(cfg);
         var desired = new Dictionary<string, TunnelConfig>();
@@ -252,6 +285,7 @@ public sealed class TunnelManager : IDisposable
         {
             if (!_slots.TryGetValue(key, out var slot))
                 _slots[key] = slot = new Slot { Tunnel = tunnel };
+            slot.Tunnel = tunnel;
 
             // nothing asked for this server: nothing may stay open
             if (!slot.Wanted)
@@ -263,7 +297,7 @@ public sealed class TunnelManager : IDisposable
             if (slot.Proc is { HasExited: false })
             {
                 // Safety first: a tunnel must only ever listen on this PC (127.0.0.1 / ::1). If anything else shows up, close it.
-                if (IsExposed(tunnel.LocalPort))
+                if (listeners?.Any(l => l.Port == tunnel.LocalPort && !System.Net.IPAddress.IsLoopback(l.Address)) == true)
                 {
                     AppLog.Error($"Tunnel {tunnel.Name}: port {tunnel.LocalPort} is open to the network. Closing the session.");
                     StopSlot(slot);
@@ -273,7 +307,8 @@ public sealed class TunnelManager : IDisposable
                 }
 
                 // process alive and the local port is listening => the tunnel is up
-                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && IsListening(tunnel.LocalPort))
+                var listening = listeners?.Any(l => l.Port == tunnel.LocalPort);
+                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && listening == true && slot.ReadyReported)
                 {
                     slot.Refreshing = false;
                     if (slot.ShortRuns == 0) slot.Failures = 0;
@@ -295,7 +330,18 @@ public sealed class TunnelManager : IDisposable
 
                 if (slot.State == TunnelStates.Connected)
                 {
-                    slot.Clients = CountClients(tunnel.LocalPort);
+                    if (connections != null) slot.Clients = connections.Count(c => c.LocalEndPoint.Port == tunnel.LocalPort && c.State == TcpState.Established);
+                    if (listening == false && !slot.Refreshing)
+                    {
+                        slot.MissingListenerSince ??= DateTime.UtcNow;
+                        if (DateTime.UtcNow - slot.MissingListenerSince > TimeSpan.FromSeconds(15))
+                        {
+                            StopSlot(slot);
+                            Fail(slot, "The local tunnel port closed. Reopening the secure connection.");
+                            continue;
+                        }
+                    }
+                    else if (listening == true) slot.MissingListenerSince = null;
                     slot.IdleLeft = -1;
                     if (slot.ShortRuns > 0 && DateTime.UtcNow - slot.StartedAt > TimeSpan.FromSeconds(30)) { slot.ShortRuns = 0; slot.Failures = 0; }   // it stayed up: the flapping is over
                 }
@@ -353,7 +399,9 @@ public sealed class TunnelManager : IDisposable
         slot.Failures++;
         slot.Refreshing = false;
         slot.LastError = "";
-        if (slot.Failures >= MaxTries)
+        slot.ReadyReported = false;
+        slot.MissingListenerSince = null;
+        if (slot.Failures >= MaxTries && !TunnelRetryPolicy.IsTransient(why))
         {
             slot.Wanted = false;
             StopSlot(slot);
@@ -361,8 +409,9 @@ public sealed class TunnelManager : IDisposable
             SetState(slot, TunnelStates.Stopped, $"Stopped after {MaxTries} tries. {why} Click Sign in again to retry.");
             return;
         }
-        slot.NextStart = DateTime.UtcNow.AddSeconds(2 * slot.Failures);
-        SetState(slot, TunnelStates.Retrying, $"Try {slot.Failures} of {MaxTries} did not work. {why} Trying again...");
+        var delay = TunnelRetryPolicy.DelaySeconds(slot.Failures);
+        slot.NextStart = DateTime.UtcNow.AddSeconds(delay);
+        SetState(slot, TunnelStates.Retrying, $"Connection attempt {slot.Failures} did not work. {why} Retrying in {delay} seconds...");
     }
 
     static int SafeExitCode(Process p) { try { return p.ExitCode; } catch { return -1; } }
@@ -384,6 +433,8 @@ public sealed class TunnelManager : IDisposable
     {
         var t = slot.Tunnel;
         slot.LastError = "";
+        slot.ReadyReported = false;
+        slot.MissingListenerSince = null;
 
         if (AwsCli.FindAws() == null)
         {
@@ -415,17 +466,17 @@ public sealed class TunnelManager : IDisposable
                 "--parameters", $"portNumber={t.RemotePort},localPortNumber={t.LocalPort}",
             });
             var p = new Process { StartInfo = psi, EnableRaisingEvents = true };
-            p.OutputDataReceived += (_, e) => OnLine(slot, e.Data, isError: false);
-            p.ErrorDataReceived += (_, e) => OnLine(slot, e.Data, isError: true);
+            p.OutputDataReceived += (_, e) => OnLine(slot, p, e.Data, isError: false);
+            p.ErrorDataReceived += (_, e) => OnLine(slot, p, e.Data, isError: true);
             p.Exited += (_, _) => Poke();
             p.Start();
             ChildProcessJob.Add(p);
-            p.BeginOutputReadLine();
-            p.BeginErrorReadLine();
             slot.Proc = p;
             slot.StartedAt = DateTime.UtcNow;
+            p.BeginOutputReadLine();
+            p.BeginErrorReadLine();
             if (slot.State != TunnelStates.Starting && !slot.Refreshing) SetState(slot, TunnelStates.Starting, "Opening secure session to the server...");
-            AppLog.Info($"Started tunnel {t.Name}: 127.0.0.1:{t.LocalPort} -> {t.InstanceId}:{t.RemotePort} (try {slot.Failures + 1} of {MaxTries})");
+            AppLog.Info($"Started tunnel {t.Name}: 127.0.0.1:{t.LocalPort} -> {t.InstanceId}:{t.RemotePort} (attempt {slot.Failures + 1})");
         }
         catch (Exception ex)
         {
@@ -434,19 +485,20 @@ public sealed class TunnelManager : IDisposable
         }
     }
 
-    void OnLine(Slot slot, string? line, bool isError)
+    void OnLine(Slot slot, Process source, string? line, bool isError)
     {
         if (string.IsNullOrWhiteSpace(line)) return;
         lock (_lock)
         {
+            if (!slot.Wanted || !ReferenceEquals(slot.Proc, source)) return;
             var port = slot.Tunnel.LocalPort;
             if (line.Contains("Waiting for connections", StringComparison.OrdinalIgnoreCase) ||
                 line.Contains("opened for sessionId", StringComparison.OrdinalIgnoreCase))
             {
                 slot.LastError = "";
-                slot.Failures = 0;
+                slot.ReadyReported = true;
                 slot.LastActive = DateTime.UtcNow;
-                if (slot.Wanted) SetState(slot, TunnelStates.Connected, $"Connected. Local port {port} is ready.");
+                Poke();
                 AppLog.Info($"[{slot.Tunnel.Name}] {line}");
             }
             else if (isError || line.Contains("An error occurred", StringComparison.OrdinalIgnoreCase))
@@ -482,9 +534,10 @@ public sealed class TunnelManager : IDisposable
                 if (_slots.TryGetValue(key, out var s))
                     file.Tunnels.Add(new TunnelStatus
                     {
-                        Name = t.Name, InstanceId = t.InstanceId, LocalPort = t.LocalPort, State = s.State, Message = s.Message, SinceUtc = s.Since,
+                        Name = t.Name, InstanceId = t.InstanceId, LocalPort = t.LocalPort, State = s.Refreshing ? TunnelStates.Starting : s.State,
+                        Message = s.Refreshing ? "Reconnecting the secure session..." : s.Message, SinceUtc = s.Since,
                         Clients = s.Clients, IdleLeftSeconds = s.State == TunnelStates.Connected ? s.IdleLeft : -1,
-                        Attempt = s.State is TunnelStates.Starting or TunnelStates.Retrying ? Math.Min(s.Failures + 1, MaxTries) : 0,
+                        Attempt = s.State is TunnelStates.Starting or TunnelStates.Retrying ? s.Failures + 1 : 0,
                     });
                 else if (_invalid.TryGetValue(t, out var why))
                     file.Tunnels.Add(new TunnelStatus { Name = t.Name, InstanceId = t.InstanceId, LocalPort = t.LocalPort, State = TunnelStates.Error, Message = why, SinceUtc = DateTime.UtcNow });
@@ -494,7 +547,8 @@ public sealed class TunnelManager : IDisposable
                     file.Tunnels.Add(new TunnelStatus { Name = t.Name, InstanceId = t.InstanceId, LocalPort = t.LocalPort, State = TunnelStates.Disabled, Message = "Turned off.", SinceUtc = DateTime.UtcNow });
             }
         }
-        StatusStore.Save(file);
+        Volatile.Write(ref _status, file);
+        _saveStatus(file);
         Changed?.Invoke();
     }
 

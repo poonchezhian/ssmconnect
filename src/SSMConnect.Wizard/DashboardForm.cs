@@ -739,12 +739,6 @@ public sealed class DashboardForm : Form
         catch { /* the 1-second timer still keeps the view fresh */ }
     }
 
-    static HashSet<int> ActiveListeners()
-    {
-        try { return new HashSet<int>(IPGlobalProperties.GetIPGlobalProperties().GetActiveTcpListeners().Select(l => l.Port)); }
-        catch { return new HashSet<int>(); }
-    }
-
     void RefreshAll()
     {
         try { Refresh_(); }
@@ -762,9 +756,7 @@ public sealed class DashboardForm : Form
         catch { }
 
         var running = _mgr.IsRunning;
-        var status = StatusStore.Load();
-        var stale = !running || status == null || DateTime.UtcNow - status.UpdatedUtc > TimeSpan.FromSeconds(20);
-        var listeners = ActiveListeners();
+        var status = _mgr.Status;
 
         // pills at the bottom of the sidebar
         if (running) SetPill(_svcPill, "Connections: on", Level.Green, "Every connection opens when SSMConnect starts and stays open until you stop them or close the app.");
@@ -789,18 +781,16 @@ public sealed class DashboardForm : Form
             if (!t.Enabled) row = new Row(label, t.InstanceId, t.LocalPort, "Off", "This connection is turned off.", null, Level.Grey);
             else if (_signedOut.Contains(PKey(t.Profile))) row = new Row(label, t.InstanceId, t.LocalPort, "Signed out", "Your company sign-in has expired. Click Sign in again.", null, Level.Red, "sign in needed");
             else if (!running) row = new Row(label, t.InstanceId, t.LocalPort, "Paused", "Connections are switched off. Click Start connections.", null, Level.Grey);
-            else if (stale || s == null) row = new Row(label, t.InstanceId, t.LocalPort, "Connecting", "Opening secure session to the server...", null, Level.Amber, "starting up");
+            else if (s == null) row = new Row(label, t.InstanceId, t.LocalPort, "Connecting", "Opening secure session to the server...", null, Level.Amber, "starting up");
             else row = s.State switch
             {
-                TunnelStates.Connected when listeners.Contains(t.LocalPort) =>
+                TunnelStates.Connected =>
                     new Row(label, t.InstanceId, t.LocalPort, "Connected", s.Message, s.SinceUtc, Level.Green,
                         s.Clients > 0 ? (s.Clients == 1 ? "1 tool attached" : s.Clients + " tools attached") : ""),
-                TunnelStates.Connected =>
-                    new Row(label, t.InstanceId, t.LocalPort, "Checking", "Tunnel reported connected; confirming the local port is open...", s.SinceUtc, Level.Amber),
                 TunnelStates.Ready => new Row(label, t.InstanceId, t.LocalPort, "Ready", s.Message, null, Level.Blue),
                 TunnelStates.Stopped => new Row(label, t.InstanceId, t.LocalPort, "Stopped", s.Message, s.SinceUtc, Level.Red, "stopped after 3 tries"),
                 TunnelStates.Error => new Row(label, t.InstanceId, t.LocalPort, "Problem", s.Message, s.SinceUtc, Level.Red, s.Message),
-                TunnelStates.Retrying => new Row(label, t.InstanceId, t.LocalPort, "Connecting", s.Message, s.SinceUtc, Level.Amber, $"try {Math.Max(1, s.Attempt)} of 3"),
+                TunnelStates.Retrying => new Row(label, t.InstanceId, t.LocalPort, "Connecting", s.Message, s.SinceUtc, Level.Amber, $"attempt {Math.Max(1, s.Attempt)}"),
                 TunnelStates.Disabled => new Row(label, t.InstanceId, t.LocalPort, "Off", s.Message, null, Level.Grey),
                 _ => new Row(label, t.InstanceId, t.LocalPort, "Connecting", s.Message, s.SinceUtc, Level.Amber, "opening the secure session"),
             };
@@ -1557,7 +1547,7 @@ public sealed class DashboardForm : Form
     {
         var t = SelectedTunnel();
         if (t == null || !t.IsRdp) { MessageBox.Show(this, "Use the Remote Desktop button on a Windows server card. Windows servers are added with \"Add / change servers...\".", "Remote Desktop"); return; }
-        if (!ActiveListeners().Contains(t.LocalPort))
+        if (!_mgr.IsOpen(t))
         {
             MessageBox.Show(this, "This connection is not open yet. Click Remote Desktop on the server card and wait a few seconds.", "Remote Desktop");
             return;

@@ -5,6 +5,8 @@
 *.cmd text eol=crlf
 *.wxs text eol=crlf
 *.csproj text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
 *.md text
 *.ico binary
 *.png binary

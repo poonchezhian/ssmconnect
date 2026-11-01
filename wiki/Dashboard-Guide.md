@@ -17,7 +17,7 @@ Each card shows the server name, its type (a red **PROD** tag, or a grey one suc
 |---|---|
 | Green **Connected** | The tunnel is up and the local port is really open |
 | Amber | Signing in, connecting or reconnecting |
-| Red **Stopped** | The server failed 3 tries in a row; the card says why. Click **Sign in again** to retry |
+| Red **Stopped** | A sign-in, configuration or safety problem needs attention; the card says why. Correct it, then click **Sign in again** |
 | Grey | The connection is switched off |
 
 | Usage bar colour | Meaning |
@@ -42,7 +42,7 @@ Every connection opens together when SSMConnect starts (or after you sign in) an
 | **Connections > Restart connections** | Closes and reopens everything. Use it after your PC wakes from sleep |
 | **Add / change servers...** | Opens the setup wizard to find servers and choose which ones to connect |
 
-If AWS ends a session, SSMConnect quietly opens the next one. A server that fails 3 tries in a row shows **Stopped** until you click **Sign in again**.
+If AWS ends a session, SSMConnect opens the next one. On Windows, transient network failures retry automatically with increasing pauses, capped at 60 seconds. Sign-in and configuration failures still stop after 3 attempts and show what needs correction. Existing PuTTY/WinSCP sessions may need reconnecting after an actual tunnel interruption; a dashboard refresh does not close them.
 
 ## Copy files between servers
 

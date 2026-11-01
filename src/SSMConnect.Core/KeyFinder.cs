@@ -281,51 +281,73 @@ public static class KeyFingerprint
 public static class KeyConverter
 {
     /// <summary>Returns a .ppk path for the key (the key itself when it already is one), or null when it cannot be converted.</summary>
-    static bool _locked;
+    static readonly object ConversionGate = new();
 
     /// <summary>The converted keys are unencrypted: only the signed-in Windows user (not other local users) may read this folder.</summary>
     static void LockDown(string dir)
     {
-        if (_locked) return;
-        _locked = true;
-        try
-        {
-            var psi = new System.Diagnostics.ProcessStartInfo("icacls") { UseShellExecute = false, CreateNoWindow = true };
-            psi.ArgumentList.Add(dir);
-            psi.ArgumentList.Add("/inheritance:r");
-            psi.ArgumentList.Add("/grant:r");
-            psi.ArgumentList.Add(Environment.UserName + ":(OI)(CI)F");
-            psi.ArgumentList.Add("/T");
-            psi.ArgumentList.Add("/C");
-            using var p = System.Diagnostics.Process.Start(psi);
-            p?.WaitForExit(8000);
-        }
-        catch (Exception ex) { AppLog.Warn("Could not restrict the keys folder: " + ex.Message); }
+        // A SID works for domain, local and Microsoft/Entra accounts; a bare user name may not resolve.
+        var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User
+            ?? throw new IOException("Windows could not identify the signed-in user.");
+        var acl = new System.Security.AccessControl.DirectorySecurity();
+        acl.SetAccessRuleProtection(true, false);
+        acl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(sid,
+            System.Security.AccessControl.FileSystemRights.FullControl,
+            System.Security.AccessControl.InheritanceFlags.ContainerInherit | System.Security.AccessControl.InheritanceFlags.ObjectInherit,
+            System.Security.AccessControl.PropagationFlags.None, System.Security.AccessControl.AccessControlType.Allow));
+        System.IO.FileSystemAclExtensions.SetAccessControl(new DirectoryInfo(dir), acl);
     }
 
     public static string? EnsurePpk(string keyPath)
     {
+        return EnsurePpkInDirectory(keyPath, System.IO.Path.Combine(ConfigStore.DataDir, "keys"));
+    }
+
+    internal static string? EnsurePpkInDirectory(string keyPath, string dir)
+    {
+        lock (ConversionGate) return EnsurePpkCore(keyPath, dir);
+    }
+
+    static string? EnsurePpkCore(string keyPath, string dir)
+    {
+        string? temporary = null;
         try
         {
-            if (keyPath.EndsWith(".ppk", StringComparison.OrdinalIgnoreCase)) return keyPath;
             if (!File.Exists(keyPath)) return null;
-            var dir = System.IO.Path.Combine(ConfigStore.DataDir, "keys");
+            if (keyPath.EndsWith(".ppk", StringComparison.OrdinalIgnoreCase))
+            {
+                using var reader = File.OpenText(keyPath);
+                return reader.ReadLine()?.StartsWith("PuTTY-User-Key-File-", StringComparison.Ordinal) == true ? keyPath : null;
+            }
             Directory.CreateDirectory(dir);
             LockDown(dir);
             var safe = string.Concat(System.IO.Path.GetFileNameWithoutExtension(keyPath).Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.' ? c : '_'));
             // the folder is part of the name, so two different keys that share a file name never overwrite each other
             var tag = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(System.Text.Encoding.UTF8.GetBytes(System.IO.Path.GetFullPath(keyPath).ToLowerInvariant())))[..8].ToLowerInvariant();
             var outFile = System.IO.Path.Combine(dir, safe + "-" + tag + ".ppk");
-            if (File.Exists(outFile) && File.GetLastWriteTimeUtc(outFile) >= File.GetLastWriteTimeUtc(keyPath)) return outFile;
-
             var text = File.ReadAllText(keyPath);
             if (text.Contains("ENCRYPTED", StringComparison.Ordinal)) return null; // protected by a passphrase
             using var rsa = System.Security.Cryptography.RSA.Create();
             rsa.ImportFromPem(text);
-            File.WriteAllText(outFile, WritePpk(rsa.ExportParameters(true), System.IO.Path.GetFileNameWithoutExtension(keyPath)));
+            var body = WritePpk(rsa.ExportParameters(true), System.IO.Path.GetFileNameWithoutExtension(keyPath).Replace('\r', ' ').Replace('\n', ' '));
+            // Repair cached files with old ACLs before reading them, and never expose a partially written key to tools.
+            if (File.Exists(outFile))
+            {
+                var sid = System.Security.Principal.WindowsIdentity.GetCurrent().User!;
+                var fileAcl = new System.Security.AccessControl.FileSecurity();
+                fileAcl.SetAccessRuleProtection(true, false);
+                fileAcl.AddAccessRule(new System.Security.AccessControl.FileSystemAccessRule(sid,
+                    System.Security.AccessControl.FileSystemRights.FullControl, System.Security.AccessControl.AccessControlType.Allow));
+                System.IO.FileSystemAclExtensions.SetAccessControl(new FileInfo(outFile), fileAcl);
+                if (File.ReadAllText(outFile) == body) return outFile;
+            }
+            temporary = System.IO.Path.Combine(dir, Guid.NewGuid().ToString("N") + ".tmp");
+            File.WriteAllText(temporary, body);
+            File.Move(temporary, outFile, overwrite: true);
             return outFile;
         }
-        catch { return null; }
+        catch (Exception ex) { AppLog.Warn("Could not prepare a PuTTY key: " + ex.Message); return null; }
+        finally { if (temporary != null) { try { File.Delete(temporary); } catch { } } }
     }
 
     // PuTTY private key file, version 2, unencrypted ("Encryption: none").

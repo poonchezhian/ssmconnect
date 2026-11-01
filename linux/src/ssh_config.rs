@@ -52,13 +52,16 @@ pub fn alias_of(t: &TunnelConfig, everyone: &[TunnelConfig]) -> String {
 
 fn quote(p: &str) -> String { if p.chars().any(char::is_whitespace) { format!("\"{}\"", p.replace('"', "\\\"")) } else { p.to_string() } }
 
+// Cloud metadata and saved labels are data, never additional ssh_config lines.
+fn comment(s: &str) -> String { s.replace(['\r', '\n'], " ") }
+
 pub fn render(tunnels: &[TunnelConfig], strict: bool) -> String {
     let aliases = aliases_for(tunnels);
     let mut out = vec![HEADER.to_string()];
     for t in tunnels.iter().filter(|t| !t.is_rdp() && t.enabled) {
         let alias = &aliases[&t.instance_id];
         out.push(format!("Host {alias}"));
-        out.push(format!("    # {} ({}){}", t.name.replace(['\n', '\r'], " "), t.instance_id, if t.environment.is_empty() { String::new() } else { format!(" [{}]", t.environment) }));
+        out.push(format!("    # {} ({}){}", comment(&t.name), comment(&t.instance_id), if t.environment.is_empty() { String::new() } else { format!(" [{}]", comment(&t.environment)) }));
         out.push("    HostName 127.0.0.1".into());
         out.push(format!("    Port {}", t.local_port));
         out.push(format!("    User {}", t.user_name));
