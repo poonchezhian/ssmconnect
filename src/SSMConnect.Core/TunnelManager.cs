@@ -183,7 +183,7 @@ public sealed class TunnelManager : IDisposable
     public bool IsOpen(TunnelConfig t)
     {
         lock (_lock) return _slots.TryGetValue(KeyOf(t), out var slot) && slot.State == TunnelStates.Connected
-            && slot.Proc is { HasExited: false } && !slot.Refreshing && (slot.MissingListenerSince == null || slot.Clients > 0);
+            && slot.Proc is { HasExited: false } && slot.ReadyReported && !slot.Refreshing;
     }
 
     void CloseSlot(Slot slot, string message)
@@ -200,7 +200,7 @@ public sealed class TunnelManager : IDisposable
 
     async Task RunAsync(CancellationToken ct)
     {
-        AppLog.Info("Tunnel manager started. Config: " + ConfigStore.ConfigPath);
+        AppLog.Info($"Tunnel manager started. Version: {typeof(TunnelManager).Assembly.GetName().Version}; OS: {Environment.OSVersion.VersionString}. Config: {ConfigStore.ConfigPath}");
         Directory.CreateDirectory(ConfigStore.DataDir);
 
         using var watcher = new FileSystemWatcher(ConfigStore.DataDir, "config.json") { EnableRaisingEvents = true };
@@ -306,12 +306,13 @@ public sealed class TunnelManager : IDisposable
                     continue;
                 }
 
-                // process alive and the local port is listening => the tunnel is up
+                // The managed plugin's readiness report is authoritative. TCP tables are supplemental:
+                // Windows may omit a listener while the plugin is still accepting/serving connections.
                 var listening = listeners?.Any(l => l.Port == tunnel.LocalPort);
                 if (connections != null) slot.Clients = connections.Count(c => c.LocalEndPoint.Port == tunnel.LocalPort && c.State == TcpState.Established);
                 // An accepted client is positive evidence of a working tunnel even when Windows no longer
                 // reports its listening socket. In particular, never interrupt that client to recreate a listener.
-                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && slot.ReadyReported && (listening == true || slot.Clients > 0))
+                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && slot.ReadyReported)
                 {
                     slot.Refreshing = false;
                     if (slot.ShortRuns == 0) slot.Failures = 0;

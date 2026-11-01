@@ -7,7 +7,7 @@ The full list with downloads and checksums is on the [Releases page](https://git
 There is now a native Linux edition with a signed installer. Read the [announcement](Linux-Edition) and the [Linux release notes](Linux-Release-Notes). The Windows versions below are unchanged.
 
 ## Unreleased
-- **Active Windows sessions survive missing listener reports.** A missing socket-table entry no longer restarts a running tunnel. Established PuTTY/WinSCP connections count as positive connection evidence, including during startup; status transitions are logged for diagnosis.
+- **Active Windows sessions survive missing listener reports.** A missing socket-table entry no longer restarts a running tunnel or blocks new tools after the managed Session Manager plugin reports ready. Established PuTTY/WinSCP connections remain intact; status transitions are logged for diagnosis.
 - **Reliable Windows connection status.** The dashboard reads the tunnel manager's live status instead of repeating Windows TCP-table queries. A temporary query failure no longer makes a healthy tunnel appear disconnected. Transient network failures retry with a capped backoff; sign-in and configuration problems still require attention.
 - **PuTTY key access repaired.** Converted keys use the current account's Windows security identifier, including Microsoft and domain accounts. Existing cached key permissions are repaired, incomplete keys are regenerated, and new keys are written atomically.
 - **Linux security fixes.** Environment labels cannot add OpenSSH configuration lines. AWS SSO and wiki publishing credentials no longer travel in process arguments.

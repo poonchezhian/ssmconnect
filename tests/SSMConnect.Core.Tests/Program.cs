@@ -77,7 +77,7 @@ try
         Assert(manager.IsOpen(tunnel), "A Windows TCP-table query failure must not downgrade a healthy tunnel");
         failQuery = false; hasListener = false;
         Reconcile();
-        Assert(!manager.IsOpen(tunnel) && !worker.HasExited, "Missing listener must block new launches without killing on one sample");
+        Assert(manager.IsOpen(tunnel) && !worker.HasExited, "Missing listener must not block new tools after the managed plugin reported ready");
         Set("MissingListenerSince", DateTime.UtcNow.AddMinutes(-2));
         Reconcile();
         Assert(!worker.HasExited, "Even a prolonged missing-listener snapshot must not kill the session process");
@@ -89,9 +89,12 @@ try
         Reconcile();
         Assert(manager.StateOf(tunnel, out _) == TunnelStates.Connected && !worker.HasExited, "An established client must prevent a false startup timeout");
         hasClient = false;
+        Set("State", TunnelStates.Starting);
+        Reconcile();
+        Assert(manager.IsOpen(tunnel) && !worker.HasExited, "Plugin readiness must prevent a false startup timeout even when Windows reports neither socket nor client");
         hasListener = true;
         Reconcile();
-        Assert(manager.IsOpen(tunnel) && queryCount == 7, "Listener recovery must clear uncertainty; query only once per pass");
+        Assert(manager.IsOpen(tunnel) && queryCount == 8, "Listener recovery must clear uncertainty; query only once per pass");
         using var staleProcess = Process.GetCurrentProcess();
         Set("State", TunnelStates.Retrying);
         type.GetMethod("OnLine", flags)!.Invoke(manager, new object[] { slot, staleProcess, "Waiting for connections...", false });
