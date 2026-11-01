@@ -55,11 +55,12 @@ try
     {
         var failQuery = false;
         var hasListener = true;
+        var hasClient = false;
         var queryCount = 0;
         var tunnel = new TunnelConfig { Name = "test", InstanceId = "i-0123456789abcdef0", LocalPort = 2201, RemotePort = 22, Profile = "test", Region = "us-east-1", UserName = "ubuntu" };
         var config = new AppConfig { Tunnels = new() { tunnel } };
         using var manager = new TunnelManager(() => { queryCount++; if (failQuery) throw new NetworkInformationException(); return hasListener ? new[] { new IPEndPoint(IPAddress.Loopback, 2201) } : Array.Empty<IPEndPoint>(); },
-            () => Array.Empty<TcpConnectionInformation>(), _ => { });
+            () => hasClient ? new TcpConnectionInformation[] { new AttachedClient(2201) } : Array.Empty<TcpConnectionInformation>(), _ => { });
         var type = typeof(TunnelManager);
         var flags = BindingFlags.Instance | BindingFlags.NonPublic;
         var slotType = type.GetNestedType("Slot", BindingFlags.NonPublic)!;
@@ -77,9 +78,20 @@ try
         failQuery = false; hasListener = false;
         Reconcile();
         Assert(!manager.IsOpen(tunnel) && !worker.HasExited, "Missing listener must block new launches without killing on one sample");
+        Set("MissingListenerSince", DateTime.UtcNow.AddMinutes(-2));
+        Reconcile();
+        Assert(!worker.HasExited, "Even a prolonged missing-listener snapshot must not kill the session process");
+        hasClient = true;
+        Reconcile();
+        Assert(manager.IsOpen(tunnel) && !worker.HasExited, "An attached client must remain connected when the listening socket is absent");
+        Set("State", TunnelStates.Starting);
+        Set("StartedAt", DateTime.UtcNow.AddMinutes(-2));
+        Reconcile();
+        Assert(manager.StateOf(tunnel, out _) == TunnelStates.Connected && !worker.HasExited, "An established client must prevent a false startup timeout");
+        hasClient = false;
         hasListener = true;
         Reconcile();
-        Assert(manager.IsOpen(tunnel) && queryCount == 4, "Listener recovery must clear uncertainty; query only once per pass");
+        Assert(manager.IsOpen(tunnel) && queryCount == 7, "Listener recovery must clear uncertainty; query only once per pass");
         using var staleProcess = Process.GetCurrentProcess();
         Set("State", TunnelStates.Retrying);
         type.GetMethod("OnLine", flags)!.Invoke(manager, new object[] { slot, staleProcess, "Waiting for connections...", false });
@@ -89,3 +101,10 @@ try
     finally { if (!worker.HasExited) worker.Kill(entireProcessTree: true); worker.WaitForExit(); }
 }
 finally { Directory.Delete(temp, recursive: true); }
+
+sealed class AttachedClient(int port) : TcpConnectionInformation
+{
+    public override IPEndPoint LocalEndPoint => new(IPAddress.Loopback, port);
+    public override IPEndPoint RemoteEndPoint => new(IPAddress.Loopback, 50000);
+    public override TcpState State => TcpState.Established;
+}

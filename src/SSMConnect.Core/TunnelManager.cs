@@ -183,7 +183,7 @@ public sealed class TunnelManager : IDisposable
     public bool IsOpen(TunnelConfig t)
     {
         lock (_lock) return _slots.TryGetValue(KeyOf(t), out var slot) && slot.State == TunnelStates.Connected
-            && slot.Proc is { HasExited: false } && !slot.Refreshing && slot.MissingListenerSince == null;
+            && slot.Proc is { HasExited: false } && !slot.Refreshing && (slot.MissingListenerSince == null || slot.Clients > 0);
     }
 
     void CloseSlot(Slot slot, string message)
@@ -308,7 +308,10 @@ public sealed class TunnelManager : IDisposable
 
                 // process alive and the local port is listening => the tunnel is up
                 var listening = listeners?.Any(l => l.Port == tunnel.LocalPort);
-                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && listening == true && slot.ReadyReported)
+                if (connections != null) slot.Clients = connections.Count(c => c.LocalEndPoint.Port == tunnel.LocalPort && c.State == TcpState.Established);
+                // An accepted client is positive evidence of a working tunnel even when Windows no longer
+                // reports its listening socket. In particular, never interrupt that client to recreate a listener.
+                if ((slot.State == TunnelStates.Starting || slot.Refreshing) && slot.ReadyReported && (listening == true || slot.Clients > 0))
                 {
                     slot.Refreshing = false;
                     if (slot.ShortRuns == 0) slot.Failures = 0;
@@ -330,18 +333,13 @@ public sealed class TunnelManager : IDisposable
 
                 if (slot.State == TunnelStates.Connected)
                 {
-                    if (connections != null) slot.Clients = connections.Count(c => c.LocalEndPoint.Port == tunnel.LocalPort && c.State == TcpState.Established);
-                    if (listening == false && !slot.Refreshing)
+                    if (listening == false && slot.Clients == 0 && !slot.Refreshing)
                     {
+                        if (slot.MissingListenerSince == null)
+                            AppLog.Warn($"Tunnel {tunnel.Name}: Windows did not report a listener on port {tunnel.LocalPort}; keeping the running session intact.");
                         slot.MissingListenerSince ??= DateTime.UtcNow;
-                        if (DateTime.UtcNow - slot.MissingListenerSince > TimeSpan.FromSeconds(15))
-                        {
-                            StopSlot(slot);
-                            Fail(slot, "The local tunnel port closed. Reopening the secure connection.");
-                            continue;
-                        }
                     }
-                    else if (listening == true) slot.MissingListenerSince = null;
+                    else if (listening == true || slot.Clients > 0) slot.MissingListenerSince = null;
                     slot.IdleLeft = -1;
                     if (slot.ShortRuns > 0 && DateTime.UtcNow - slot.StartedAt > TimeSpan.FromSeconds(30)) { slot.ShortRuns = 0; slot.Failures = 0; }   // it stayed up: the flapping is over
                 }
@@ -517,7 +515,11 @@ public sealed class TunnelManager : IDisposable
     void SetState(Slot slot, string state, string message)
     {
         if (slot.State == state && slot.Message == message) return;
-        if (slot.State != state) slot.Since = DateTime.UtcNow;
+        if (slot.State != state)
+        {
+            AppLog.Info($"Tunnel {slot.Tunnel.Name}: {slot.State} -> {state}. {message}");
+            slot.Since = DateTime.UtcNow;
+        }
         slot.State = state;
         slot.Message = message;
         WriteStatus();
